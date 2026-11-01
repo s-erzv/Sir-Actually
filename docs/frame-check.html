@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Frame Check — Mapping Maou</title>
+<style>
+body { background: #0d0d1a; color: #aac; font-family: monospace; padding: 12px; margin: 0; }
+h2 { font-size: 12px; color: #fff; margin: 16px 0 6px; border-top: 1px solid #333; padding-top: 8px; }
+.grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+canvas.tile { image-rendering: pixelated; background: #1a1a2e; border: 1px solid #333; width: 64px; height: 64px; }
+.label { font-size: 9px; color: #888; text-align: center; }
+.name { font-size: 10px; color: #aaf; text-align: center; }
+</style>
+</head>
+<body>
+<p style="font-size:11px;color:#666">Setiap tile = 4x scale. Klik kanan → Inspect untuk cek pixel. Background abu = transparan.</p>
+
+<h2>Terrain: FLOOR, FLOOR_ALT, FLOOR_SAND, WALL_TOP/FACE</h2>
+<div class="grid" id="terrain"></div>
+
+<h2>Doors: DOOR_LOCKED (77, alt 45, alt 22), DOOR_OPEN (0), STAIRS (56, alt 10)</h2>
+<div class="grid" id="doors"></div>
+
+<h2>Decorations: WALL_DECOR (28,7,19), BANNER_RED (29), PROP (82,89,63), GRAVE (65)</h2>
+<div class="grid" id="decor"></div>
+
+<h2>Characters: PLAYER (84), MINION (120,122,108)</h2>
+<div class="grid" id="chars"></div>
+
+<h2>BOSS: GAP_HUNTER(112), ALIGNER(97), METHODOLOGIST(111), AUDITOR(86), GHOST(121), SIR(100)</h2>
+<div class="grid" id="bosses"></div>
+
+<script>
+const TW=16, TH=16, SP=1, COLS=12, SCALE=4;
+
+const GROUPS = {
+  terrain: [
+    {name:'FLOOR',     idx:0},
+    {name:'FLOOR_ALT_24', idx:24},
+    {name:'FLOOR_ALT_12', idx:12},
+    {name:'FLOOR_SAND_48',idx:48},
+    {name:'FLOOR_SAND_49',idx:49},
+    {name:'FLOOR_SAND_51',idx:51},
+    {name:'WALL_TOP/FACE=40', idx:40},
+    {name:'alt WALL=36', idx:36},
+    {name:'alt WALL=57', idx:57},
+    {name:'frame 1', idx:1},
+    {name:'frame 2', idx:2},
+    {name:'frame 3', idx:3},
+    {name:'frame 4', idx:4},
+    {name:'frame 13',idx:13},
+    {name:'frame 25',idx:25},
+  ],
+  doors: [
+    {name:'DOOR_LOCKED=77',idx:77},
+    {name:'alt DOOR=45',idx:45},
+    {name:'alt DOOR=22',idx:22},
+    {name:'alt DOOR=33',idx:33},
+    {name:'DOOR_OPEN=0?',idx:0},
+    {name:'STAIRS=56',idx:56},
+    {name:'alt STAIRS=10',idx:10},
+    {name:'frame 44', idx:44},
+    {name:'frame 46', idx:46},
+    {name:'frame 58', idx:58},
+    {name:'frame 55', idx:55},
+  ],
+  decor: [
+    {name:'WALL_DECOR=28',idx:28},
+    {name:'WALL_DECOR=7', idx:7},
+    {name:'WALL_DECOR=19',idx:19},
+    {name:'BANNER_RED=29',idx:29},
+    {name:'PROP_1=82', idx:82},
+    {name:'PROP_2=89', idx:89},
+    {name:'PROP_3=63', idx:63},
+    {name:'GRAVE=65',  idx:65},
+    {name:'frame 5',   idx:5},
+    {name:'frame 6',   idx:6},
+    {name:'frame 8',   idx:8},
+    {name:'frame 17',  idx:17},
+    {name:'frame 18',  idx:18},
+    {name:'frame 30',  idx:30},
+    {name:'frame 31',  idx:31},
+  ],
+  chars: [
+    {name:'PLAYER=84', idx:84},
+    {name:'p-bot=96',  idx:96},
+    {name:'MINION1=120',idx:120},
+    {name:'MINION2=122',idx:122},
+    {name:'MINION3=108',idx:108},
+    {name:'frame 85',  idx:85},
+    {name:'frame 109', idx:109},
+    {name:'frame 121', idx:121},
+  ],
+  bosses: [
+    {name:'GAP=112',   idx:112},
+    {name:'p112b=113', idx:113},
+    {name:'ALIGN=97',  idx:97},
+    {name:'p97b=98',   idx:98},
+    {name:'METH=111',  idx:111},
+    {name:'AUD=86',    idx:86},
+    {name:'p86b=87',   idx:87},
+    {name:'GHOST=121', idx:121},
+    {name:'SIR=100',   idx:100},
+    {name:'p100b=101', idx:101},
+    {name:'frame 99',  idx:99},
+    {name:'frame 110', idx:110},
+    {name:'frame 123', idx:123},
+    {name:'frame 124', idx:124},
+  ],
+};
+
+const img = new Image();
+img.src = '../public/assets/tiny-dungeon/Tilemap/tilemap.png';
+img.onload = function() {
+  for (const [groupId, items] of Object.entries(GROUPS)) {
+    const container = document.getElementById(groupId);
+    items.forEach(({name, idx}) => {
+      const col = idx % COLS;
+      const row = Math.floor(idx / COLS);
+      const c = document.createElement('canvas');
+      c.className = 'tile';
+      c.width = 64; c.height = 64;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img,
+        col*(TW+SP), row*(TH+SP), TW, TH,
+        0, 0, 64, 64
+      );
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'name';
+      nameEl.textContent = name;
+      const lblEl = document.createElement('div');
+      lblEl.className = 'label';
+      lblEl.textContent = `r${row}c${col}`;
+      cell.appendChild(c);
+      cell.appendChild(nameEl);
+      cell.appendChild(lblEl);
+      container.appendChild(cell);
+    });
+  }
+};
+img.onerror = () => document.body.insertAdjacentHTML('afterbegin','<p style="color:red">ERROR: gambar tidak ditemukan</p>');
+</script>
+</body>
+</html>

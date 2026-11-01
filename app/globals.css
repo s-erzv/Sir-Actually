@@ -1,0 +1,370 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #0c0e0d;
+  --stone: #343a35;
+  --ash: #a2aa9d;
+  --bone: #f0f1e8;
+  --void: var(--ink);
+  --crypt: var(--ink);
+  --tomb: var(--stone);
+  --slab: var(--stone);
+  --ridge: var(--stone);
+  --rune: var(--ash);
+  --gold: var(--bone);
+  --ember: var(--ash);
+  --blood: var(--bone);
+  --mana: var(--ash);
+  --moss: var(--bone);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: clip;
+  background: var(--ink);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: clip;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--bone);
+  color: var(--ink);
+}
+
+a,
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: var(--stone);
+  touch-action: manipulation;
+}
+
+:where(a, button, input, textarea, select, summary):focus-visible {
+  outline: 3px solid var(--bone);
+  outline-offset: 3px;
+}
+
+.font-pixel {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+.dungeon-bg {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--ink);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--stone) 34%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--stone) 34%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.dungeon-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--ash) 16%, transparent) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+.pixel-panel {
+  position: relative;
+  border: 2px solid var(--ash);
+  background: var(--stone);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.pixel-panel-soft {
+  border: 2px solid var(--stone);
+  background: var(--ink);
+  box-shadow: 3px 3px 0 var(--stone);
+}
+
+.pixel-panel-gold {
+  border-color: var(--bone);
+  box-shadow: 4px 4px 0 var(--ash);
+}
+
+.pixel-button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 2px solid var(--bone);
+  padding: 0.65rem 1rem;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform 100ms steps(2, end), box-shadow 100ms steps(2, end);
+}
+
+.pixel-button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.pixel-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+.pixel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.pixel-button-sm {
+  min-height: 44px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.8125rem;
+}
+
+.pixel-input {
+  width: 100%;
+  min-height: 44px;
+  border: 2px solid var(--ash);
+  border-radius: 0;
+  background: var(--ink);
+  padding: 0.7rem 0.8rem;
+  color: var(--bone);
+  font-size: 1rem;
+  line-height: 1.5;
+  outline-offset: 3px;
+}
+
+.pixel-input::placeholder {
+  color: var(--ash);
+  opacity: 0.8;
+}
+
+.pixel-input:focus {
+  border-color: var(--bone);
+}
+
+.pixel-input:disabled {
+  opacity: 0.55;
+}
+
+.pixel-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--bone);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.pixel-chip {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--ash);
+  background: var(--ink);
+  padding: 0.25rem 0.5rem;
+  color: var(--bone);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.rule-gold {
+  height: 2px;
+  background: var(--bone);
+}
+
+.eyebrow {
+  color: var(--bone);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.title-glow,
+.text-gold-glow {
+  text-shadow: none;
+}
+
+.bar-track {
+  height: 14px;
+  border: 2px solid var(--ash);
+  background: var(--ink);
+}
+
+.bar-fill {
+  height: 100%;
+  background-color: var(--bone);
+  background-image: repeating-linear-gradient(90deg, transparent 0, transparent 4px, var(--ash) 4px, var(--ash) 6px);
+}
+
+.game-screen {
+  border: 2px solid var(--bone);
+  background: var(--ink);
+  box-shadow: 5px 5px 0 var(--stone);
+}
+
+.game-screen-bar {
+  border-bottom: 2px solid var(--bone);
+  background: var(--stone);
+}
+
+.tile-floor {
+  background-color: var(--stone);
+  background-image:
+    linear-gradient(var(--ink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ink) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.wall-stone {
+  background-color: var(--ash);
+  background-image:
+    linear-gradient(var(--ink) 2px, transparent 2px),
+    linear-gradient(90deg, var(--ink) 2px, transparent 2px);
+  background-size: 100% 16px, 32px 16px;
+}
+
+.torch-flame {
+  width: 8px;
+  height: 8px;
+  background: var(--bone);
+  box-shadow: 0 -4px 0 var(--ash), -3px -8px 0 var(--bone), 3px -2px 0 var(--ash);
+  animation: torch-flicker 1.2s infinite steps(2, end);
+}
+
+.pixel-corners::before,
+.pixel-corners::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--bone);
+}
+
+.pixel-corners::before {
+  left: -2px;
+  top: -2px;
+  border-left: 2px solid;
+  border-top: 2px solid;
+}
+
+.pixel-corners::after {
+  right: -2px;
+  bottom: -2px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+}
+
+.parchment {
+  border: 2px solid var(--bone);
+  background-color: var(--bone);
+  background-image: radial-gradient(var(--ash) 1px, transparent 1px);
+  background-size: 8px 8px;
+  color: var(--ink);
+  box-shadow: 5px 5px 0 var(--ash);
+}
+
+.parchment .parchment-muted {
+  color: var(--stone);
+}
+
+.parchment .parchment-rule {
+  border-color: var(--ash);
+}
+
+.parchment :where(a, button, input, textarea, select):focus-visible {
+  outline-color: var(--ink);
+}
+
+.torch {
+  width: 8px;
+  height: 8px;
+  background: var(--bone);
+  box-shadow: 0 -4px 0 var(--ash);
+  animation: torch-flicker 1.2s infinite steps(2, end);
+}
+
+.pixel-dot {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  box-shadow: 2px 0 0 currentColor, 0 2px 0 currentColor, 2px 2px 0 currentColor;
+}
+
+.dungeon-map {
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 28s linear infinite;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ash) var(--ink);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--ink);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid var(--ink);
+  background: var(--ash);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

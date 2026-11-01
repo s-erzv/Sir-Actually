@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tileset Atlas — tilemap.png</title>
+<style>
+  body { background: #0d0d1a; color: #aac; font-family: monospace; padding: 16px; margin: 0; }
+  h1 { font-size: 13px; color: #fff; margin: 0 0 6px; }
+  p { font-size: 11px; color: #666; margin: 0 0 14px; }
+  canvas { image-rendering: pixelated; display: block; border: 1px solid #333; }
+  .err { color: #f44; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Tileset Atlas — tilemap.png (12 cols × 11 rows = 132 frames, 16×16 px, spacing 1 px)</h1>
+<p>Skala 4x. Index = row×12+col. Klik kanan → Simpan gambar untuk docs/tileset-atlas.png.</p>
+<canvas id="c"></canvas>
+<p id="status"></p>
+<script>
+const TILE_W=16,TILE_H=16,SPACING=1,COLS=12,ROWS=11,SCALE=4;
+const CW=TILE_W*SCALE, CH=TILE_H*SCALE+14;
+const RL=28, CT=22;
+const canvas=document.getElementById('c');
+canvas.width=RL+COLS*(CW+2);
+canvas.height=CT+ROWS*(CH+2);
+const ctx=canvas.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+ctx.fillStyle='#1a1a2e';
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+const img=new Image();
+// The path must be relative to where this HTML file is opened from.
+// If opening from project root: use this path.
+// If opening from /tmp: adjust path manually.
+img.src='../public/assets/tiny-dungeon/Tilemap/tilemap.png';
+img.onload=function(){
+  // col headers
+  ctx.fillStyle='#7c7caa';ctx.font='10px monospace';ctx.textAlign='center';
+  for(let c=0;c<COLS;c++) ctx.fillText(c, RL+c*(CW+2)+CW/2, CT-6);
+  // row headers
+  ctx.textAlign='right';
+  for(let r=0;r<ROWS;r++) ctx.fillText(r, RL-4, CT+r*(CH+2)+CW+6);
+  // frames
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const fi=r*COLS+c;
+      const sx=c*(TILE_W+SPACING), sy=r*(TILE_H+SPACING);
+      const dx=RL+c*(CW+2), dy=CT+r*(CH+2);
+      ctx.fillStyle='#2a2a3e';ctx.fillRect(dx,dy,CW,CH);
+      ctx.drawImage(img,sx,sy,TILE_W,TILE_H,dx,dy,CW,CW);
+      ctx.fillStyle='#aac';ctx.font='9px monospace';ctx.textAlign='center';
+      ctx.fillText(fi, dx+CW/2, dy+CW+11);
+    }
+  }
+  document.getElementById('status').textContent='✓ '+COLS+'×'+ROWS+'=132 frames loaded. Klik kanan canvas → Save image as... untuk docs/tileset-atlas.png';
+};
+img.onerror=function(){
+  document.getElementById('status').className='err';
+  document.getElementById('status').textContent='ERROR: gambar tidak ditemukan. Buka file ini dari folder docs/ atau sesuaikan path img.src.';
+};
+</script>
+</body>
+</html>

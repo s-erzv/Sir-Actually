@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Room Preview — Mapping Maou</title>
+<style>
+body{background:#0D0F15;margin:0;padding:16px;font-family:monospace;color:#aac}
+h2{font-size:12px;color:#fff;margin:0 0 8px}
+p{font-size:10px;color:#666;margin:0 0 12px}
+canvas{image-rendering:pixelated;display:block;margin-bottom:16px;border:1px solid #333}
+.row{display:flex;gap:24px;flex-wrap:wrap}
+.col{display:flex;flex-direction:column}
+</style>
+</head>
+<body>
+<h2>Room Preview — frame mapping dari Maou (30 Okt 2026)</h2>
+<p>Zoom 4x. Kiri: ruang biasa + koridor + gate. Kanan: ruang boss + tangga. Bawah: semua karakter.</p>
+
+<div class="row">
+<div class="col">
+<p>Ruang 9×7 + koridor 4 tile + gate (DOOR_LOCKED=77)</p>
+<canvas id="room1" width="560" height="208"></canvas>
+</div>
+<div class="col">
+<p>Ruang boss 13×9 + tangga (STAIRS=56) di dinding timur</p>
+<canvas id="boss1" width="480" height="272"></canvas>
+</div>
+</div>
+
+<p>Karakter: PLAYER(84) · MINION 120,122,108 · BOSS: GH(112) ALI(97) METH(111) AUD(86) GHOST(121) SIR(100)</p>
+<canvas id="chars" width="1024" height="128"></canvas>
+
+<p>Dekorasi: WALL_DECOR 28,7,19 · BANNER_RED 29 · PROP 82,89,63 · GRAVE 65 · STAIRS 56 · DOOR 77</p>
+<canvas id="decor" width="512" height="128"></canvas>
+
+<script>
+// ─── Spritesheet constants ────────────────────────────────────────────────
+const TW=16,TH=16,SP=1,COLS=12,SCALE=4;
+
+// ─── Frame mapping (from Maou) ────────────────────────────────────────────
+const F = {
+  FLOOR:0, FLOOR_ALT:[12,24],
+  WALL_FACE:40, WALL_TOP:40,
+  DOOR_LOCKED:77, DOOR_OPEN:0/*=FLOOR*/, STAIRS:56,
+  WALL_DECOR:[28,7,19], BANNER_RED:29,
+  PROP:[82,89,63], GRAVE:65,
+  PLAYER:84, MINION:[120,122,108],
+  BOSS:[112,97,111,86,121,100],
+};
+
+// ─── Draw one tile from spritesheet ──────────────────────────────────────
+function drawTile(ctx, img, frameIdx, dx, dy) {
+  if (frameIdx < 0) return;
+  const col = frameIdx % COLS;
+  const row = Math.floor(frameIdx / COLS);
+  ctx.drawImage(img,
+    col*(TW+SP), row*(TH+SP), TW, TH,
+    dx*SCALE, dy*SCALE, TW*SCALE, TH*SCALE
+  );
+}
+
+function setCtx(ctx) {
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#0D0F15';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
+// ─── Build tile grid for a room+corridor scene ───────────────────────────
+// Map:
+//   V = VOID (transparent, shows background)
+//   F = FLOOR
+//   W = WALL_FACE (row immediately above floor)
+//   T = WALL_TOP
+//   D = WALL_DECOR (on north wall face, every 4 tiles)
+//   G = DOOR_LOCKED (gate)
+//   S = STAIRS
+//   P = PROP
+
+function makeRoomMap(isBoss) {
+  // room interior: isBoss 13×9 else 9×7; outer adds 1 wall on each side
+  const IW = isBoss ? 13 : 9;
+  const IH = isBoss ? 9  : 7;
+  const OW = IW + 2;
+  const OH = IH + 2;
+  // Full map: pad 1 void + room outer + corridor 4 + void 1
+  const mapW = 1 + OW + (isBoss ? 0 : 4) + 1;
+  const mapH = OH + 2; // 1 void top + outer + 1 void bottom
+
+  const VOID=0,FLOOR=1,WALL_FACE=2,WALL_TOP=3,WALL_DECOR=4,GATE=5,STAIRS_T=6,PROP_T=7;
+
+  // Init all void
+  const map = Array.from({length:mapH}, ()=>Array(mapW).fill(VOID));
+
+  // Fill room outer walls (all WALL_TOP)
+  const rx=1, ry=1; // room top-left in map coords
+  for(let r=ry;r<ry+OH;r++) for(let c=rx;c<rx+OW;c++) map[r][c]=WALL_TOP;
+
+  // Fill floor interior
+  for(let r=ry+1;r<ry+OH-1;r++) for(let c=rx+1;c<rx+OW-1;c++) map[r][c]=FLOOR;
+
+  // WALL_FACE: the top row of floor = row ry+1, but the wall above it = row ry
+  // Actually WALL_FACE is the wall tile whose south neighbour is floor
+  for(let c=rx;c<rx+OW;c++) {
+    if(map[ry+OH-2][c]===FLOOR) map[ry+OH-3][c]=WALL_FACE; // not quite right, simplify:
+  }
+  // Simpler: top outer wall row of the room = WALL_FACE
+  for(let c=rx+1;c<rx+OW-1;c++) map[ry][c]=WALL_FACE;
+  // WALL_DECOR on WALL_FACE every 4 tiles
+  for(let c=rx+1;c<rx+OW-1;c+=4) map[ry][c]=WALL_DECOR;
+
+  if(!isBoss) {
+    // Corridor: 1 tile wide (height 3, but single walkable tile at mid + walls above/below)
+    const midY = ry + Math.floor(OH/2);
+    const corrX = rx + OW;
+    for(let cx=corrX;cx<corrX+4;cx++){
+      map[midY][cx] = FLOOR;
+      map[midY-1][cx] = WALL_FACE;
+      map[midY+1][cx] = WALL_TOP;
+    }
+    // GATE at start of corridor
+    map[midY][corrX] = GATE;
+    // Stairs
+    map[midY][corrX+3] = STAIRS_T;
+  } else {
+    // Stairs in boss room, 1 tile from east wall
+    const midY = ry + Math.floor(OH/2);
+    map[midY][rx+OW-2] = STAIRS_T;
+  }
+
+  // Props in 2 corners
+  map[ry+OH-2][rx+1] = PROP_T;
+  map[ry+OH-2][rx+OW-2] = PROP_T;
+
+  return {map, mapW, mapH, VOID,FLOOR,WALL_FACE,WALL_TOP,WALL_DECOR,GATE,STAIRS_T,PROP_T};
+}
+
+const img = new Image();
+img.src = '../public/assets/tiny-dungeon/Tilemap/tilemap.png';
+img.onload = function() {
+
+  // ── Room 1 (normal) ────────────────────────────────────────────────────
+  {
+    const c = document.getElementById('room1');
+    const ctx = c.getContext('2d');
+    setCtx(ctx);
+    const {map, mapW, mapH, VOID,FLOOR,WALL_FACE,WALL_TOP,WALL_DECOR,GATE,STAIRS_T,PROP_T} = makeRoomMap(false);
+    c.width = mapW*TW*SCALE; c.height = mapH*TH*SCALE;
+    ctx.fillStyle='#0D0F15'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.imageSmoothingEnabled=false;
+
+    for(let r=0;r<mapH;r++) for(let cx=0;cx<mapW;cx++){
+      const t = map[r][cx];
+      if(t===VOID) continue;
+      // Ground layer: floor first
+      if(t===FLOOR||t===STAIRS_T||t===PROP_T) drawTile(ctx,img,F.FLOOR,cx,r);
+      if(t===WALL_FACE) drawTile(ctx,img,F.WALL_FACE,cx,r);
+      if(t===WALL_TOP) drawTile(ctx,img,F.WALL_TOP,cx,r);
+      if(t===WALL_DECOR) { drawTile(ctx,img,F.WALL_FACE,cx,r); drawTile(ctx,img,F.WALL_DECOR[cx%3],cx,r); }
+      // Decor layer
+      if(t===GATE) { drawTile(ctx,img,F.FLOOR,cx,r); drawTile(ctx,img,F.DOOR_LOCKED,cx,r); }
+      if(t===STAIRS_T) drawTile(ctx,img,F.STAIRS,cx,r);
+      if(t===PROP_T) drawTile(ctx,img,F.PROP[0],cx,r);
+    }
+    // Draw player in first room centre
+    drawTile(ctx,img,F.PLAYER, 5, 3);
+    // Draw minion
+    drawTile(ctx,img,F.MINION[0], 8, 4);
+  }
+
+  // ── Boss Room ──────────────────────────────────────────────────────────
+  {
+    const c = document.getElementById('boss1');
+    const ctx = c.getContext('2d');
+    const {map, mapW, mapH, VOID,FLOOR,WALL_FACE,WALL_TOP,WALL_DECOR,GATE,STAIRS_T,PROP_T} = makeRoomMap(true);
+    c.width = mapW*TW*SCALE; c.height = mapH*TH*SCALE;
+    ctx.fillStyle='#0D0F15'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.imageSmoothingEnabled=false;
+
+    // Darker tint for boss room
+    for(let r=0;r<mapH;r++) for(let cx=0;cx<mapW;cx++){
+      const t = map[r][cx];
+      if(t===VOID) continue;
+      if(t===FLOOR||t===STAIRS_T||t===PROP_T) drawTile(ctx,img,F.FLOOR,cx,r);
+      if(t===WALL_FACE) drawTile(ctx,img,F.WALL_FACE,cx,r);
+      if(t===WALL_TOP) drawTile(ctx,img,F.WALL_TOP,cx,r);
+      if(t===WALL_DECOR) { drawTile(ctx,img,F.WALL_FACE,cx,r); drawTile(ctx,img,F.BANNER_RED,cx,r); }
+      if(t===STAIRS_T) { drawTile(ctx,img,F.FLOOR,cx,r); drawTile(ctx,img,F.STAIRS,cx,r); }
+      if(t===PROP_T) drawTile(ctx,img,F.PROP[1],cx,r);
+    }
+    // Boss sprite (2x: draw at 8x by scaling ctx)
+    const bossX = 8, bossY = 5;
+    ctx.save();
+    ctx.scale(2,2);
+    const bc = F.BOSS[0];
+    const bcol = bc%COLS, brow = Math.floor(bc/COLS);
+    ctx.drawImage(img, bcol*(TW+SP), brow*(TH+SP), TW, TH,
+      Math.floor(bossX*TW*SCALE/2-TW), Math.floor(bossY*TH*SCALE/2-TH), TW*SCALE, TH*SCALE);
+    ctx.restore();
+  }
+
+  // ── Character strip ────────────────────────────────────────────────────
+  {
+    const c = document.getElementById('chars');
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled=false;
+    ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,c.width,c.height);
+
+    const sprites = [
+      {lbl:'PLAYER\n84', idx:F.PLAYER},
+      {lbl:'MIN1\n120', idx:F.MINION[0]},
+      {lbl:'MIN2\n122', idx:F.MINION[1]},
+      {lbl:'MIN3\n108', idx:F.MINION[2]},
+      {lbl:'GAP\n112', idx:F.BOSS[0]},
+      {lbl:'ALIGN\n97', idx:F.BOSS[1]},
+      {lbl:'METH\n111', idx:F.BOSS[2]},
+      {lbl:'AUD\n86', idx:F.BOSS[3]},
+      {lbl:'GHOST\n121', idx:F.BOSS[4]},
+      {lbl:'SIR\n100', idx:F.BOSS[5]},
+    ];
+    sprites.forEach(({lbl,idx},i)=>{
+      const dx = i*(TW*SCALE+8)+4;
+      ctx.fillStyle='#2a2a3e'; ctx.fillRect(dx,4,TW*SCALE,TH*SCALE);
+      drawTile(ctx,img,idx, (dx/SCALE)|0, 0);
+      // Manual position override for the text
+      ctx.fillStyle='#9999cc'; ctx.font='8px monospace'; ctx.textAlign='center';
+      lbl.split('\n').forEach((line,li)=>{
+        ctx.fillText(line, dx+TW*SCALE/2, TH*SCALE+12+li*10);
+      });
+    });
+  }
+
+  // ── Decor strip ────────────────────────────────────────────────────────
+  {
+    const c = document.getElementById('decor');
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled=false;
+    ctx.fillStyle='#1a1a2e'; ctx.fillRect(0,0,c.width,c.height);
+
+    const items = [
+      {lbl:'WALL_FACE\n40',idx:F.WALL_FACE},
+      {lbl:'WALL_TOP\n40', idx:F.WALL_TOP},
+      {lbl:'WDECOR28', idx:28},{lbl:'WDECOR7',idx:7},{lbl:'WDECOR19',idx:19},
+      {lbl:'BANNER\n29',idx:F.BANNER_RED},
+      {lbl:'PROP82',idx:82},{lbl:'PROP89',idx:89},{lbl:'PROP63',idx:63},
+      {lbl:'GRAVE\n65',idx:F.GRAVE},
+      {lbl:'STAIRS\n56',idx:F.STAIRS},
+      {lbl:'GATE\n77',idx:F.DOOR_LOCKED},
+      {lbl:'alt45',idx:45},{lbl:'alt22',idx:22},{lbl:'alt10',idx:10},
+    ];
+    items.forEach(({lbl,idx},i)=>{
+      const dx = i*(TW*SCALE+6)+4;
+      ctx.fillStyle='#2a2a3e'; ctx.fillRect(dx,4,TW*SCALE,TH*SCALE);
+      drawTile(ctx,img,idx, (dx/SCALE)|0, 0);
+      ctx.fillStyle='#9999cc'; ctx.font='8px monospace'; ctx.textAlign='center';
+      lbl.split('\n').forEach((line,li)=>{
+        ctx.fillText(line, dx+TW*SCALE/2, TH*SCALE+12+li*9);
+      });
+    });
+  }
+
+};
+img.onerror=()=>{
+  document.body.insertAdjacentHTML('afterbegin','<p style="color:red;font-size:14px">ERROR: buka file ini dari folder docs/</p>');
+};
+</script>
+</body>
+</html>

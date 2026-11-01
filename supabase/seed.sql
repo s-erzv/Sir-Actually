@@ -1,0 +1,1 @@
+-- Seeds live in migrations/20261101000100_init_schema.sql (weakness_types, rubrics, bosses).
