@@ -556,6 +556,26 @@ a {
   animation: points-pop 360ms steps(4, end);
 }
 
+.zonk-shake {
+  animation: zonk-shake 420ms steps(4, end);
+}
+
+@keyframes zonk-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+}
+
 @keyframes reward-burst {
   0% {
     opacity: 0;

@@ -60,7 +60,7 @@ export class BootScene extends Phaser.Scene {
       ctx.clearRect(0, 0, 32, 32);
       for (const pathData of paths) {
         const path = new Path2D(pathData.d);
-        if (pathData.fill) {
+        if (pathData.fill && pathData.fill !== "none") {
           ctx.fillStyle = pathData.fill;
           ctx.fill(path);
         }

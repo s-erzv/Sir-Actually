@@ -51,9 +51,23 @@ interface AnswerResponse {
   newHearts: number;
   encounterStatus: EncounterStatus;
   pointsAwarded: number;
+  lootAwarded: number;
+  lootKind: "zonk" | "coins" | "gem";
   pointsTotal: number;
   weaponUsed: string | null;
   weaponBonus: number;
+}
+
+function treasureRoll(key: string): { amount: number; kind: "zonk" | "coins" | "gem" } {
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
+  }
+  const roll = hash % 100;
+  if (roll < 32) return { amount: 0, kind: "zonk" };
+  if (roll < 72) return { amount: 5, kind: "coins" };
+  if (roll < 94) return { amount: 10, kind: "coins" };
+  return { amount: 25, kind: "gem" };
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -176,6 +190,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     };
 
     let pointsAwarded = 0;
+    let lootAwarded = 0;
+    let lootKind: "zonk" | "coins" | "gem" = "zonk";
     let pointsTotal = 0;
     if (body.runId) {
       const { data: run, error: runError } = await admin
@@ -207,6 +223,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           throw new ApiError(eventError.message, 500);
         }
         if (!eventError) pointsAwarded = amount;
+
+        const loot = treasureRoll(`${run.id}:${body.encounterId}`);
+        lootKind = loot.kind;
+        const { error: lootError } = await admin.from("run_points_events").insert({
+          run_id: run.id,
+          kind: "treasure",
+          encounter_key: body.encounterId,
+          seq: 0,
+          amount: loot.amount,
+        });
+        if (lootError && lootError.code !== "23505") {
+          throw new ApiError(lootError.message, 500);
+        }
+        if (!lootError) lootAwarded = loot.amount;
       }
 
       const { data: events, error: eventsError } = await admin
@@ -228,6 +258,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       newHearts,
       encounterStatus,
       pointsAwarded,
+      lootAwarded,
+      lootKind,
       pointsTotal,
       weaponUsed: pickedWeapon.weaponSlug,
       weaponBonus,

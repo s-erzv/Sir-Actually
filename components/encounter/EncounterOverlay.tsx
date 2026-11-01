@@ -51,6 +51,8 @@ interface EncounterRuntimeState {
   lastAnswer: string;
   lastWeapon: string | null;
   lastPointsAwarded: number;
+  lastLootAwarded: number;
+  lastLootKind: "zonk" | "coins" | "gem";
   lastPointsTotal: number;
 }
 
@@ -77,6 +79,9 @@ export default function EncounterOverlay({
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
+  const [hint, setHint] = useState<{ question: string; text: string } | null>(null);
+  const [hintLoading, setHintLoading] = useState(false);
+  const [hintError, setHintError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const adviceScores = useMemo(
@@ -178,10 +183,15 @@ export default function EncounterOverlay({
         lastAnswer: "",
         lastWeapon: null,
         lastPointsAwarded: 0,
+        lastLootAwarded: 0,
+        lastLootKind: "zonk",
         lastPointsTotal: 0,
       });
       setAnswer("");
       setAnswerError(null);
+      setHint(null);
+      setHintError(null);
+      setHintLoading(false);
       void requestQuestion(data, [], []);
       requestAnimationFrame(() => textareaRef.current?.focus());
     };
@@ -219,6 +229,8 @@ export default function EncounterOverlay({
         newHearts: number;
         encounterStatus: EncounterStatus;
         pointsAwarded: number;
+        lootAwarded: number;
+        lootKind: "zonk" | "coins" | "gem";
         pointsTotal: number;
         weaponUsed: string | null;
       }>("/api/encounter/answer", {
@@ -261,6 +273,8 @@ export default function EncounterOverlay({
               lastAnswer: answer,
               lastWeapon: data.weaponUsed,
               lastPointsAwarded: data.pointsAwarded,
+              lastLootAwarded: data.lootAwarded,
+              lastLootKind: data.lootKind,
               lastPointsTotal: data.pointsTotal,
               showBreakdown: true,
               showAdvice: data.encounterStatus === "lost",
@@ -300,6 +314,30 @@ export default function EncounterOverlay({
       void requestQuestion(state.encounter, previousQuestions, previousAttackTypes);
     }
   }, [state, resolveEncounter, requestQuestion]);
+
+  const handleHint = useCallback(async () => {
+    if (!state?.question || hintLoading) return;
+    const question = state.question;
+    setHintLoading(true);
+    setHintError(null);
+    try {
+      const data = await authJson<{ hint: string }>("/api/encounter/hint", {
+        method: "POST",
+        body: JSON.stringify({
+          researchMapId,
+          question,
+          weaknessType: state.weaknessType,
+          bossSlug: state.encounter.bossSlug,
+          evidenceQuote: state.evidenceQuote,
+        }),
+      });
+      setHint({ question, text: data.hint });
+    } catch (err) {
+      setHintError(err instanceof Error ? err.message : "Gagal membuat petunjuk.");
+    } finally {
+      setHintLoading(false);
+    }
+  }, [state, researchMapId, hintLoading]);
 
   // ── Objection! ────────────────────────────────────────────────────────────
 
@@ -460,14 +498,33 @@ export default function EncounterOverlay({
                     <p className="font-pixel text-[0.5rem] uppercase tracking-[0.14em] text-gold">
                       Harta karun
                     </p>
-                    <div className="mt-1 flex items-center justify-center gap-2">
-                      <PixelSprite kind="chest" size={34} />
-                      <span className="reward-amount font-pixel text-2xl font-bold text-gold">
-                        +{state.lastPointsAwarded} POIN
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash">
-                      Total {state.lastPointsTotal} poin
+                    {state.lastLootKind === "zonk" ? (
+                      <>
+                        <div className="mt-1 flex items-center justify-center gap-2">
+                          <PixelSprite kind="chest" size={34} className="grayscale opacity-40" />
+                          <span className="zonk-shake font-pixel text-xl font-bold text-ash">
+                            ZONK
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash/70">
+                          Peti kosong. Nggak ada bonus poin.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mt-1 flex items-center justify-center gap-2">
+                          <PixelSprite kind="chest" size={34} />
+                          <span className="reward-amount font-pixel text-2xl font-bold text-gold">
+                            +{state.lastLootAwarded} POIN
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash">
+                          Bonus {state.lastLootKind === "gem" ? "permata" : "koin"}
+                        </p>
+                      </>
+                    )}
+                    <p className="mt-2 border-t border-gold/20 pt-2 text-[0.6rem] font-bold uppercase tracking-[0.08em] text-ash">
+                      Hadiah tempur +{state.lastPointsAwarded} poin · Total {state.lastPointsTotal}
                     </p>
                   </div>
                 ) : null}
@@ -518,10 +575,37 @@ export default function EncounterOverlay({
 
                 {state.question ? (
                   <div className="game-rise border-2 border-ridge/70 bg-[#111920] p-3">
-                    <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-gold">
-                      {bossName.split(" — ")[0]} menyerang
-                    </p>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-gold">
+                        {bossName.split(" — ")[0]} menyerang
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleHint()}
+                        disabled={hintLoading}
+                        className="flex shrink-0 items-center gap-1.5 border border-gold/40 bg-gold/5 px-2 py-1 text-[0.56rem] font-bold uppercase tracking-[0.06em] text-gold hover:bg-gold/15 disabled:opacity-50"
+                        aria-label="Jelaskan maksud pertanyaan"
+                      >
+                        <BulbIcon />
+                        {hintLoading ? "Menerjemahkan..." : "Petunjuk"}
+                      </button>
+                    </div>
                     <p className="mt-2 text-[0.95rem] leading-7 text-bone">{state.question}</p>
+
+                    {hintError ? (
+                      <p className="mt-2 border-l-2 border-blood/60 pl-2 text-[0.72rem] leading-5 text-blood">
+                        {hintError}
+                      </p>
+                    ) : null}
+
+                    {hint && hint.question === state.question ? (
+                      <div className="mt-2 border-l-2 border-gold/60 bg-gold/5 py-1.5 pl-2">
+                        <p className="font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-gold/80">
+                          Maksud pertanyaan
+                        </p>
+                        <p className="mt-1 text-[0.78rem] leading-5 text-ash">{hint.text}</p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -595,6 +679,19 @@ export default function EncounterOverlay({
         </div>
       </div>
     </div>
+  );
+}
+
+function BulbIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 1.5a4 4 0 0 0-2.5 7.1c.4.35.65.85.65 1.4v.5h3.7v-.5c0-.55.25-1.05.65-1.4A4 4 0 0 0 8 1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path d="M6.4 12.2h3.2M6.9 14h2.2" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
   );
 }
 
