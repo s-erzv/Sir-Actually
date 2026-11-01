@@ -12,13 +12,19 @@ import { BOSS_HP, MINION_HP, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/
 import { getWeapon, type Loadout } from "@/lib/loadout";
 import { getMonsterDisplayName } from "@/lib/monsters";
 import { authJson } from "@/lib/api/client";
-import { PixelSprite, spriteForWeakness } from "@/components/brand/PixelSprite";
+import { PixelSprite, heroForCharacter, spriteForWeakness } from "@/components/brand/PixelSprite";
 import HeartDisplay from "./HeartDisplay";
 import HpBar from "./HpBar";
 import ScoreBreakdown from "./ScoreBreakdown";
 import AdviceModal from "./AdviceModal";
 
 type EncounterData = GameEvents["encounter:start"];
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 function fallbackWeakness(bossSlug: string, provided?: WeaknessType): WeaknessType {
   if (provided) return provided;
@@ -82,6 +88,7 @@ export default function EncounterOverlay({
   const [hint, setHint] = useState<{ question: string; text: string } | null>(null);
   const [hintLoading, setHintLoading] = useState(false);
   const [hintError, setHintError] = useState<string | null>(null);
+  const [attackPhase, setAttackPhase] = useState<"idle" | "attack" | "waiting" | "hit">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const adviceScores = useMemo(
@@ -192,6 +199,7 @@ export default function EncounterOverlay({
       setHint(null);
       setHintError(null);
       setHintLoading(false);
+      setAttackPhase("idle");
       void requestQuestion(data, [], []);
       requestAnimationFrame(() => textareaRef.current?.focus());
     };
@@ -221,6 +229,9 @@ export default function EncounterOverlay({
     if (!state || submitting || !state.question || answer.trim().length === 0) return;
     setSubmitting(true);
     setAnswerError(null);
+    setAttackPhase("attack");
+    const startedAt = Date.now();
+    const waitingTimer = window.setTimeout(() => setAttackPhase("waiting"), 820);
 
     try {
       const data = await authJson<{
@@ -253,12 +264,15 @@ export default function EncounterOverlay({
         }),
       });
 
-      // Emit boss:hit for the shake + damage number animation
+      window.clearTimeout(waitingTimer);
+      const remaining = Math.max(0, 900 - (Date.now() - startedAt));
+      if (remaining > 0) await wait(remaining);
+
+      setAttackPhase("hit");
       bus.emit("boss:hit", {
         encounterId: state.encounter.encounterId,
         damage: data.evaluation.damage,
       });
-
       onHeartsChange(data.newHearts);
       onPointsChange(data.pointsTotal);
 
@@ -276,16 +290,21 @@ export default function EncounterOverlay({
               lastLootAwarded: data.lootAwarded,
               lastLootKind: data.lootKind,
               lastPointsTotal: data.pointsTotal,
-              showBreakdown: true,
-              showAdvice: data.encounterStatus === "lost",
+              showBreakdown: false,
+              showAdvice: false,
             }
           : null,
       );
       setAnswer("");
-    } catch (err) {
-      setAnswerError(err instanceof Error ? err.message : "Gagal menilai jawaban.");
-    } finally {
+      await wait(680);
+      setState((prev) => (prev ? { ...prev, showBreakdown: true } : null));
+      setAttackPhase("idle");
       setSubmitting(false);
+    } catch (err) {
+      window.clearTimeout(waitingTimer);
+      setAttackPhase("idle");
+      setSubmitting(false);
+      setAnswerError(err instanceof Error ? err.message : "Gagal menilai jawaban.");
     }
   }, [state, answer, submitting, hearts, onHeartsChange, researchMapId, loadout, runId, onPointsChange]);
 
@@ -417,19 +436,38 @@ export default function EncounterOverlay({
         </div>
 
         <div className="grid gap-0 lg:grid-cols-[0.82fr_1.18fr]">
-          <aside className="tile-floor relative flex flex-row items-center gap-4 border-b-2 border-void p-4 lg:flex-col lg:items-stretch lg:border-b-0 lg:border-r-2">
+          <aside className="tile-floor relative border-b-2 border-void p-3 lg:border-b-0 lg:border-r-2">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(233,184,93,0.14),transparent_65%)]" aria-hidden="true" />
 
-            <div className="relative mx-auto grid h-28 w-24 shrink-0 place-items-end justify-items-center border-2 border-void bg-[#0a0f14]/70 pb-2 lg:h-36 lg:w-32">
-              <PixelSprite kind={spriteForWeakness(weaknessType)} size={isBoss ? 92 : 74} />
-              {showBreakdown && lastEvaluation ? (
+            <div className="battle-arena relative h-36 overflow-hidden border-2 border-void bg-[#070b10]">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#0a0f14] to-transparent" aria-hidden="true" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(233,184,93,0.1),transparent_65%)]" aria-hidden="true" />
+              <span className="absolute left-2 top-2 font-pixel text-[0.46rem] text-moss">KAMU</span>
+              <span className="absolute right-2 top-2 font-pixel text-[0.46rem] text-blood">
+                {isBoss ? "BOSS" : "ANTEK"}
+              </span>
+
+              <div className={`battle-player absolute bottom-3 left-[13%] ${attackPhase === "attack" ? "battle-player-attack" : ""}`}>
+                <PixelSprite
+                  kind={heroForCharacter(loadout.characterSlug)}
+                  size={64}
+                  className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
+                />
+              </div>
+
+              <div className={`battle-monster absolute bottom-3 right-[10%] ${attackPhase === "hit" ? "battle-monster-hit" : ""} ${status === "won" ? "battle-monster-dead" : ""}`}>
+                <PixelSprite
+                  kind={spriteForWeakness(weaknessType)}
+                  size={isBoss ? 92 : 74}
+                  className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
+                />
+              </div>
+
+              {attackPhase === "attack" ? <span className="battle-slash" aria-hidden="true" /> : null}
+              {attackPhase === "hit" && lastEvaluation ? (
                 <span
                   key={`${lastEvaluation.damage}-${state.questionsAsked}`}
-                  className={`damage-pop absolute -right-2 top-2 border-2 border-void px-2 py-1 font-pixel text-sm font-bold shadow-[3px_3px_0_#05080b] ${
-                    lastEvaluation.damage > 0
-                      ? "bg-blood text-void"
-                      : "bg-ridge text-bone"
-                  }`}
+                  className={`battle-damage ${lastEvaluation.damage > 0 ? "battle-damage-hit" : ""}`}
                   aria-hidden="true"
                 >
                   {lastEvaluation.damage > 0 ? `-${lastEvaluation.damage}` : "MISS"}
@@ -437,14 +475,11 @@ export default function EncounterOverlay({
               ) : null}
             </div>
 
-            <div className="relative min-w-0 flex-1">
-              <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-ash">
-                {isBoss ? "BOSS" : "ANTEK"}
-              </p>
-              <h2 className={`mt-1 text-xl font-bold leading-tight sm:text-2xl ${isBoss ? "text-blood" : "text-gold"}`}>
+            <div className="relative mt-3">
+              <h2 className={`text-xl font-bold leading-tight sm:text-2xl ${isBoss ? "text-blood" : "text-gold"}`}>
                 {bossName}
               </h2>
-              <div className="mt-3">
+              <div className="mt-2">
                 <HpBar hp={hp} hpMax={hpMax} />
               </div>
               <div className="mt-3 flex items-center justify-between gap-2">
@@ -480,6 +515,20 @@ export default function EncounterOverlay({
 
             {showBreakdown && lastEvaluation ? (
               <div className="game-rise mt-4 border-2 border-void bg-void/55 p-3 shadow-[inset_0_0_0_1px_#34424e]">
+                <div className="mb-2 flex items-center justify-between gap-2 border-b border-ridge/40 pb-2">
+                  <span className="font-pixel text-[0.5rem] uppercase tracking-[0.1em] text-gold">
+                    {status === "won"
+                      ? "Monster tumbang"
+                      : status === "lost"
+                        ? "Heart habis"
+                        : status === "conceded"
+                          ? "Monster bertahan"
+                          : "Hasil serangan"}
+                  </span>
+                  <span className={`font-pixel text-[0.6rem] ${lastEvaluation.damage > 0 ? "text-blood" : "text-ash"}`}>
+                    {lastEvaluation.damage > 0 ? `−${lastEvaluation.damage} HP` : "MISS"}
+                  </span>
+                </div>
                 {state.lastWeapon ? (
                   <p className="mb-2 flex items-center justify-between gap-2 border-b border-ridge/40 pb-2 text-[0.58rem] font-bold uppercase tracking-[0.08em]">
                     <span className="text-ash">Senjata otomatis</span>
@@ -543,13 +592,33 @@ export default function EncounterOverlay({
                         ? "Lanjut"
                         : status === "lost"
                           ? "Lihat nasihat"
-                          : "Serangan berikutnya"}
+                          : "Pertanyaan berikutnya"}
                   </button>
                 </div>
               </div>
             ) : null}
 
-            {!showBreakdown && status === "active" ? (
+            {!showBreakdown && status === "active" && (submitting || attackPhase !== "idle") ? (
+              <div className="mt-4 border-2 border-gold/40 bg-gold/5 p-4 text-center">
+                <p className="font-pixel text-[0.55rem] text-gold">
+                  {attackPhase === "attack"
+                    ? "KAMU MENYERANG"
+                    : attackPhase === "hit"
+                      ? "HANTAMAN MASUK"
+                      : "AI MENIMBANG BUKTI"}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-ash">
+                  {attackPhase === "waiting"
+                    ? "Penguji menghitung dukungan bukti. Jangan tutup layar."
+                    : "Tunggu hasil serangan..."}
+                </p>
+                <div className="bar-track mt-3 overflow-hidden">
+                  <div className="entry-load-fill" />
+                </div>
+              </div>
+            ) : null}
+
+            {!showBreakdown && status === "active" && attackPhase === "idle" && !submitting ? (
               <div className="mt-4">
                 {state.questionLoading ? (
                   <div className="border-2 border-void bg-void/50 p-4">

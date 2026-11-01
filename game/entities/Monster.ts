@@ -79,6 +79,16 @@ export class Monster {
         yoyo: true,
         repeat: -1,
       });
+    } else {
+      // Minions idle-bob so rooms never look like static screenshots.
+      this.breathTween = scene.tweens.add({
+        targets: this.sprite,
+        y: worldY - 2,
+        duration: 1200 + Math.random() * 600,
+        ease: "Sine.easeInOut",
+        yoyo: true,
+        repeat: -1,
+      });
     }
 
     // "!" marker above sprite so player knows they can interact
