@@ -10,7 +10,7 @@
 import type { RubricCriterion, WeaknessType } from "@/lib/domain/types";
 
 export const RUBRICS: Record<WeaknessType, RubricCriterion[]> = {
-  // ── Gap Hunter ────────────────────────────────────────────────────────────
+  // ── Floor 1: Veylith (Gap Hunter / The Void Stalker) ────────────────────────
   gap_unsupported: [
     { id: "gap_identified",  label: "Gap disebutkan dengan jelas" },
     { id: "gap_supported",   label: "Gap didukung minimal 1 referensi dari daftar pustaka" },
@@ -27,7 +27,7 @@ export const RUBRICS: Record<WeaknessType, RubricCriterion[]> = {
     { id: "numbers_consistent", label: "Angka/statistik dalam klaim konsisten dengan sumber" },
   ],
 
-  // ── Aligner ───────────────────────────────────────────────────────────────
+  // ── Floor 2: Draeven (The Aligner / The Dreadfang) ──────────────────────────
   problem_objective_gap: [
     { id: "link_explicit",   label: "Hubungan masalah–tujuan dijelaskan secara eksplisit" },
     { id: "link_logical",    label: "Hubungan masalah–tujuan logis dan koheren" },
@@ -39,7 +39,7 @@ export const RUBRICS: Record<WeaknessType, RubricCriterion[]> = {
     { id: "no_overclaim",    label: "RQ tidak melampaui tujuan" },
   ],
 
-  // ── Methodologist ─────────────────────────────────────────────────────────
+  // ── Floor 3: Kryvax (Methodologist / The Twisted Brood) ─────────────────────
   rq_method_mismatch: [
     { id: "method_appropriate", label: "Metode yang dipilih sesuai dengan RQ" },
     { id: "method_justified",   label: "Pilihan metode dibenarkan dengan alasan" },
@@ -61,7 +61,7 @@ export const RUBRICS: Record<WeaknessType, RubricCriterion[]> = {
     { id: "limitation_impact", label: "Dampak keterbatasan terhadap temuan diakui" },
   ],
 
-  // ── Auditor ───────────────────────────────────────────────────────────────
+  // ── Floor 4: Morvane (The Auditor / The Gravebound) ─────────────────────────
   conclusion_overclaim: [
     { id: "no_overclaim",        label: "Kesimpulan tidak melampaui temuan" },
     { id: "numbers_consistent",  label: "Angka/statistik di kesimpulan konsisten dengan hasil" },
@@ -78,7 +78,7 @@ export const RUBRICS: Record<WeaknessType, RubricCriterion[]> = {
     { id: "no_overclaim",        label: "Abstrak tidak melebih-lebihkan temuan" },
   ],
 
-  // ── References (Ghost — no Heart cost, no battle rubric needed in M2) ─────
+  // ── Floor 5: Nyxara (The Forgotten Keeper / Ghost Library) ──────────────────
   citation_not_found: [
     { id: "ref_exists",          label: "Referensi dapat ditemukan di database akademik" },
     { id: "ref_accessible",      label: "Detail referensi cukup untuk diverifikasi" },

@@ -316,7 +316,7 @@ export default function EncounterOverlay({
   } = state;
 
   const question      = DUMMY_QUESTIONS[weaknessType] ?? "Defend your research.";
-  const bossName      = BOSS_NAMES[encounter.bossSlug] ?? "Examiner";
+  const bossName      = getMonsterDisplayName(encounter.bossSlug) || BOSS_NAMES[encounter.bossSlug] || "Examiner";
   const isBoss        = encounter.bossSlug.startsWith("boss");
 
   // Show Kitab Nasihat

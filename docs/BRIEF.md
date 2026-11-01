@@ -24,9 +24,9 @@ Prinsip yang tidak boleh dilanggar:
 
 1. **Context Window**: unggah naskah (.docx / PDF berteks), **cek kelengkapan** (bagian 9; naskah tidak lengkap, termasuk tanpa daftar pustaka, tidak bisa lanjut), ekstrak Research Map (masalah, gap, tujuan, RQ, metode, temuan, kesimpulan, keterbatasan, daftar pustaka). Pemain mengedit dan mengonfirmasi. Setelah confirmed, peta beku.
 2. **Recon**: detektor kode + LLM (dengan RAG) menghasilkan findings. Job async bertahap dengan layar progres.
-3. **Dungeon**: maks 4 lantai (Gap Hunter, Aligner, Methodologist, Auditor). Lantai tanpa temuan dilewati.
-4. **Ghost**: perpustakaan angker. Pemain menandai 1 referensi palsu yang disisipkan di antara referensi asli.
-5. **Sidang akhir**: ruang takhta Sir, Actually. Temuan rank tertinggi se-naskah, gaya penguji Strict / Detail-Oriented / Friendly.
+3. **Dungeon**: maks 4 lantai (The Four Dungeon Lords: Veylith / Gap Hunter, Draeven / Aligner, Kryvax / Methodologist, Morvane / Auditor). Lantai tanpa temuan dilewati. Ruang sebelum boss dijaga oleh Dungeon Creatures (minions: Varkul, Nethrix, Zorveth, Thalgrim, Xyrath, Othrak, Velmora, Grivak).
+4. **Ghost**: perpustakaan terkutuk yang dijaga Nyxara (The Forgotten Keeper / Ghost Library). Pemain menandai 1 referensi palsu yang disisipkan di antara referensi asli.
+5. **Sidang akhir**: ruang takhta Eldravos, The Ancient Sovereign (Final Boss / Sir, Actually). Temuan rank tertinggi se-naskah, gaya penguji Strict / Detail-Oriented / Friendly.
 6. **Weakness Report**: profil per dimensi (Perlu dibenahi / Cukup / Kuat) + weak links dengan kutipan. Lantai kosong ditulis "tidak ditemukan oleh detektor", bukan "aman".
 
 ## 3. Konflik PRD vs build prompt (sudah diputuskan)
@@ -120,8 +120,85 @@ Status verifikasi migration: dijalankan di PGlite 0.3.4 (Postgres WASM + pgvecto
 
 ## 7. Aturan game dan balance
 
-### Taksonomi (seed sudah ada di `weakness_types`)
-Lantai: Gap Hunter (gap_unsupported, gap_answered_by_own_refs, claim_without_citation), Aligner (problem_objective_gap, objective_rq_mismatch), Methodologist (rq_method_mismatch, sample_unreported, generalization_beyond_sample, limitation_missing), Auditor (conclusion_overclaim, objective_without_finding, abstract_result_mismatch). Ghost: citation_not_found, citation_claim_mismatch (status `needs_review`, tanpa biaya Heart, hanya saran di laporan). Bentuk serangan yang boleh per tipe ada di `weakness_types.attack_types`.
+### Roster Monster & Hierarki Penamaan (Universe Dark Fantasy Original)
+
+Sir, Actually mengusung semesta dark fantasy original dengan fonetik konsisten: dark, ancient, alien, dan berkarakter kuat.
+
+#### Naming Hierarchy
+```
+# ELDRAVOS (THE ANCIENT SOVEREIGN) — Final Boss
+│
+├── The Four Dungeon Lords
+│   ├── Floor 1: Veylith — The Void Stalker (Gap Hunter)
+│   ├── Floor 2: Draeven — The Dreadfang (The Aligner)
+│   ├── Floor 3: Kryvax — The Twisted Brood (Methodologist)
+│   └── Floor 4: Morvane — The Gravebound (The Auditor)
+│
+├── The Forgotten Keeper
+│   └── Floor 5: Nyxara — The Forgotten Keeper (Ghost Library)
+│
+└── Dungeon Creatures (Minions)
+    ├── Varkul   — Brutish beast
+    ├── Nethrix  — Shadow crawler
+    ├── Zorveth  — Armored creature
+    ├── Thalgrim — Stone guardian
+    ├── Xyrath   — Winged predator
+    ├── Othrak   — Undead warrior
+    ├── Velmora  — Cursed spirit
+    └── Grivak   — Small dungeon beast
+```
+
+#### Detail 6 Boss Utama
+1. **01. Veylith**
+   - **Gelar**: The Void Stalker
+   - **Peran / Dimensi**: Gap Hunter (Lantai 1)
+   - **Deskripsi**: Predator dari kegelapan yang memburu sesuatu yang hilang. Menyerang klaim celah riset yang tidak memiliki fondasi literatur pendukung.
+2. **02. Draeven**
+   - **Gelar**: The Dreadfang
+   - **Peran / Dimensi**: Aligner (Lantai 2)
+   - **Deskripsi**: Binatang buas yang memiliki dua kepala dengan kehendak berbeda. Mengoyak inkonsistensi antara rumusan masalah, tujuan penelitian, dan pertanyaan penelitian (RQ).
+3. **03. Kryvax**
+   - **Gelar**: The Twisted Brood
+   - **Peran / Dimensi**: Methodologist (Lantai 3)
+   - **Deskripsi**: Makhluk hasil mutasi yang terus berevolusi melalui eksperimen gagal. Menguji validitas metodologi, kecukupan ukuran sampel, dan batasan generalisasi.
+4. **04. Morvane**
+   - **Gelar**: The Gravebound
+   - **Peran / Dimensi**: Auditor (Lantai 4)
+   - **Deskripsi**: Roh ksatria kuno yang menghakimi siapa pun yang memasuki wilayahnya. Menghukum kesimpulan yang berani melompat melampaui data temuan empiris.
+5. **05. Nyxara**
+   - **Gelar**: The Forgotten Keeper
+   - **Peran / Dimensi**: Ghost Library (Lantai 5)
+   - **Deskripsi**: Penjaga perpustakaan terkutuk yang menyimpan ingatan dan kitab palsu. Menyisipkan sitasi fiktif yang harus diidentifikasi oleh pemain.
+6. **06. Eldravos**
+   - **Gelar**: The Ancient Sovereign
+   - **Peran / Dimensi**: Final Boss (Lantai 6 / Ruang Takhta)
+   - **Deskripsi**: Penguasa tertinggi dungeon. Entitas kuno agung yang menguji seluruh perjalanan dan mata rantai riset pemain secara holistik.
+
+> [!NOTE]
+> Nama-nama ini adalah rancangan kreatif universe fantasy original. Sebelum publikasi/rilis komersial, lakukan pengecekan nama dan trademark.
+
+#### Minions (Dungeon Creatures)
+Monster kecil yang muncul di ruangan sebelum boss lantai:
+| Nama | Karakter | Peran / Lore |
+| --- | --- | --- |
+| **Varkul** | Brutish beast | Makhluk buas perkasa berotot kekar penantang argumen awal |
+| **Nethrix** | Shadow crawler | Perayap bayangan pengintai celah sitasi tersembunyi |
+| **Zorveth** | Armored creature | Monster berlapis baja tebal penahan logika prematur |
+| **Thalgrim** | Stone guardian | Penjaga gerbang batu kuno yang kokoh dan tak kenal ampun |
+| **Xyrath** | Winged predator | Predator bersayap penyergap inkonsistensi metodologis |
+| **Othrak** | Undead warrior | Prajurit mayat hidup pelindung integritas sampel |
+| **Velmora** | Cursed spirit | Roh terkutuk peratap generalisasi yang berlebihan |
+| **Grivak** | Small dungeon beast | Binatang buas kecil lincah pengacau klaim kesimpulan |
+
+### Taksonomi (seed di `weakness_types` & `bosses`)
+Lantai:
+- **Lantai 1 — Veylith** (Gap Hunter): `gap_unsupported`, `gap_answered_by_own_refs`, `claim_without_citation`.
+- **Lantai 2 — Draeven** (The Aligner): `problem_objective_gap`, `objective_rq_mismatch`.
+- **Lantai 3 — Kryvax** (Methodologist): `rq_method_mismatch`, `sample_unreported`, `generalization_beyond_sample`, `limitation_missing`.
+- **Lantai 4 — Morvane** (The Auditor): `conclusion_overclaim`, `objective_without_finding`, `abstract_result_mismatch`.
+- **Lantai 5 — Nyxara** (Ghost Library / The Forgotten Keeper): `citation_not_found`, `citation_claim_mismatch` (status `needs_review`, tanpa biaya Heart, hanya saran di laporan).
+- **Lantai 6 — Eldravos** (Final Boss / The Ancient Sovereign): Pengujian puncak seluruh mata rantai riset.
+Bentuk serangan yang boleh per tipe ada di `weakness_types.attack_types`.
 
 ### Urutan dan pemetaan
 - Rank = urut severity desc, centrality desc, confidence desc. Tanpa skor desimal.
@@ -215,7 +292,7 @@ Tes wajib (M2): jawaban asal "5 responden, dipilih acak, menurut saya cukup" pad
   - `count` = jumlah entri daftar pustaka yang berhasil terparse, tanpa referensi sisipan Ghost. Tampilkan angkanya ke pemain di layar konfirmasi supaya salah parse bisa terlihat.
   - Ini **bukan** temuan dan tidak jadi ruang dungeon: jumlah referensi bukan soal mata rantai logika riset.
   - Kalau `min_references` diubah setelah cek, server menghitung ulang `completeness`.
-- **Keterbatasan tidak wajib** di gerbang: ketiadaannya adalah temuan `limitation_missing` di lantai Methodologist.
+- **Keterbatasan tidak wajib** di gerbang: ketiadaannya adalah temuan `limitation_missing` di lantai Methodologist (Kryvax).
 - Database ikut menjaga: trigger menolak konfirmasi tanpa citation, dengan `completeness` null, atau dengan `missing` yang tidak kosong.
 - Karena daftar pustaka selalu ada, **tahap Ghost selalu dimainkan**.
 
@@ -246,9 +323,9 @@ Harus denah sungguhan, bukan layar form.
 - Monster tampil di ruangnya. Berjalan ke monster/pintu memicu **encounter**: event bus mengirim `encounter:start`, React menampilkan overlay (dialog boss, kutipan naskah, textarea). Peta tetap terlihat di belakang; boss bergetar saat kena damage (`boss:hit`). Input gerak Phaser dimatikan selama overlay terbuka.
 - Kamera mengikuti pemain. Ruang boss lebih gelap dengan obor merah.
 - Minimap di pojok: ruang selesai, ruang saat ini, ruang boss tersembunyi sampai dibuka.
-- Ghost = perpustakaan angker (`LibraryScene`), sidang akhir = ruang takhta (`ThroneScene`).
+- Ghost = perpustakaan terkutuk Nyxara (`LibraryScene`), sidang akhir = ruang takhta Eldravos (`ThroneScene`).
 
-**Aset**: Kenney "Tiny Dungeon" (CC0) dari https://kenney-assets.itch.io/tiny-dungeon ke `public/assets/tiny-dungeon/`. **Cek ukuran tile dari file yang diunduh, jangan menebak.** Sprite tambahan hanya CC0 (Kenney lain, OpenGameArt filter CC0). Tiap aset dicatat di `public/assets/CREDITS.md` (nama, URL, lisensi). Mapping sprite: Gap Hunter, Aligner, Methodologist, Auditor, The Ghost, Sir Actually (paling besar/menonjol); kunci sprite sudah ada di `bosses.sprite_key`. Suara default mati, ada tombol nyala.
+**Aset**: Kenney "Tiny Dungeon" (CC0) dari https://kenney-assets.itch.io/tiny-dungeon ke `public/assets/tiny-dungeon/`. **Cek ukuran tile dari file yang diunduh, jangan menebak.** Sprite tambahan hanya CC0 (Kenney lain, OpenGameArt filter CC0). Tiap aset dicatat di `public/assets/CREDITS.md` (nama, URL, lisensi). Mapping sprite: Veylith (Gap Hunter), Draeven (Aligner), Kryvax (Methodologist), Morvane (Auditor), Nyxara (The Ghost), Eldravos (The Ancient Sovereign / Sir Actually - paling besar/menonjol); kunci sprite sudah ada di `bosses.sprite_key`. Suara default mati, ada tombol nyala.
 
 # Patch untuk docs/BRIEF.md: ganti seluruh bagian 11
 

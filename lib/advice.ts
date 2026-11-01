@@ -20,7 +20,7 @@ export interface AdviceTemplate {
 }
 
 export const ADVICE_TEMPLATES: Record<WeaknessType, AdviceTemplate> = {
-  // ── Gap Hunter ────────────────────────────────────────────────────────────
+  // ── Floor 1: Veylith (Gap Hunter / The Void Stalker) ────────────────────────
   gap_unsupported: {
     problemDescription:
       "Gap penelitian diklaim ada, tetapi tidak didukung oleh referensi yang menunjukkan bahwa gap itu nyata dan belum dijawab.",
@@ -49,7 +49,7 @@ export const ADVICE_TEMPLATES: Record<WeaknessType, AdviceTemplate> = {
     ],
   },
 
-  // ── Aligner ───────────────────────────────────────────────────────────────
+  // ── Floor 2: Draeven (The Aligner / The Dreadfang) ──────────────────────────
   problem_objective_gap: {
     problemDescription:
       "Masalah penelitian yang dirumuskan tidak terhubung secara logis ke tujuan penelitian.",
@@ -69,7 +69,7 @@ export const ADVICE_TEMPLATES: Record<WeaknessType, AdviceTemplate> = {
     ],
   },
 
-  // ── Methodologist ─────────────────────────────────────────────────────────
+  // ── Floor 3: Kryvax (Methodologist / The Twisted Brood) ─────────────────────
   rq_method_mismatch: {
     problemDescription:
       "Metode yang dipilih tidak sesuai untuk menjawab rumusan masalah yang diajukan.",
@@ -107,7 +107,7 @@ export const ADVICE_TEMPLATES: Record<WeaknessType, AdviceTemplate> = {
     ],
   },
 
-  // ── Auditor ───────────────────────────────────────────────────────────────
+  // ── Floor 4: Morvane (The Auditor / The Gravebound) ─────────────────────────
   conclusion_overclaim: {
     problemDescription:
       "Kesimpulan melampaui apa yang bisa disimpulkan dari data atau metode yang digunakan.",
@@ -136,7 +136,7 @@ export const ADVICE_TEMPLATES: Record<WeaknessType, AdviceTemplate> = {
     ],
   },
 
-  // ── References ────────────────────────────────────────────────────────────
+  // ── Floor 5: Nyxara (The Forgotten Keeper / Ghost Library) ──────────────────
   citation_not_found: {
     problemDescription:
       "Referensi yang dikutip tidak dapat ditemukan di database akademik yang dapat diverifikasi.",

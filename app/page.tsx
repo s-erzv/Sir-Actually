@@ -28,6 +28,7 @@ const STEPS = [
 
 const BOSSES: Array<{
   name: string;
+  title: string;
   domain: string;
   line: string;
   danger: number;
@@ -35,49 +36,55 @@ const BOSSES: Array<{
   tone: string;
 }> = [
   {
-    name: "Gap Hunter",
-    domain: "GAP",
-    line: "Klaim gap tanpa dukungan referensi.",
+    name: "Veylith",
+    title: "The Void Stalker",
+    domain: "GAP HUNTER",
+    line: "Predator kegelapan. Memburu klaim celah riset yang hilang tanpa dukungan referensi.",
     danger: 2,
     sprite: "gap",
     tone: "text-ember",
   },
   {
-    name: "The Aligner",
-    domain: "ALIGN",
-    line: "Masalah, tujuan, dan RQ tidak nyambung.",
+    name: "Draeven",
+    title: "The Dreadfang",
+    domain: "THE ALIGNER",
+    line: "Binatang buas berkepala dua dengan kehendak berbeda. Mengoyak masalah, tujuan, dan RQ tak selaras.",
     danger: 2,
     sprite: "aligner",
     tone: "text-mana",
   },
   {
-    name: "Methodologist",
-    domain: "METHOD",
-    line: "Metode tidak menjawab pertanyaan penelitian.",
+    name: "Kryvax",
+    title: "The Twisted Brood",
+    domain: "METHODOLOGIST",
+    line: "Mutasi hasil eksperimen gagal yang terus berevolusi. Menyerang metode yang tidak menjawab RQ.",
     danger: 3,
     sprite: "methodologist",
     tone: "text-moss",
   },
   {
-    name: "The Auditor",
-    domain: "AUDIT",
-    line: "Kesimpulan melampaui data yang ada.",
+    name: "Morvane",
+    title: "The Gravebound",
+    domain: "THE AUDITOR",
+    line: "Roh ksatria kuno penghakim wilayah. Menghukum kesimpulan yang berani melampaui data temuan.",
     danger: 3,
     sprite: "auditor",
     tone: "text-gold",
   },
   {
-    name: "The Ghost",
-    domain: "REFERENCES",
-    line: "Sitasi yang tidak ditemukan atau tidak cocok.",
+    name: "Nyxara",
+    title: "The Forgotten Keeper",
+    domain: "GHOST LIBRARY",
+    line: "Penjaga perpustakaan terkutuk yang menyimpan ingatan dan sitasi fiktif.",
     danger: 2,
     sprite: "references",
     tone: "text-blood",
   },
   {
-    name: "Sir, Actually",
-    domain: "FINAL",
-    line: "Boss terakhir. Semua celah diuji sekaligus.",
+    name: "Eldravos",
+    title: "The Ancient Sovereign",
+    domain: "FINAL BOSS",
+    line: "Penguasa tertinggi dungeon. Entitas kuno agung yang menguji seluruh perjalanan riset pemain.",
     danger: 3,
     sprite: "sir",
     tone: "text-bone",
@@ -248,7 +255,10 @@ export default function Home() {
                 </div>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-base font-bold text-bone">{boss.name}</h3>
+                    <div>
+                      <h3 className="text-base font-bold text-bone">{boss.name}</h3>
+                      <p className="text-xs text-ash/80 italic">{boss.title}</p>
+                    </div>
                     <span className={`font-pixel text-[0.6rem] ${boss.tone}`}>
                       {boss.domain}
                     </span>
@@ -272,6 +282,28 @@ export default function Home() {
                 </div>
               </article>
             ))}
+          </div>
+
+          <div className="mt-6 border-2 border-void bg-[#0a0f14]/90 p-4 shadow-[inset_0_0_0_1px_#34424e]">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <span className="font-pixel text-[0.58rem] text-gold">DUNGEON CREATURES (ANTEK PENJAGA RUANG)</span>
+                <p className="mt-0.5 text-xs text-ash">
+                  Monster kecil yang menguji setiap ruang temuan sebelum kamu berhadapan dengan Floor Lord:
+                </p>
+              </div>
+              <span className="text-[0.68rem] text-ridge font-mono">8 Entitas Minion</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Varkul</strong> · Brutish beast</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Nethrix</strong> · Shadow crawler</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Zorveth</strong> · Armored creature</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Thalgrim</strong> · Stone guardian</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Xyrath</strong> · Winged predator</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Othrak</strong> · Undead warrior</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Velmora</strong> · Cursed spirit</span>
+              <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Grivak</strong> · Small dungeon beast</span>
+            </div>
           </div>
         </div>
       </section>
@@ -421,16 +453,16 @@ function DungeonPreview() {
           </div>
 
           <div className="absolute bottom-[19%] right-[27%] z-20">
-            <PixelSprite kind="gap" size={82} title="Gap Hunter" className="drop-shadow-[0_6px_0_rgba(0,0,0,0.45)]" />
+            <PixelSprite kind="gap" size={82} title="Veylith — The Void Stalker" className="drop-shadow-[0_6px_0_rgba(0,0,0,0.45)]" />
           </div>
 
           <div className="absolute bottom-[19%] right-[15%] z-20 opacity-95">
-            <PixelSprite kind="sir" size={100} title="Sir, Actually" className="drop-shadow-[0_6px_0_rgba(0,0,0,0.45)]" />
+            <PixelSprite kind="sir" size={100} title="Eldravos — The Ancient Sovereign" className="drop-shadow-[0_6px_0_rgba(0,0,0,0.45)]" />
           </div>
 
           <div className="absolute left-[39%] top-[22%] z-20 w-[37%]">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="font-pixel text-[0.58rem] text-bone">GAP HUNTER</span>
+              <span className="font-pixel text-[0.58rem] text-bone">VEYLITH · GAP HUNTER</span>
               <span className="text-[0.58rem] font-bold text-blood">100 / 100</span>
             </div>
             <div className="h-2.5 border border-void bg-[#080b10] shadow-[inset_0_0_0_1px_#34424e]">
@@ -444,9 +476,9 @@ function DungeonPreview() {
                 <PixelSprite kind="sir" size={30} />
               </span>
               <div className="min-w-0">
-                <p className="font-pixel text-[0.58rem] text-gold">SIR, ACTUALLY</p>
+                <p className="font-pixel text-[0.58rem] text-gold">ELDRAVOS · THE ANCIENT SOVEREIGN</p>
                 <p className="mt-1 text-[0.78rem] leading-5 text-bone">
-                  “Klaim itu belum tentu salah. Tapi belum kamu buktikan.”
+                  “Klaim itu belum tentu salah. Tapi belum kamu buktikan di hadapanku.”
                 </p>
               </div>
             </div>

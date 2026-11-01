@@ -12,10 +12,12 @@ interface GameHudProps {
 
 const FLOOR_NAMES = [
   "",
-  "Gap Hunter",
-  "The Aligner",
-  "Methodologist",
-  "The Auditor",
+  "Veylith · Gap Hunter",
+  "Draeven · The Aligner",
+  "Kryvax · Methodologist",
+  "Morvane · The Auditor",
+  "Nyxara · Ghost Library",
+  "Eldravos · Final Boss",
 ];
 
 export default function GameHud({ floorMap, hearts }: GameHudProps) {

@@ -40,7 +40,7 @@ function tileCodeToFrame(code: TileCode, col: number, _row: number): number {
 function calcZoom(viewW: number, viewH: number): number {
   const tilesWide = 20;
   const tilesHigh = 12;
-  return Math.max(2, Math.floor(Math.min(viewW / (tilesWide * TILE_SIZE), viewH / (tilesHigh * TILE_SIZE))));
+  return Math.max(1, Math.floor(Math.min(viewW / (tilesWide * TILE_SIZE), viewH / (tilesHigh * TILE_SIZE))));
 }
 
 export class DungeonScene extends Phaser.Scene {
@@ -68,7 +68,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor("#0D0F15");
+    this.cameras.main.setBackgroundColor("#0c0e0d");
     this.buildTilemap();
     this.spawnEntities();
     this.setupCamera();

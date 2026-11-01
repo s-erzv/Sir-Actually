@@ -75,10 +75,10 @@ export class Monster {
 
     // "!" marker above sprite so player knows they can interact
     this.exclamation = scene.add.text(worldX, worldY - TILE_SIZE * (isBoss ? 1.5 : 1), "!", {
-      fontSize: "8px",
-      color: "#ffdd44",
-      fontFamily: "monospace",
-      stroke: "#000000",
+      fontSize: "10px",
+      color: "#f0f1e8",
+      fontFamily: "Arial, sans-serif",
+      stroke: "#0c0e0d",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
   }
@@ -91,9 +91,7 @@ export class Monster {
     if (this.resolved) return;
 
     const origX = this.sprite.x;
-    const origTint = this.sprite.tintTopLeft;
 
-    // Shake tween: ±3 px, 4 cycles
     scene.tweens.add({
       targets: this.sprite,
       x: { from: origX - 3, to: origX + 3 },
@@ -104,20 +102,18 @@ export class Monster {
       onComplete: () => { this.sprite.x = origX; },
     });
 
-    // Red flash
-    this.sprite.setTint(0xff4444);
+    this.sprite.setTint(0xf0f1e8);
     scene.time.delayedCall(120, () => {
       if (!this.resolved) this.sprite.clearTint();
     });
 
-    // Floating damage number
     const label = damage === 0 ? "MISS" : `-${damage}`;
-    const color = damage === 0 ? "#aaaaaa" : "#ff4444";
+    const color = damage === 0 ? "#a2aa9d" : "#f0f1e8";
     const dmgText = scene.add.text(this.sprite.x, this.sprite.y - 8, label, {
-      fontSize: "7px",
+      fontSize: "10px",
       color,
-      fontFamily: "monospace",
-      stroke: "#000000",
+      fontFamily: "Arial, sans-serif",
+      stroke: "#0c0e0d",
       strokeThickness: 2,
     }).setOrigin(0.5, 1).setDepth(100);
 

@@ -12,7 +12,7 @@ export class BootScene extends Phaser.Scene {
     // Load the Kenney Tiny Dungeon spritesheet.
     // Tile size: 16×16 px, spacing: 1 px between tiles.
     // Key 'tiles' is used by DungeonScene (tilemap layers) and entity sprites.
-    this.load.spritesheet("tiles", "/assets/tiny-dungeon/Tilemap/tilemap.png", {
+    this.load.spritesheet("tiles", "/assets/tiny-dungeon/Tilemap/tilemap-2bit.png", {
       frameWidth: 16,
       frameHeight: 16,
       spacing: 1,

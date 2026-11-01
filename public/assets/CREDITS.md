@@ -13,8 +13,10 @@ and license. Only CC0 (Creative Commons Zero) assets are used.
 - **License**: Creative Commons Zero (CC0) — https://creativecommons.org/publicdomain/zero/1.0/
 - **Files**: `public/assets/tiny-dungeon/`
 - **Contents**: 132 tiles (stone walls, floors, doors, stairs, torches, characters,
-  items, weapons). Two spritesheets: `tilemap.png` (with 1 px spacing) and
+  items, weapons). Original spritesheets: `tilemap.png` (with 1 px spacing) and
   `tilemap_packed.png` (no spacing).
+- **Derivative**: `Tilemap/tilemap-2bit.png` recolors the original spaced atlas to
+  the project's four-color palette while preserving frame geometry and transparency.
 
 **Confirmed tile specifications (from `Tilesheet.txt` + `Tiled/sampleSheet.tsx`):**
 
