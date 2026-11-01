@@ -153,9 +153,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (error) console.error("[chunks]", error);
     }
 
+    // The map is locked automatically: the player reviews nothing, they play.
+    const { error: confirmError } = await admin
+      .from("research_maps")
+      .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
+      .eq("id", map.id);
+    if (confirmError) throw new ApiError(confirmError.message, 500);
+
+    const { data: reconJob, error: reconError } = await admin
+      .from("recon_jobs")
+      .upsert(
+        {
+          research_map_id: map.id,
+          status: "queued",
+          step: "citations",
+          steps_done: 0,
+          steps_total: 3,
+          cursor: {},
+          timings: {},
+          discarded: {},
+          error: null,
+        },
+        { onConflict: "research_map_id" },
+      )
+      .select("id")
+      .single();
+    if (reconError || !reconJob) {
+      throw new ApiError(reconError?.message ?? "Gagal memulai Recon.", 500);
+    }
+
     return NextResponse.json({
       manuscriptId: manuscript.id,
       researchMapId: map.id,
+      reconJobId: reconJob.id,
       completeness,
       claimCount: researchMap.claims.length,
       citationCount: researchMap.citations.length,

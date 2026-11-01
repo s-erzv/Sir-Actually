@@ -57,15 +57,23 @@ export interface Vec2 {
 
 export interface Room {
   id: string;
-  /** Corresponding finding id (null for empty/connector rooms). */
+  /** First corresponding finding id (null for special rooms). */
   findingId: string | null;
+  /** All findings represented in this room. */
+  findingIds?: string[];
   rect: Rect;
   /** True if this is the floor's boss room (last room, largest). */
   isBoss: boolean;
-  /** Tile coordinate where the monster/boss spawns. */
+  /** Primary monster spawn; kept for older maps. */
   monsterSpawn: Vec2;
+  /** One spawn per monster in the room. */
+  monsterSpawns?: Vec2[];
   /** Door tile that locks this room's entrance (null for first room). */
   entranceDoor: Vec2 | null;
+  /** Room kind from the floor plan. */
+  kind?: "minions" | "boss" | "special";
+  /** Boss slug from the floor plan. */
+  bossSlug?: string;
 }
 
 export interface FindingMeta {
@@ -74,7 +82,7 @@ export interface FindingMeta {
 }
 
 export interface FloorMap {
-  floorOrder: Floor;
+  floorOrder: number;
   /** 2D array of TileCode values; tiles[row][col]. */
   tiles: number[][];
   rooms: Room[];
@@ -86,6 +94,41 @@ export interface FloorMap {
   /** Total tile height of the map. */
   height: number;
   findingMeta?: Record<string, FindingMeta>;
+  dimension?: DungeonDimension;
+  bossSlug?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Dungeon plan (pure, before Phaser)
+// ---------------------------------------------------------------------------
+
+export type ResearchDimension = "gap" | "align" | "method" | "audit";
+export type DungeonDimension = ResearchDimension | "ghost" | "throne";
+export type DungeonTier = "kokoh" | "retak" | "rapuh";
+
+export interface RoomPlan {
+  kind: "minions" | "boss" | "special";
+  /** Findings represented as monsters in this room. Empty for Ghost/Throne. */
+  monsterIds: string[];
+  /** True when every monster in the room is low-confidence. */
+  optional: boolean;
+}
+
+export interface FloorPlan {
+  floorOrder: number;
+  dimension: DungeonDimension;
+  bossSlug: string;
+  rooms: RoomPlan[];
+  /** All research findings assigned to this floor. */
+  findingIds: string[];
+  /** research findings + the floor boss; excludes Ghost/Throne special stages. */
+  monsterCount: number;
+  /** Highest-priority finding used as context for the Throne. */
+  focusFindingId?: string;
+  /** Cartographer theme, not used for game rules. */
+  theme?: string;
+  /** Cartographer lore line, not used for game rules. */
+  lore?: string;
 }
 
 // ---------------------------------------------------------------------------

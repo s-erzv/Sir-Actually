@@ -90,7 +90,25 @@ export const FRAME_GRAVE = 65;
  * Player character sprite. Frame 84.
  * Characters in this sheet are one 16×16 tile.
  */
-export const FRAME_PLAYER = 84;
+export const FRAME_PLAYER = 87;
+
+/**
+ * In-game sprites for the five playable characters. These are actual frames
+ * from the Kenney atlas, not palette swaps.
+ *   84 wizard · 85 traveller · 87 knight · 96 helm knight · 97 blue knight
+ */
+export const PLAYER_FRAMES_BY_CHARACTER: Record<string, number> = {
+  arka: 87,
+  mira: 84,
+  sena: 96,
+  kiran: 85,
+  vara: 97,
+};
+
+export function playerFrameFor(characterSlug?: string | null): number {
+  if (!characterSlug) return FRAME_PLAYER;
+  return PLAYER_FRAMES_BY_CHARACTER[characterSlug] ?? FRAME_PLAYER;
+}
 
 /**
  * Minion enemy sprites (Dungeon Creatures: Varkul, Nethrix, Zorveth, Thalgrim, Xyrath, Othrak, Velmora, Grivak).
@@ -139,6 +157,20 @@ export const BOSS_FRAMES_BY_FLOOR: Record<number, number> = {
   5: FRAME_BOSS_NYXARA,
   6: FRAME_BOSS_ELDRAVOS,
 };
+
+export const BOSS_FRAMES_BY_SLUG: Record<string, number> = {
+  veylith: FRAME_BOSS_VEYLITH,
+  draeven: FRAME_BOSS_DRAEVEN,
+  kryvax: FRAME_BOSS_KRYVAX,
+  morvane: FRAME_BOSS_MORVANE,
+  nyxara: FRAME_BOSS_NYXARA,
+  eldravos: FRAME_BOSS_ELDRAVOS,
+};
+
+export function bossFrame(slug: string | undefined, floorOrder: number): number {
+  if (slug && BOSS_FRAMES_BY_SLUG[slug]) return BOSS_FRAMES_BY_SLUG[slug]!;
+  return BOSS_FRAMES_BY_FLOOR[floorOrder] ?? BOSS_FRAMES_BY_FLOOR[1]!;
+}
 
 /** Minion frame for a given floor (1–4). Cycles through FRAME_MINION array. */
 export function minionFrame(floor: number): number {

@@ -34,7 +34,7 @@ export interface EmbeddingConfig {
 export function getEmbeddingConfig(): EmbeddingConfig | null {
   const apiKey = process.env.EMBEDDING_API_KEY;
   const model = process.env.EMBEDDING_MODEL;
-  if (!apiKey || !model) return null;
+  if (!apiKey || !model || apiKey.startsWith("YOUR_")) return null;
   const provider = (process.env.EMBEDDING_PROVIDER ?? "gemini") as EmbeddingConfig["provider"];
   if (!["gemini", "openai"].includes(provider)) {
     throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}`);

@@ -1,20 +1,43 @@
 import type { Completeness, ManuscriptStage } from "@/lib/supabase/database";
 import { DEFAULT_MIN_REFERENCES } from "@/lib/balance";
 
+/**
+ * PDF text extraction commonly yields section headings such as
+ * "1. Pendahuluan", "2.1 Metode Penelitian", or "DAFTAR PUSTAKA" without
+ * Markdown. The prefix is optional so DOCX/Markdown headings still match.
+ */
+const SECTION_PREFIX = String.raw`^\s*(?:#{1,6}\s*)?(?:\d+(?:\.\d+)*[.)]?\s*)?(?:bab\s+[ivx]+[.:\s-]*)?`;
+
 const SECTION_PATTERNS: Record<string, RegExp> = {
-  background: /^\s*(?:bab\s+[ivx]+[.:\s-]*)?(?:latar\s+belakang|pendahuluan|introduction|background)\b/im,
-  objectives:
-    /^\s*(?:bab\s+[ivx]+[.:\s-]*)?(?:tujuan(?:\s+penelitian)?|rumusan\s+masalah|pertanyaan\s+penelitian|research\s+questions?|research\s+objectives?)\b/im,
-  method:
-    /^\s*(?:bab\s+[ivx]+[.:\s-]*)?(?:metode(?:\s+penelitian)?|metodologi|methodology|methods?|materials?\s+and\s+methods?)\b/im,
-  results:
-    /^\s*(?:bab\s+[ivx]+[.:\s-]*)?(?:hasil(?:\s+penelitian)?|temuan|results?|findings?)\b/im,
-  conclusion:
-    /^\s*(?:bab\s+[ivx]+[.:\s-]*)?(?:kesimpulan|simpulan|conclusion|conclusions?)\b/im,
+  background: new RegExp(
+    `${SECTION_PREFIX}(?:latar\\s+belakang|pendahuluan|introduction|background)\\b`,
+    "im",
+  ),
+  objectives: new RegExp(
+    `${SECTION_PREFIX}(?:tujuan(?:\\s+penelitian)?|rumusan\\s+masalah|pertanyaan\\s+penelitian|research\\s+questions?|research\\s+objectives?)\\b`,
+    "im",
+  ),
+  method: new RegExp(
+    `${SECTION_PREFIX}(?:metode(?:\\s+penelitian)?|metodologi|methodology|methods?|materials?\\s+and\\s+methods?)\\b`,
+    "im",
+  ),
+  results: new RegExp(
+    `${SECTION_PREFIX}(?:hasil(?:\\s+penelitian)?|temuan|results?|findings?)\\b`,
+    "im",
+  ),
+  conclusion: new RegExp(
+    `${SECTION_PREFIX}(?:kesimpulan|simpulan|conclusion|conclusions?)\\b`,
+    "im",
+  ),
 };
 
-const REFERENCE_HEADING =
-  /^\s*(?:bab\s+[ivx]+[.:\s-]*)?(?:daftar\s+pustaka|daftar\s+referensi|referensi|bibliografi|references?|bibliography|works\s+cited)\s*:?\s*$/im;
+const REFERENCE_HEADING = new RegExp(
+  `${SECTION_PREFIX}(?:daftar\\s+(?:pustaka|rujukan|referensi|bacaan)|bibliografi|references?|bibliography|works\\s+cited)\\s*:?\\s*$`,
+  "im",
+);
+
+/** Reference headings are often mid-line in two-column PDFs. */
+const REFERENCE_ANYWHERE = /daftar\s+(?:pustaka|rujukan|referensi|bacaan)/i;
 
 const ENTRY_START =
   /^\s*(?:\[\d+\]|\d+[.)])\s+|^\s*[A-ZÀ-Ý][\p{L}'’.-]+,\s|^\s*[A-ZÀ-Ý][\p{L}'’.-]+\s+[A-Z]\./u;
@@ -27,11 +50,30 @@ export interface BibliographyParse {
 }
 
 export function parseBibliography(sourceText: string): BibliographyParse {
-  const lines = sourceText.split(/\r?\n/);
-  const start = lines.findIndex((line) => REFERENCE_HEADING.test(line.trim()));
-  if (start < 0) return { sectionFound: false, entries: [] };
+  const normalized = sourceText
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const lines = normalized.split(/\r?\n/);
+  let start = lines.findIndex((line) => REFERENCE_HEADING.test(line.trim()));
+  let tail: string[];
 
-  const tail = lines.slice(start + 1);
+  if (start >= 0) {
+    tail = lines.slice(start + 1);
+  } else {
+    // Two-column PDFs merge the heading into a line with the other column.
+    const match = REFERENCE_ANYWHERE.exec(normalized);
+    if (!match) return { sectionFound: false, entries: [] };
+    tail = normalized.slice(match.index + match[0].length).split(/\r?\n/);
+  }
+
+  // A line may contain several entries from two columns: split inline [n].
+  const expanded: string[] = [];
+  for (const line of tail) {
+    for (const piece of line.split(/(?=\[\d+\])/)) {
+      if (piece.trim()) expanded.push(piece);
+    }
+  }
+
   const entries: string[] = [];
   let current: string[] = [];
 
@@ -41,8 +83,8 @@ export function parseBibliography(sourceText: string): BibliographyParse {
     current = [];
   };
 
-  for (const line of tail) {
-    const trimmed = line.trim();
+  for (const line of expanded) {
+    const trimmed = line.trim().replace(/^[-*]\s+/, "");
     if (!trimmed) {
       pushCurrent();
       continue;
@@ -68,11 +110,16 @@ export interface CompletenessInput {
   minReferences: number | null;
 }
 
+const OBJECTIVE_SENTENCE =
+  /\b(?:tujuan\s+penelitian\s+ini\s+adalah|pertanyaan\s+penelitian(?:nya)?\s+adalah|rumusan\s+masalah(?:nya)?\s+adalah)\b/i;
+
 export function checkCompleteness(input: CompletenessInput): Completeness {
   const sections: Record<string, boolean> = {};
   for (const [key, pattern] of Object.entries(SECTION_PATTERNS)) {
     sections[key] = pattern.test(input.sourceText);
   }
+  // Journals often state the objective in a sentence instead of a heading.
+  if (!sections.objectives) sections.objectives = OBJECTIVE_SENTENCE.test(input.sourceText);
 
   const bibliography = parseBibliography(input.sourceText);
   const referenceCount = bibliography.entries.length;

@@ -48,12 +48,34 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       findingCounts.set(finding.research_map_id, (findingCounts.get(finding.research_map_id) ?? 0) + 1);
     }
 
+    interface ReconRow {
+      id: string;
+      research_map_id: string;
+      status: string;
+      created_at: string;
+    }
+    let reconJobs: ReconRow[] = [];
+    if (mapIds.length > 0) {
+      const { data } = await admin
+        .from("recon_jobs")
+        .select("id, research_map_id, status, created_at")
+        .in("research_map_id", mapIds)
+        .order("created_at", { ascending: false });
+      reconJobs = data ?? [];
+    }
+    const reconByMap = new Map<string, ReconRow>();
+    for (const job of reconJobs) {
+      if (!reconByMap.has(job.research_map_id)) reconByMap.set(job.research_map_id, job);
+    }
+
     return NextResponse.json({
       manuscripts: (manuscripts ?? []).map((manuscript) => {
         const map = mapByManuscript.get(manuscript.id) ?? null;
+        const recon = map ? (reconByMap.get(map.id) ?? null) : null;
         return {
           ...manuscript,
           map,
+          recon: recon ? { id: recon.id, status: recon.status } : null,
           findingCount: map ? (findingCounts.get(map.id) ?? 0) : 0,
         };
       }),

@@ -5,4 +5,5 @@ declare module "mammoth/mammoth.browser" {
   }
 
   export function extractRawText(input: { arrayBuffer: ArrayBuffer }): Promise<MammothResult>;
+  export function convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<MammothResult>;
 }

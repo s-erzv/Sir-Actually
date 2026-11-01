@@ -90,3 +90,11 @@ describe("evaluateDamage — BRIEF §8 mandatory invariants", () => {
     expect(answersNeeded).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("computeDamage — weapon bonus", () => {
+  it("applies the weapon multiplier but never exceeds the ceiling", () => {
+    expect(computeDamage(6, 6, true, 100, 1.1)).toBe(49);
+    expect(computeDamage(6, 6, false, 100, 1.1)).toBe(66);
+    expect(computeDamage(6, 6, true, 100, 0.95)).toBe(42);
+  });
+});

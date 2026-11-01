@@ -16,6 +16,7 @@ export interface JudgeInput {
   weaknessType: string;
   rubricCriteria: RubricCriterion[];
   previousQuestions: string[];
+  contextChunks?: Array<{ section: string | null; text: string }>;
 }
 
 export interface QuestionInput {
@@ -25,37 +26,42 @@ export interface QuestionInput {
   bossPersona: string;
   researchMapSummary: string;
   previousQuestions: string[];
+  contextChunks?: Array<{ section: string | null; text: string }>;
 }
 
 /**
- * Kagiro model routing. Bosses get progressively stronger models; the final
- * sovereign (Morvane / Eldravos) uses Claude Sonnet.
+ * Kagiro model routing. Each boss floor escalates; the final sovereign
+ * (Eldravos) uses Claude Sonnet. Ghost (Nyxara) is cheap on purpose: the
+ * Crossref/OpenAlex verifier does the real work there, not the LLM.
+ *
+ * Defaults here; override per slug with `LLM_MODEL_<SLUG>` env, e.g.
+ * `LLM_MODEL_BOSS_FLOOR_3=qwen3.8-max`.
  *
  * These IDs must match https://api.kagiro.net/v1/models exactly.
  */
 export const KAGIRO_BOSS_MODELS: Record<string, string> = {
   // Floor slugs
-  "boss-floor-1": "deepseek-v4.1-flash-1017",
-  "boss-floor-2": "glm-5-3-flash",
-  "boss-floor-3": "kimi-k3",
-  "boss-floor-4": "claude-sonnet-4-6",
-  "boss-floor-5": "gemini-3-8-flash",
+  "boss-floor-1": "deepseek-4-1-flash",
+  "boss-floor-2": "glm5-2",
+  "boss-floor-3": "glm5-3",
+  "boss-floor-4": "qwen3.8-plus",
+  "boss-floor-5": "glm-5-3-flash",
   "boss-floor-6": "claude-sonnet-4-6",
 
   // Fantasy names (Canon roster)
-  veylith: "deepseek-v4.1-flash-1017",
-  draeven: "glm-5-3-flash",
-  kryvax: "kimi-k3",
-  morvane: "claude-sonnet-4-6",
-  nyxara: "gemini-3-8-flash",
+  veylith: "deepseek-4-1-flash",
+  draeven: "glm5-2",
+  kryvax: "glm5-3",
+  morvane: "qwen3.8-plus",
+  nyxara: "glm-5-3-flash",
   eldravos: "claude-sonnet-4-6",
 
   // Legacy role slugs
-  gap_hunter: "deepseek-v4.1-flash-1017",
-  aligner: "glm-5-3-flash",
-  methodologist: "kimi-k3",
-  auditor: "claude-sonnet-4-6",
-  ghost: "gemini-3-8-flash",
+  gap_hunter: "deepseek-4-1-flash",
+  aligner: "glm5-2",
+  methodologist: "glm5-3",
+  auditor: "qwen3.8-plus",
+  ghost: "glm-5-3-flash",
   sir_actually: "claude-sonnet-4-6",
   minion: "deepseek-v4-flash",
 };
@@ -63,6 +69,8 @@ export const KAGIRO_BOSS_MODELS: Record<string, string> = {
 export function resolveBossModel(bossSlug?: string | null): string | undefined {
   if (!bossSlug) return undefined;
   const slug = bossSlug.toLowerCase();
+  const override = process.env[`LLM_MODEL_${slug.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`];
+  if (override) return override;
   if (KAGIRO_BOSS_MODELS[slug]) return KAGIRO_BOSS_MODELS[slug];
   if (slug.startsWith("minion")) return KAGIRO_BOSS_MODELS.minion;
   return undefined;
@@ -75,46 +83,6 @@ export interface LLMProvider {
   generateQuestion(input: QuestionInput): Promise<string>;
   completeJson(system: string, user: string, temperature?: number): Promise<unknown>;
   completeText(system: string, user: string, temperature?: number): Promise<string>;
-}
-
-export class DummyLLMProvider implements LLMProvider {
-  readonly providerName = "dummy";
-  readonly modelName = "dummy";
-
-  async judgeAnswer(input: JudgeInput): Promise<JudgeRawOutput> {
-    const words = input.playerAnswer.trim().split(/\s+/).filter(Boolean);
-    const criteria = input.rubricCriteria;
-
-    if (words.length < 10) {
-      return {
-        criteria: criteria.map((c) => ({ id: c.id, level: 0 as const, quote: "" })),
-        missing: "Jawaban terlalu singkat untuk dinilai.",
-      };
-    }
-
-    const shortQuote = words.slice(0, 3).join(" ");
-    const numLevel1 = words.length < 30 ? 1 : words.length < 60 ? 2 : criteria.length;
-    return {
-      criteria: criteria.map((c, i) => ({
-        id: c.id,
-        level: (i < numLevel1 ? 1 : 0) as 0 | 1 | 2,
-        quote: i < numLevel1 ? shortQuote : "",
-      })),
-      missing: "Jawaban masih perlu didukung bukti atau angka dari naskah.",
-    };
-  }
-
-  async generateQuestion(input: QuestionInput): Promise<string> {
-    return `[Dummy] Pertanyaan untuk ${input.weaknessType} (${input.attackType}): Jelaskan lebih lanjut mengenai: "${input.evidenceQuote}".`;
-  }
-
-  async completeJson(): Promise<unknown> {
-    throw new Error("LLM belum dikonfigurasi. Isi LLM_API_KEY dan LLM_MODEL di .env.local.");
-  }
-
-  async completeText(): Promise<string> {
-    throw new Error("LLM belum dikonfigurasi. Isi LLM_API_KEY dan LLM_MODEL di .env.local.");
-  }
 }
 
 function parseJsonText(text: string): unknown {
@@ -285,11 +253,7 @@ const _bossProviders = new Map<string, LLMProvider>();
 
 export function getLLMProvider(): LLMProvider {
   if (_provider) return _provider;
-  try {
-    _provider = new FetchLLMProvider(getLLMConfig());
-  } catch {
-    _provider = new DummyLLMProvider();
-  }
+  _provider = new FetchLLMProvider(getLLMConfig());
   return _provider;
 }
 
@@ -313,7 +277,11 @@ export function getLLMProviderForBoss(bossSlug?: string | null): LLMProvider {
 }
 
 export function hasRealLLM(): boolean {
-  return getLLMProvider().providerName !== "dummy";
+  try {
+    return getLLMProvider().providerName !== "dummy";
+  } catch {
+    return false;
+  }
 }
 
 export function setLLMProvider(provider: LLMProvider): void {

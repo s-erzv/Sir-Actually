@@ -21,6 +21,7 @@ export function buildJudgePrompt(input: {
   weaknessType: string;
   rubricCriteria: RubricCriterion[];
   previousQuestions: string[];
+  contextChunks?: Array<{ section: string | null; text: string }>;
 }): string {
   const criteria = input.rubricCriteria
     .map((criterion) => `- ${criterion.id}: ${criterion.label}`)
@@ -38,6 +39,11 @@ Kutipan naskah yang diserang:
 <<<EVIDENCE>>>
 ${input.evidenceQuote}
 <<<END_EVIDENCE>>>
+
+Potongan naskah sekitar bukti:
+<<<CONTEXT>>>
+${(input.contextChunks ?? []).map((chunk) => `[${chunk.section ?? "tanpa bagian"}]\n${chunk.text}`).join("\n\n---\n\n") || "(tidak ada potongan relevan)"}
+<<<END_CONTEXT>>>
 
 Pertanyaan sebelumnya:
 ${previous}

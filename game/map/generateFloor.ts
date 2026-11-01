@@ -24,7 +24,7 @@
  * No Phaser imports. Importable in Node/Vitest.
  */
 
-import type { FindingStub, Floor, FloorMap, Rect, Room, Vec2 } from "@/lib/domain/types";
+import type { FindingStub, Floor, FloorMap, FloorPlan, Rect, Room, Vec2 } from "@/lib/domain/types";
 import { TileCode } from "./tiles";
 
 // ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ export function generateFloor(
   const startRoomX = H_MARGIN;
   const startRoomY = midY - Math.floor(START_OUTER_H / 2);
 
-  // Start room has no finding — we pass a dummy monsterSpawn far off-screen
+  // Start room has no finding — pass a sentinel spawn far off-screen
   const startMonsterSpawn: Vec2 = { x: -999, y: -999 };
   buildRoom(
     tiles,
@@ -378,5 +378,220 @@ export function generateFloor(
     stairs,
     width: totalWidth,
     height: totalHeight,
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// Plan-driven generator
+// ---------------------------------------------------------------------------
+
+function spawnsForRoom(
+  roomX: number,
+  outerW: number,
+  midY: number,
+  count: number,
+  isBoss: boolean,
+): Vec2[] {
+  if (count < 1) throw new Error("generateFloorFromPlan: room must have a monster");
+  if (isBoss) {
+    return [{ x: roomX + Math.floor(outerW / 2), y: midY }];
+  }
+
+  const innerLeft = roomX + OUTER_PAD;
+  const innerW = outerW - OUTER_PAD * 2;
+  const gap = Math.max(1, Math.floor(innerW / (count + 1)));
+  return Array.from({ length: count }, (_, index) => ({
+    x: innerLeft + gap * (index + 1),
+    y: midY,
+  }));
+}
+
+const ROOM_OFFSETS = [0, -3, 3, -4, 4, -2, 2] as const;
+
+function buildHorizontalCorridor(
+  tiles: number[][],
+  fromX: number,
+  toX: number,
+  y: number,
+): void {
+  for (let x = fromX; x <= toX; x += 1) {
+    set(tiles, x, y, TileCode.FLOOR);
+    set(tiles, x, y - 1, TileCode.WALL_FACE);
+    set(tiles, x, y + 1, TileCode.WALL_TOP);
+  }
+}
+
+function buildVerticalCorridor(
+  tiles: number[][],
+  x: number,
+  fromY: number,
+  toY: number,
+): void {
+  const step = toY >= fromY ? 1 : -1;
+  for (let y = fromY; y !== toY + step; y += step) {
+    set(tiles, x, y, TileCode.FLOOR);
+    if (get(tiles, x - 1, y) !== TileCode.FLOOR && get(tiles, x - 1, y) !== TileCode.FLOOR_ALT) {
+      set(tiles, x - 1, y, TileCode.WALL_TOP);
+    }
+    if (get(tiles, x + 1, y) !== TileCode.FLOOR && get(tiles, x + 1, y) !== TileCode.FLOOR_ALT) {
+      set(tiles, x + 1, y, TileCode.WALL_TOP);
+    }
+  }
+}
+
+/**
+ * Plan-driven generator with a serpentine dungeon layout: rooms step up and
+ * down instead of sitting on one endless horizontal corridor.
+ */
+export function generateFloorFromPlan(plan: FloorPlan, seed: number): FloorMap {
+  if (plan.rooms.length === 0) {
+    throw new Error("generateFloorFromPlan: plan must contain at least one room");
+  }
+
+  const rand = mulberry32(seed);
+  const totalWidth =
+    H_MARGIN +
+    START_OUTER_W +
+    plan.rooms.reduce(
+      (sum, room) =>
+        sum + CORRIDOR_LEN + (room.kind === "minions" ? ROOM_OUTER_W : BOSS_OUTER_W),
+      0,
+    ) +
+    H_MARGIN;
+
+  const maxOffset = 4;
+  const tallest = BOSS_OUTER_H;
+  const totalHeight = tallest + V_MARGIN * 2 + maxOffset * 2;
+  const tiles = createGrid(totalWidth, totalHeight);
+  const centerY = Math.floor(totalHeight / 2);
+
+  const startRoomX = H_MARGIN;
+  const startRoomY = centerY - Math.floor(START_OUTER_H / 2);
+  buildRoom(
+    tiles,
+    startRoomX,
+    startRoomY,
+    START_OUTER_W,
+    START_OUTER_H,
+    false,
+    rand,
+    new Set<string>(),
+    { x: -999, y: -999 },
+  );
+
+  const playerSpawn: Vec2 = {
+    x: startRoomX + OUTER_PAD + 1,
+    y: centerY,
+  };
+
+  const rooms: Room[] = [];
+  const doorPositionsMap = new Set<string>();
+  let cursorX = startRoomX + START_OUTER_W;
+  let previousExitY = centerY;
+  set(tiles, cursorX - 1, previousExitY, TileCode.FLOOR);
+
+  let stairs: Vec2 = { x: 0, y: 0 };
+
+  plan.rooms.forEach((plannedRoom, index) => {
+    const isBoss = plannedRoom.kind !== "minions";
+    const outerW = isBoss ? BOSS_OUTER_W : ROOM_OUTER_W;
+    const outerH = isBoss ? BOSS_OUTER_H : ROOM_OUTER_H;
+
+    const roomX = cursorX + CORRIDOR_LEN;
+    const offset = isBoss ? 0 : ROOM_OFFSETS[index % ROOM_OFFSETS.length]!;
+    const roomY = centerY - Math.floor(outerH / 2) + offset;
+    const entryY = roomY + Math.floor(outerH / 2);
+
+    // L-shaped corridor: horizontal out of the previous room, then vertical
+    // through the gap before the next room.
+    buildHorizontalCorridor(tiles, cursorX, roomX - 1, previousExitY);
+    buildVerticalCorridor(tiles, roomX - 1, previousExitY, entryY);
+
+    const doorX = roomX - 1;
+    const doorY = entryY;
+    set(tiles, doorX, doorY, index === 0 ? TileCode.DOOR_OPEN : TileCode.DOOR_LOCKED);
+
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        doorPositionsMap.add(`${doorX + dx},${doorY + dy}`);
+      }
+    }
+
+    const entranceDoor: Vec2 = { x: doorX, y: doorY };
+    const monsterSpawns = spawnsForRoom(
+      roomX,
+      outerW,
+      entryY,
+      isBoss ? 1 : plannedRoom.monsterIds.length,
+      isBoss,
+    );
+
+    buildRoom(
+      tiles,
+      roomX,
+      roomY,
+      outerW,
+      outerH,
+      isBoss,
+      rand,
+      doorPositionsMap,
+      monsterSpawns[0]!,
+    );
+
+    set(tiles, roomX, entryY, TileCode.FLOOR);
+    if (index < plan.rooms.length - 1) {
+      set(tiles, roomX + outerW - 1, entryY, TileCode.FLOOR);
+    }
+
+    if (index === plan.rooms.length - 1) {
+      const stairsX = roomX + outerW - OUTER_PAD - 1;
+      const stairsY = entryY;
+      set(tiles, stairsX, stairsY, TileCode.STAIRS);
+      stairs = { x: stairsX, y: stairsY };
+    }
+
+    rooms.push({
+      id: `f${plan.floorOrder}-r${index}`,
+      findingId: plannedRoom.monsterIds[0] ?? null,
+      findingIds: plannedRoom.monsterIds,
+      rect: { x: roomX, y: roomY, width: outerW, height: outerH },
+      isBoss,
+      monsterSpawn: monsterSpawns[0]!,
+      monsterSpawns,
+      entranceDoor,
+      kind: plannedRoom.kind,
+      bossSlug: plan.bossSlug,
+    });
+
+    cursorX = roomX + outerW;
+    previousExitY = entryY;
+  });
+
+  const height = tiles.length;
+  const width = tiles[0]?.length ?? 0;
+  for (let y = 0; y < height - 1; y++) {
+    for (let x = 0; x < width; x++) {
+      const code = get(tiles, x, y);
+      const below = get(tiles, x, y + 1);
+      if (
+        code === TileCode.WALL_TOP &&
+        (below === TileCode.FLOOR || below === TileCode.FLOOR_ALT)
+      ) {
+        set(tiles, x, y, TileCode.WALL_FACE);
+      }
+    }
+  }
+
+  return {
+    floorOrder: plan.floorOrder,
+    tiles,
+    rooms,
+    playerSpawn,
+    stairs,
+    width: totalWidth,
+    height: totalHeight,
+    dimension: plan.dimension,
+    bossSlug: plan.bossSlug,
   };
 }

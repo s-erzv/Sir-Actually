@@ -15,8 +15,9 @@ and license. Only CC0 (Creative Commons Zero) assets are used.
 - **Contents**: 132 tiles (stone walls, floors, doors, stairs, torches, characters,
   items, weapons). Original spritesheets: `tilemap.png` (with 1 px spacing) and
   `tilemap_packed.png` (no spacing).
-- **Derivative**: `Tilemap/tilemap-2bit.png` recolors the original spaced atlas to
-  the project's four-color palette while preserving frame geometry and transparency.
+- **Derivative**: `Tilemap/tilemap-2bit.png` is an optional four-colour recolor that
+  preserves frame geometry and transparency. The game ships with the original
+  colourful `Tilemap/tilemap.png` atlas.
 
 **Confirmed tile specifications (from `Tilesheet.txt` + `Tiled/sampleSheet.tsx`):**
 

@@ -41,6 +41,15 @@ export function apiErrorResponse(error: unknown): NextResponse {
   }
   const message = error instanceof Error ? error.message : "Kesalahan server.";
   console.error("[api]", error);
+  if (message.includes("permission denied for schema private")) {
+    return NextResponse.json(
+      {
+        error:
+          "Database belum memberi izin schema private ke service_role. Jalankan migration 20261102000100_private_schema_service_role.sql.",
+      },
+      { status: 500 },
+    );
+  }
   return NextResponse.json({ error: message }, { status: 500 });
 }
 

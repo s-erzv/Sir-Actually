@@ -4,10 +4,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
-import { PixelSprite, spriteForWeakness } from "@/components/brand/PixelSprite";
+import { PixelSprite, spriteForWeakness, type SpriteKind } from "@/components/brand/PixelSprite";
+import QuestPath from "@/components/game/QuestPath";
 import { authJson } from "@/lib/api/client";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { WEAKNESS_LABELS } from "@/lib/labels";
+import { BOSS_BY_DIMENSION, WEAKNESS_DIMENSION, getDungeonTier } from "@/game/map/buildFloorPlan";
+import type { DungeonDimension, WeaknessType } from "@/lib/domain/types";
+import { BOSS_ROSTER } from "@/lib/monsters";
+
+const FLOOR_SPRITE: Record<DungeonDimension, SpriteKind> = {
+  gap: "gap",
+  align: "aligner",
+  method: "methodologist",
+  audit: "auditor",
+  ghost: "references",
+  throne: "sir",
+};
+
+const FLOOR_ORDER: DungeonDimension[] = ["gap", "align", "method", "audit", "ghost", "throne"];
 
 interface FindingRow {
   id: string;
@@ -130,6 +145,36 @@ export default function FindingsPage() {
   const severe = payload.findings.filter((finding) => finding.severity >= 3).length;
   const codeFindings = payload.findings.filter((finding) => finding.detector === "code").length;
 
+  const dimensionCounts = new Map<DungeonDimension, number>();
+  for (const finding of payload.findings) {
+    const dimension =
+      WEAKNESS_DIMENSION[finding.weakness_type as WeaknessType] ?? "audit";
+    dimensionCounts.set(dimension, (dimensionCounts.get(dimension) ?? 0) + 1);
+  }
+  const activeDimensions = FLOOR_ORDER.filter(
+    (dimension) =>
+      dimension === "throne" ||
+      (dimension === "ghost"
+        ? payload.findings.some(
+            (finding) => WEAKNESS_DIMENSION[finding.weakness_type as WeaknessType] === "ghost",
+          )
+        : (dimensionCounts.get(dimension) ?? 0) > 0),
+  );
+  const tier = getDungeonTier(
+    payload.findings
+      .filter((finding) => WEAKNESS_DIMENSION[finding.weakness_type as WeaknessType])
+      .map((finding, index) => ({
+        id: finding.id,
+        weaknessType: finding.weakness_type as WeaknessType,
+        severity: Math.min(3, Math.max(1, finding.severity)) as 1 | 2 | 3,
+        centrality: Math.min(3, Math.max(1, finding.centrality)) as 1 | 2 | 3,
+        confidence: finding.confidence,
+        evidenceQuote: finding.evidence_quote,
+        floor: 1 as const,
+        rank: finding.rank ?? index + 1,
+      })),
+  );
+
   return (
     <main className="dungeon-bg scanlines min-h-screen">
       <header className="sticky top-0 z-30 border-b-2 border-void bg-void/95 backdrop-blur-sm">
@@ -147,9 +192,11 @@ export default function FindingsPage() {
       </header>
 
       <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
+        <QuestPath current="recon" className="mb-8" />
+
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
-            <p className="eyebrow">Recon · Bestiary</p>
+            <p className="eyebrow">Pos 03 · Recon bestiary</p>
             <h1 className="mt-3 text-4xl font-bold tracking-tight text-bone sm:text-5xl">
               Temuan.
             </h1>
@@ -167,7 +214,7 @@ export default function FindingsPage() {
               href={`/play/${payload.job.id}`}
               className="pixel-button border-gold bg-gold text-void hover:bg-bone"
             >
-              Masuk dungeon →
+              Pilih karakter →
             </Link>
           ) : null}
         </div>
@@ -178,6 +225,53 @@ export default function FindingsPage() {
           <Summary label="Code" value={String(codeFindings)} tone="text-mana" />
           <Summary label="LLM" value={String(payload.findings.length - codeFindings)} tone="text-gold" />
         </div>
+
+        {done && payload.findings.length > 0 ? (
+          <section className="mt-6 overflow-hidden border-2 border-void bg-[#0a0f14]/80 shadow-[inset_0_0_0_1px_#34424e]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-void bg-tomb/70 px-4 py-3">
+              <div>
+                <p className="font-pixel text-[0.58rem] text-gold">Peta ekspedisi</p>
+                <p className="mt-1 text-sm font-bold text-bone">
+                  {activeDimensions.length} lantai · tingkat {tier}
+                </p>
+              </div>
+              <span className="pixel-chip border-gold/40 text-gold">
+                {payload.findings.length} ruang bertarung
+              </span>
+            </div>
+            <ol className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
+              {activeDimensions.map((dimension, index) => {
+                const boss = BOSS_ROSTER[BOSS_BY_DIMENSION[dimension]];
+                const count = dimensionCounts.get(dimension) ?? 0;
+                return (
+                  <li
+                    key={dimension}
+                    className="flex items-center gap-3 border border-ridge/60 bg-void/50 p-2"
+                  >
+                    <span className="tile-floor grid h-12 w-12 shrink-0 place-items-center border border-void">
+                      <PixelSprite kind={FLOOR_SPRITE[dimension]} size={38} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-pixel text-[0.5rem] text-ash">
+                        LANTAI {String(index + 1).padStart(2, "0")}
+                      </p>
+                      <p className="truncate text-xs font-bold text-bone">
+                        {boss?.name ?? "Eldravos"}
+                      </p>
+                      <p className="text-[0.62rem] uppercase tracking-[0.06em] text-ash/75">
+                        {dimension === "throne"
+                          ? "Sidang akhir"
+                          : dimension === "ghost"
+                            ? `${count || "—"} entri`
+                            : `${count} temuan`}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        ) : null}
 
         {failed ? (
           <p className="mt-6 border border-blood/40 bg-blood/10 p-4 text-xs text-blood">{payload.job.error}</p>
@@ -285,7 +379,7 @@ export default function FindingsPage() {
               </p>
             </div>
             <Link href={`/play/${payload.job.id}`} className="pixel-button border-gold bg-gold text-void hover:bg-bone">
-              Masuk dungeon
+              Pilih karakter
             </Link>
           </div>
         ) : null}

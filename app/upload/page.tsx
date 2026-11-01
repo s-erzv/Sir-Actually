@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
 import { PixelSprite } from "@/components/brand/PixelSprite";
+import QuestPath from "@/components/game/QuestPath";
+import ReadingOverlay from "@/components/manuscript/ReadingOverlay";
 import { authJson } from "@/lib/api/client";
 import { extractManuscriptText } from "@/lib/manuscript/extract";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
@@ -122,6 +124,8 @@ export default function UploadPage() {
 
   return (
     <main className="dungeon-bg scanlines min-h-screen">
+      {busy ? <ReadingOverlay fileName={fileName} /> : null}
+
       <header className="border-b-2 border-void bg-void/90">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-3 sm:px-8">
           <Link href="/dashboard" className="hover:opacity-90">
@@ -137,8 +141,10 @@ export default function UploadPage() {
       </header>
 
       <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
+        <QuestPath current="manuscript" className="mb-8" />
+
         <div className="max-w-2xl">
-          <p className="eyebrow">Forge · Research Map</p>
+          <p className="eyebrow">Pos 01 · Forge naskah</p>
           <h1 className="mt-3 text-4xl font-bold tracking-tight text-bone sm:text-5xl">
             Tempa naskah
             <br />
@@ -231,10 +237,10 @@ export default function UploadPage() {
                   />
                   <PixelSprite kind="scroll" size={58} className="animate-bob" />
                   <span className="mt-3 text-sm font-bold text-bone">
-                    {extracting ? "Membaca file..." : "Pilih atau jatuhkan naskah"}
+                    {extracting ? "Mengonversi naskah..." : "Pilih atau jatuhkan naskah"}
                   </span>
                   <span className="mt-1 text-[0.66rem] font-bold uppercase tracking-[0.07em] text-ash">
-                    DOCX · PDF berteks · TXT · MD — maks. 15 MB
+                    DOCX · PDF berteks · TXT · MD → Markdown · maks. 15 MB
                   </span>
                 </label>
               </div>
@@ -258,7 +264,7 @@ export default function UploadPage() {
                 {sourceText ? (
                   <details className="mt-3">
                     <summary className="cursor-pointer text-[0.72rem] uppercase tracking-[0.14em] text-ash hover:text-gold">
-                      Lihat teks ekstraksi
+                      Lihat Markdown kanonik
                     </summary>
                     <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[0.8rem] leading-5 text-ash/80">
                       {sourceText.slice(0, 4000)}
@@ -311,7 +317,7 @@ export default function UploadPage() {
               <ol className="mt-4 space-y-4">
                 <RitualStep n="01" title="Baca" body="Teks diekstrak lokal, lalu dikirim ke LLM." />
                 <RitualStep n="02" title="Petakan" body="Klaim dan daftar pustaka dipisah." />
-                <RitualStep n="03" title="Konfirmasi" body="Kamu periksa sebelum peta membeku." />
+                <RitualStep n="03" title="Kunci" body="Peta dikunci otomatis; langsung jadi dungeon." />
               </ol>
             </div>
 

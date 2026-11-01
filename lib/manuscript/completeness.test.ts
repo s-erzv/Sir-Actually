@@ -63,6 +63,36 @@ describe("checkCompleteness", () => {
     expect(result.missing).toContain("conclusion");
   });
 
+  it("menerima heading bernomor gaya PDF", () => {
+    const text = `
+1. Pendahuluan
+Penelitian ini membahas tata kelola TI.
+
+2. Tujuan Penelitian
+Menentukan prioritas objektif COBIT 2019.
+
+3. Metode Penelitian
+Studi kasus dengan wawancara.
+
+4. Hasil dan Pembahasan
+Tiga masalah utama ditemukan.
+
+5. Kesimpulan
+Prioritas jatuh pada DSS01.
+
+Daftar Pustaka
+
+[1] Anwar, S. (2021). Riset Pendidikan. Bandung: Alfabeta.
+`;
+    const result = checkCompleteness({
+      sourceText: text,
+      stage: "jurnal",
+      minReferences: null,
+    });
+    expect(result.missing).toEqual([]);
+    expect(result.referenceCount).toBe(1);
+  });
+
   it("memberi peringatan default tanpa memblokir skripsi 12 referensi", () => {
     const text = `${PROPOSAL}\nHasil\nTemuan utama.\n\nKesimpulan\nLiterasi cukup baik.`;
     const result = checkCompleteness({
@@ -77,6 +107,14 @@ describe("checkCompleteness", () => {
 });
 
 describe("parseBibliography", () => {
+  it("mengenali Daftar Rujukan yang menempel di baris kolom lain", () => {
+    const parsed = parseBibliography(
+      "komitmen manajemen Daftar Rujukan [1] ISACA, COBIT 2019. 2018. [2] Anwar, S. (2021). Riset Pendidikan. Bandung: Alfabeta.",
+    );
+    expect(parsed.sectionFound).toBe(true);
+    expect(parsed.entries.length).toBe(2);
+  });
+
   it("menghitung entri dengan tahun", () => {
     expect(parseBibliography(REFERENCES).entries).toHaveLength(12);
   });

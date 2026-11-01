@@ -68,7 +68,7 @@ export default function LoginPage() {
             <span className="text-gold">dungeon.</span>
           </h1>
           <p className="mt-5 max-w-md text-[0.95rem] leading-7 text-ash">
-            Naskah disimpan per akun. Satu akun, satu arsip naskah, satu
+            Naskah disimpan per akun. Satu akun, satu arsip ekspedisi, satu
             perjalanan untuk mempertanggungjawabkan setiap klaim.
           </p>
 
@@ -150,7 +150,7 @@ export default function LoginPage() {
                 disabled={busy}
                 className="pixel-button w-full border-gold bg-gold text-void hover:bg-bone"
               >
-                {busy ? "Memproses..." : mode === "login" ? "Masuk dungeon" : "Buat save file"}
+                {busy ? "Memproses..." : mode === "login" ? "Lanjutkan ekspedisi" : "Buat save baru"}
               </button>
             </form>
 
@@ -175,7 +175,7 @@ export default function LoginPage() {
                 }}
                 className="text-[0.72rem] font-bold uppercase tracking-[0.06em] text-ash hover:text-gold"
               >
-                {mode === "login" ? "Belum punya akun? Daftar" : "Sudah punya akun? Masuk"}
+                {mode === "login" ? "Belum punya save? Buat baru" : "Sudah punya save? Lanjutkan"}
               </button>
             </div>
           </div>
@@ -189,7 +189,7 @@ export default function LoginPage() {
       <footer className="border-t-2 border-void">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-5 py-5 text-[0.66rem] font-bold uppercase tracking-[0.08em] text-ash/60 sm:px-8">
           <span>Sir, Actually · Research boss battle</span>
-          <span className="text-ridge">Gerbang dungeon</span>
+          <span className="text-ash/60">Gerbang dungeon</span>
         </div>
       </footer>
     </main>

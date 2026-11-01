@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { bus } from "@/game/bus";
 import type { GameEvents } from "@/game/bus";
 import type {
@@ -8,109 +8,24 @@ import type {
   EvaluationResult,
   EncounterStatus,
 } from "@/lib/domain/types";
-import { BOSS_HP, MINION_HP, HEARTS_START } from "@/lib/balance";
+import { BOSS_HP, MINION_HP, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
+import { getWeapon, type Loadout } from "@/lib/loadout";
 import { getMonsterDisplayName } from "@/lib/monsters";
+import { authJson } from "@/lib/api/client";
 import { PixelSprite, spriteForWeakness } from "@/components/brand/PixelSprite";
 import HeartDisplay from "./HeartDisplay";
 import HpBar from "./HpBar";
 import ScoreBreakdown from "./ScoreBreakdown";
 import AdviceModal from "./AdviceModal";
 
-// ---------------------------------------------------------------------------
-// Dummy data for M2 (same as M1, but now backed by real judge pipeline)
-// ---------------------------------------------------------------------------
-
 type EncounterData = GameEvents["encounter:start"];
 
-const BOSS_NAMES: Record<string, string> = {
-  // Floor bosses (Canon roster)
-  "boss-floor-1": "Veylith — The Void Stalker",
-  "boss-floor-2": "Draeven — The Dreadfang",
-  "boss-floor-3": "Kryvax — The Twisted Brood",
-  "boss-floor-4": "Morvane — The Gravebound",
-  "boss-floor-5": "Nyxara — The Forgotten Keeper",
-  "boss-floor-6": "Eldravos — The Ancient Sovereign",
-  veylith: "Veylith — The Void Stalker",
-  draeven: "Draeven — The Dreadfang",
-  kryvax: "Kryvax — The Twisted Brood",
-  morvane: "Morvane — The Gravebound",
-  nyxara: "Nyxara — The Forgotten Keeper",
-  eldravos: "Eldravos — The Ancient Sovereign",
-  // Legacy aliases
-  gap_hunter: "Veylith — The Void Stalker",
-  aligner: "Draeven — The Dreadfang",
-  methodologist: "Kryvax — The Twisted Brood",
-  auditor: "Morvane — The Gravebound",
-  ghost: "Nyxara — The Forgotten Keeper",
-  sir_actually: "Eldravos — The Ancient Sovereign",
-  // Minions
-  "minion-varkul": "Varkul (Brutish beast)",
-  "minion-nethrix": "Nethrix (Shadow crawler)",
-  "minion-zorveth": "Zorveth (Armored creature)",
-  "minion-thalgrim": "Thalgrim (Stone guardian)",
-  "minion-xyrath": "Xyrath (Winged predator)",
-  "minion-othrak": "Othrak (Undead warrior)",
-  "minion-velmora": "Velmora (Cursed spirit)",
-  "minion-grivak": "Grivak (Small dungeon beast)",
-  minion: "Dungeon Minion",
-};
-
-// Map findingId → weaknessType (M2 dummy; replaced by DB lookup in M4)
-const FINDING_WEAKNESS: Record<string, WeaknessType> = {
-  "f1-gap":    "gap_unsupported",
-  "f1-cite":   "claim_without_citation",
-  "f1-obj":    "problem_objective_gap",
-  "f2-sample": "sample_unreported",
-  "f2-overc":  "conclusion_overclaim",
-};
-
-const DUMMY_QUESTIONS: Record<WeaknessType, string> = {
-  gap_unsupported:
-    "Gap penelitianmu diklaim ada, tapi referensi yang mendukungnya belum terlihat. Studi mana yang menunjukkan gap ini nyata dan belum dijawab?",
-  gap_answered_by_own_refs:
-    "Salah satu referensi yang kamu kutip sepertinya sudah menjawab gap yang kamu klaim. Bagaimana kamu menjelaskan perbedaannya?",
-  claim_without_citation:
-    "Kamu membuat klaim faktual tanpa sitasi. Dari mana klaim ini berasal?",
-  problem_objective_gap:
-    "Masalah yang kamu rumuskan tidak terhubung langsung ke tujuan penelitian. Bagaimana kamu menjelaskan hubungannya?",
-  objective_rq_mismatch:
-    "RQ-mu tidak selaras dengan tujuan yang dinyatakan. Bagaimana kamu menghubungkan keduanya?",
-  rq_method_mismatch:
-    "Metode yang kamu pilih sepertinya tidak sesuai untuk menjawab RQ-mu. Jelaskan alasanmu.",
-  sample_unreported:
-    "Ukuran sampelmu tidak dilaporkan. Berapa jumlah responden, dan apa alasan jumlah itu cukup untuk analisis yang kamu lakukan?",
-  generalization_beyond_sample:
-    "Kesimpulanmu tampak digeneralisasikan ke populasi yang lebih luas dari sampelmu. Bagaimana kamu membenarkan itu?",
-  limitation_missing:
-    "Penelitianmu tidak memiliki bagian keterbatasan yang memadai. Apa saja keterbatasan yang seharusnya kamu akui?",
-  conclusion_overclaim:
-    "Kesimpulanmu tampak melampaui apa yang datamu tunjukkan. Apa bukti yang mendukung klaim sekuat itu?",
-  objective_without_finding:
-    "Salah satu tujuanmu tidak memiliki temuan yang menjawabnya. Bagaimana kamu menjelaskannya?",
-  abstract_result_mismatch:
-    "Hasil di abstrakmu berbeda dari yang ada di bab hasil. Mana yang akurat?",
-  citation_not_found:
-    "Referensi ini tidak ditemukan di database akademik. Apakah detailnya sudah benar?",
-  citation_claim_mismatch:
-    "Referensi ini tidak mendukung klaim yang dilampirkan padanya. Bagaimana kamu membenarkan sitasi ini?",
-};
-
-const DUMMY_QUOTES: Record<WeaknessType, string> = {
-  gap_unsupported:        "The research gap is claimed but no supporting literature is cited.",
-  gap_answered_by_own_refs: "The gap is addressed in references already cited.",
-  claim_without_citation: "Studies show significant improvement (p < 0.05) without citing a source.",
-  problem_objective_gap:  "The stated problem does not match the declared research objectives.",
-  objective_rq_mismatch:  "Research questions do not align with stated objectives.",
-  rq_method_mismatch:     "The methodology does not address the research questions.",
-  sample_unreported:      "Sample size is not reported in the methodology section.",
-  generalization_beyond_sample: "The conclusion generalises findings beyond the sample population.",
-  limitation_missing:     "No limitations section is present in the manuscript.",
-  conclusion_overclaim:   "The conclusion generalises findings beyond the sample population.",
-  objective_without_finding: "Objective stated without a corresponding finding.",
-  abstract_result_mismatch: "Abstract states results not found in the results chapter.",
-  citation_not_found:     "Reference cannot be verified in academic databases.",
-  citation_claim_mismatch: "The cited reference does not support the claim it is attached to.",
-};
+function fallbackWeakness(bossSlug: string, provided?: WeaknessType): WeaknessType {
+  if (provided) return provided;
+  if (bossSlug === "nyxara") return "citation_claim_mismatch";
+  if (bossSlug === "eldravos") return "conclusion_overclaim";
+  return "gap_unsupported";
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -127,39 +42,126 @@ interface EncounterRuntimeState {
   lastEvaluation: EvaluationResult | null;
   showBreakdown: boolean;
   showAdvice: boolean;
+  question: string | null;
+  questionLoading: boolean;
+  questionError: string | null;
+  previousQuestions: string[];
+  previousAttackTypes: string[];
+  attackType: string | null;
+  lastAnswer: string;
+  lastWeapon: string | null;
+  lastPointsAwarded: number;
+  lastPointsTotal: number;
 }
 
 interface EncounterOverlayProps {
   hearts: number;
   onHeartsChange: (hearts: number) => void;
-  sourceText?: string;
-  knownCitations?: string[];
+  researchMapId: string;
+  loadout: Loadout;
+  heartsMax: number;
+  runId: string;
+  onPointsChange: (points: number) => void;
 }
 
 export default function EncounterOverlay({
   hearts,
   onHeartsChange,
-  sourceText = "",
-  knownCitations = [],
+  researchMapId,
+  loadout,
+  heartsMax,
+  runId,
+  onPointsChange,
 }: EncounterOverlayProps) {
   const [state, setState] = useState<EncounterRuntimeState | null>(null);
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [answerError, setAnswerError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adviceScores = useMemo(
+    () =>
+      state?.lastEvaluation?.scores.map((score) => ({
+        criterionId: score.criterionId,
+        level: score.level,
+      })) ?? [],
+    [state?.lastEvaluation],
+  );
+
+  const requestQuestion = useCallback(
+    async (
+      encounter: EncounterData,
+      previousQuestions: string[],
+      previousAttackTypes: string[],
+    ) => {
+      setState((prev) =>
+        prev && prev.encounter.encounterId === encounter.encounterId
+          ? {
+              ...prev,
+              question: null,
+              questionLoading: true,
+              questionError: null,
+              previousQuestions,
+              previousAttackTypes,
+            }
+          : prev,
+      );
+
+      try {
+        const payload = {
+          researchMapId,
+          bossSlug: encounter.bossSlug,
+          weaknessType: fallbackWeakness(encounter.bossSlug, encounter.weaknessType),
+          evidenceQuote: encounter.evidenceQuote ?? "",
+          previousQuestions,
+          previousAttackTypes,
+          isBoss: encounter.isBoss ?? encounter.bossSlug.startsWith("boss"),
+          ...(encounter.findingId ? { findingId: encounter.findingId } : {}),
+        };
+        const data = await authJson<{ question: string; attackType: string }>(
+          "/api/encounter/question",
+          { method: "POST", body: JSON.stringify(payload) },
+        );
+        setState((prev) =>
+          prev && prev.encounter.encounterId === encounter.encounterId
+            ? {
+                ...prev,
+                question: data.question,
+                attackType: data.attackType,
+                questionLoading: false,
+                questionError: null,
+              }
+            : prev,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Gagal membuat pertanyaan.";
+        setState((prev) =>
+          prev && prev.encounter.encounterId === encounter.encounterId
+            ? {
+                ...prev,
+                question: null,
+                questionLoading: false,
+                questionError: message,
+              }
+            : prev,
+        );
+      }
+    },
+    [researchMapId],
+  );
 
   // ── Bus listeners ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     const onStart = (data: EncounterData) => {
-      const wt: WeaknessType =
-        data.weaknessType ?? FINDING_WEAKNESS[data.findingId] ?? "gap_unsupported";
-      const isBoss = data.bossSlug.startsWith("boss");
+      const wt = fallbackWeakness(data.bossSlug, data.weaknessType);
+      const isBoss = data.isBoss ?? data.bossSlug.startsWith("boss");
       const hpMax = isBoss ? BOSS_HP : MINION_HP;
 
       setState({
         encounter: data,
         weaknessType: wt,
-        evidenceQuote: data.evidenceQuote || DUMMY_QUOTES[wt] || "",
+        evidenceQuote: data.evidenceQuote ?? "",
         hp: hpMax,
         hpMax,
         questionsAsked: 0,
@@ -167,14 +169,26 @@ export default function EncounterOverlay({
         lastEvaluation: null,
         showBreakdown: false,
         showAdvice: false,
+        question: null,
+        questionLoading: true,
+        questionError: null,
+        previousQuestions: [],
+        previousAttackTypes: [],
+        attackType: null,
+        lastAnswer: "",
+        lastWeapon: null,
+        lastPointsAwarded: 0,
+        lastPointsTotal: 0,
       });
       setAnswer("");
+      setAnswerError(null);
+      void requestQuestion(data, [], []);
       requestAnimationFrame(() => textareaRef.current?.focus());
     };
 
     bus.on("encounter:start", onStart);
     return () => bus.off("encounter:start", onStart);
-  }, []);
+  }, [requestQuestion]);
 
   // ── Resolve encounter (close overlay, emit bus event) ────────────────────
 
@@ -194,37 +208,38 @@ export default function EncounterOverlay({
   // ── Submit answer ─────────────────────────────────────────────────────────
 
   const handleSubmit = useCallback(async () => {
-    if (!state || submitting || answer.trim().length === 0) return;
+    if (!state || submitting || !state.question || answer.trim().length === 0) return;
     setSubmitting(true);
+    setAnswerError(null);
 
     try {
-      const res = await fetch("/api/encounter/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          encounterId:    state.encounter.encounterId,
-          findingId:      state.encounter.findingId,
-          bossSlug:       state.encounter.bossSlug,
-          weaknessType:   state.weaknessType,
-          answer,
-          evidenceQuote:  state.evidenceQuote,
-          isBoss:         state.encounter.bossSlug.startsWith("boss"),
-          hp:             state.hp,
-          hearts,
-          questionsAsked: state.questionsAsked,
-          sourceText,
-          knownCitations,
-        }),
-      });
-
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-
-      const data = (await res.json()) as {
+      const data = await authJson<{
         evaluation: EvaluationResult;
         newHp: number;
         newHearts: number;
         encounterStatus: EncounterStatus;
-      };
+        pointsAwarded: number;
+        pointsTotal: number;
+        weaponUsed: string | null;
+      }>("/api/encounter/answer", {
+        method: "POST",
+        body: JSON.stringify({
+          encounterId: state.encounter.encounterId,
+          researchMapId,
+          ...(state.encounter.findingId ? { findingId: state.encounter.findingId } : {}),
+          bossSlug: state.encounter.bossSlug,
+          weaknessType: state.weaknessType,
+          answer,
+          evidenceQuote: state.evidenceQuote,
+          isBoss: state.encounter.isBoss ?? state.encounter.bossSlug.startsWith("boss"),
+          hp: state.hp,
+          hearts,
+          questionsAsked: state.questionsAsked,
+          characterSlug: loadout.characterSlug,
+          weaponSlug: loadout.weaponSlug,
+          ...(runId ? { runId } : {}),
+        }),
+      });
 
       // Emit boss:hit for the shake + damage number animation
       bus.emit("boss:hit", {
@@ -233,6 +248,7 @@ export default function EncounterOverlay({
       });
 
       onHeartsChange(data.newHearts);
+      onPointsChange(data.pointsTotal);
 
       setState((prev) =>
         prev
@@ -242,6 +258,10 @@ export default function EncounterOverlay({
               questionsAsked: prev.questionsAsked + 1,
               status: data.encounterStatus,
               lastEvaluation: data.evaluation,
+              lastAnswer: answer,
+              lastWeapon: data.weaponUsed,
+              lastPointsAwarded: data.pointsAwarded,
+              lastPointsTotal: data.pointsTotal,
               showBreakdown: true,
               showAdvice: data.encounterStatus === "lost",
             }
@@ -249,11 +269,11 @@ export default function EncounterOverlay({
       );
       setAnswer("");
     } catch (err) {
-      console.error("answer submit failed:", err);
+      setAnswerError(err instanceof Error ? err.message : "Gagal menilai jawaban.");
     } finally {
       setSubmitting(false);
     }
-  }, [state, answer, submitting, hearts, onHeartsChange, sourceText, knownCitations]);
+  }, [state, answer, submitting, hearts, onHeartsChange, researchMapId, loadout, runId, onPointsChange]);
 
   // ── Continue after score breakdown ────────────────────────────────────────
 
@@ -268,12 +288,18 @@ export default function EncounterOverlay({
     } else if (status === "lost") {
       setState((prev) => prev ? { ...prev, showAdvice: true, showBreakdown: false } : null);
     } else {
-      // Still active — hide breakdown, let player answer next question
+      const previousQuestions = state.question
+        ? [...state.previousQuestions, state.question]
+        : state.previousQuestions;
+      const previousAttackTypes = state.attackType
+        ? [...state.previousAttackTypes, state.attackType]
+        : state.previousAttackTypes;
       setState((prev) =>
         prev ? { ...prev, showBreakdown: false, lastEvaluation: null } : null,
       );
+      void requestQuestion(state.encounter, previousQuestions, previousAttackTypes);
     }
-  }, [state, resolveEncounter]);
+  }, [state, resolveEncounter, requestQuestion]);
 
   // ── Objection! ────────────────────────────────────────────────────────────
 
@@ -288,10 +314,10 @@ export default function EncounterOverlay({
     if (!state) return;
     // Close the encounter overlay first, then signal Phaser to reset the floor
     resolveEncounter("fled");
-    onHeartsChange(HEARTS_START);
+    onHeartsChange(heartsMax);
     bus.emit("floor:retry", undefined);
     bus.emit("hearts:reset", undefined);
-  }, [state, resolveEncounter, onHeartsChange]);
+  }, [state, resolveEncounter, onHeartsChange, heartsMax]);
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
 
@@ -315,16 +341,21 @@ export default function EncounterOverlay({
     showAdvice,
   } = state;
 
-  const question      = DUMMY_QUESTIONS[weaknessType] ?? "Defend your research.";
-  const bossName      = getMonsterDisplayName(encounter.bossSlug) || BOSS_NAMES[encounter.bossSlug] || "Examiner";
-  const isBoss        = encounter.bossSlug.startsWith("boss");
+  const bossName      = getMonsterDisplayName(encounter.bossSlug) || "Examiner";
+  const isBoss        = encounter.isBoss ?? encounter.bossSlug.startsWith("boss");
 
   // Show Kitab Nasihat
   if (showAdvice) {
     return (
       <AdviceModal
+        researchMapId={researchMapId}
+        findingId={state.encounter.findingId || undefined}
+        bossSlug={state.encounter.bossSlug}
         weaknessType={weaknessType}
         evidenceQuote={evidenceQuote}
+        playerAnswer={state.lastAnswer}
+        missing={state.lastEvaluation?.missing ?? ""}
+        scores={adviceScores}
         onRetry={handleRetry}
         onRevise={() => {}} // disabled in M2
       />
@@ -332,91 +363,236 @@ export default function EncounterOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/85 px-4 backdrop-blur-sm">
-      <div className={`${isBoss ? "pixel-panel-gold" : "pixel-panel"} max-h-[90vh] w-full max-w-lg overflow-y-auto p-4 sm:p-6`}>
-        <div className="flex items-start gap-3 border-b-2 border-void pb-4">
-          <div className="tile-floor grid h-24 w-24 shrink-0 place-items-end justify-items-center border-2 border-void pb-2">
-            <PixelSprite kind={spriteForWeakness(weaknessType)} size={78} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-pixel text-[0.55rem] leading-4 text-gold">
-              Lantai {encounter.floor} · Ruang {encounter.room + 1}
-            </p>
-            <h2 className={`mt-1 text-2xl font-bold leading-tight ${isBoss ? "text-blood" : "text-gold"}`}>
-              {bossName}
-            </h2>
-            <p className="mt-1 text-[0.68rem] font-bold uppercase tracking-[0.07em] text-ash">
-              {isBoss ? "Boss" : "Minion"} · {statusLabel(status)}
-            </p>
-          </div>
+    <div className="game-fade fixed inset-0 z-50 flex items-center justify-center bg-[#05080b]/88 px-3 py-4 backdrop-blur-[3px]">
+      <div
+        className={`game-screen-in max-h-[94vh] w-full max-w-3xl overflow-y-auto border-2 bg-[#0a0f14] shadow-[8px_8px_0_#05080b] ${
+          isBoss ? "border-gold" : "border-ridge"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3 border-b-2 border-void bg-tomb px-3 py-2">
+          <span className="font-pixel text-[0.54rem] text-gold">
+            PERTARUNGAN · LANTAI {encounter.floor} · RUANG {encounter.room + 1}
+          </span>
+          <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash">
+            {statusLabel(status)}
+          </span>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3">
-          <HpBar hp={hp} hpMax={hpMax} />
-          <div className="flex items-center justify-between gap-3">
-            <HeartDisplay hearts={hearts} />
-            {status === "won" && <span className="text-[0.66rem] font-bold uppercase tracking-[0.08em] text-moss">Ditaklukkan</span>}
-            {status === "conceded" && <span className="text-[0.66rem] font-bold uppercase tracking-[0.08em] text-gold">Ruang berakhir</span>}
-          </div>
-        </div>
+        <div className="grid gap-0 lg:grid-cols-[0.82fr_1.18fr]">
+          <aside className="tile-floor relative flex flex-row items-center gap-4 border-b-2 border-void p-4 lg:flex-col lg:items-stretch lg:border-b-0 lg:border-r-2">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(233,184,93,0.14),transparent_65%)]" aria-hidden="true" />
 
-        {showBreakdown && lastEvaluation && (
-          <div className="mt-4 border-2 border-void bg-void/55 p-3 shadow-[inset_0_0_0_1px_#34424e]">
-            <ScoreBreakdown evaluation={lastEvaluation} weaknessType={weaknessType} />
-            <div className="mt-3 flex justify-end">
-              <button
-                onClick={handleContinue}
-                className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
-              >
-                {status === "won"
-                  ? "Selesai"
-                  : status === "conceded"
-                    ? "Lanjut"
-                    : status === "lost"
-                      ? "Lihat nasihat"
-                      : "Pertanyaan berikutnya"}
-              </button>
+            <div className="relative mx-auto grid h-28 w-24 shrink-0 place-items-end justify-items-center border-2 border-void bg-[#0a0f14]/70 pb-2 lg:h-36 lg:w-32">
+              <PixelSprite kind={spriteForWeakness(weaknessType)} size={isBoss ? 92 : 74} />
+              {showBreakdown && lastEvaluation ? (
+                <span
+                  key={`${lastEvaluation.damage}-${state.questionsAsked}`}
+                  className={`damage-pop absolute -right-2 top-2 border-2 border-void px-2 py-1 font-pixel text-sm font-bold shadow-[3px_3px_0_#05080b] ${
+                    lastEvaluation.damage > 0
+                      ? "bg-blood text-void"
+                      : "bg-ridge text-bone"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {lastEvaluation.damage > 0 ? `-${lastEvaluation.damage}` : "MISS"}
+                </span>
+              ) : null}
             </div>
-          </div>
-        )}
 
-        {!showBreakdown && status === "active" && (
-          <>
-            {evidenceQuote && (
-              <blockquote className="mt-4 border-l-2 border-gold/60 bg-void/45 py-2 pl-3 text-sm leading-6 text-ash">
-                {evidenceQuote}
+            <div className="relative min-w-0 flex-1">
+              <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-ash">
+                {isBoss ? "BOSS" : "ANTEK"}
+              </p>
+              <h2 className={`mt-1 text-xl font-bold leading-tight sm:text-2xl ${isBoss ? "text-blood" : "text-gold"}`}>
+                {bossName}
+              </h2>
+              <div className="mt-3">
+                <HpBar hp={hp} hpMax={hpMax} />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1" aria-label={`Serangan ${state.questionsAsked}`}>
+                  {Array.from({ length: isBoss ? MAX_QUESTIONS_BOSS : MAX_QUESTIONS_MINION }).map((_, index) => (
+                    <span
+                      key={index}
+                      className="turn-pip"
+                      data-used={index < state.questionsAsked}
+                      aria-hidden="true"
+                    />
+                  ))}
+                </div>
+                <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash">
+                  Serangan {state.questionsAsked}/{isBoss ? MAX_QUESTIONS_BOSS : MAX_QUESTIONS_MINION}
+                </span>
+              </div>
+              <div className="mt-3">
+                <HeartDisplay hearts={hearts} heartsMax={heartsMax} />
+              </div>
+            </div>
+          </aside>
+
+          <section className="p-4 sm:p-5">
+            {evidenceQuote ? (
+              <blockquote className="border-l-2 border-gold/70 bg-void/55 py-2 pl-3 text-[0.8rem] leading-6 text-ash">
+                <span className="mb-1 block font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-gold">
+                  Kutipan yang diserang
+                </span>
+                “{evidenceQuote}”
               </blockquote>
-            )}
+            ) : null}
 
-            <p className="mt-4 text-[0.95rem] leading-7 text-bone">{question}</p>
+            {showBreakdown && lastEvaluation ? (
+              <div className="game-rise mt-4 border-2 border-void bg-void/55 p-3 shadow-[inset_0_0_0_1px_#34424e]">
+                {state.lastWeapon ? (
+                  <p className="mb-2 flex items-center justify-between gap-2 border-b border-ridge/40 pb-2 text-[0.58rem] font-bold uppercase tracking-[0.08em]">
+                    <span className="text-ash">Senjata otomatis</span>
+                    <span className="text-gold">
+                      {getWeapon(state.lastWeapon)?.name ?? state.lastWeapon}
+                    </span>
+                  </p>
+                ) : null}
+                <ScoreBreakdown evaluation={lastEvaluation} weaknessType={weaknessType} />
 
-            <textarea
-              ref={textareaRef}
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={4}
-              placeholder="Tulis jawabanmu..."
-              className="pixel-input mt-4 resize-none"
-            />
+                {state.lastPointsAwarded > 0 ? (
+                  <div className="reward-burst relative mt-3 overflow-hidden border-2 border-gold/70 bg-gold/10 p-3 text-center">
+                    <span className="reward-spark reward-spark-a" aria-hidden="true" />
+                    <span className="reward-spark reward-spark-b" aria-hidden="true" />
+                    <span className="reward-spark reward-spark-c" aria-hidden="true" />
+                    <p className="font-pixel text-[0.5rem] uppercase tracking-[0.14em] text-gold">
+                      Harta karun
+                    </p>
+                    <div className="mt-1 flex items-center justify-center gap-2">
+                      <PixelSprite kind="chest" size={34} />
+                      <span className="reward-amount font-pixel text-2xl font-bold text-gold">
+                        +{state.lastPointsAwarded} POIN
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash">
+                      Total {state.lastPointsTotal} poin
+                    </p>
+                  </div>
+                ) : null}
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button
-                onClick={handleObjection}
-                className="pixel-button pixel-button-sm border-ember/60 bg-ember/10 text-ember hover:bg-ember hover:text-void"
-              >
-                Objection!
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={answer.trim().length === 0 || submitting}
-                className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
-              >
-                {submitting ? "Menilai..." : "Kirim jawaban"}
-              </button>
-            </div>
-          </>
-        )}
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="text-[0.6rem] font-bold uppercase tracking-[0.08em] text-ash">
+                    {lastEvaluation.heartLost ? "Heart berkurang" : "Heart aman"}
+                  </span>
+                  <button
+                    onClick={handleContinue}
+                    className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
+                  >
+                    {status === "won"
+                      ? "Selesai"
+                      : status === "conceded"
+                        ? "Lanjut"
+                        : status === "lost"
+                          ? "Lihat nasihat"
+                          : "Serangan berikutnya"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!showBreakdown && status === "active" ? (
+              <div className="mt-4">
+                {state.questionLoading ? (
+                  <div className="border-2 border-void bg-void/50 p-4">
+                    <p className="flex items-center gap-2 font-pixel text-[0.54rem] text-gold">
+                      <span className="h-2 w-2 animate-flicker bg-ember" aria-hidden="true" />
+                      PENGUJI MENYUSUN SERANGAN
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-ash">Dengarkan baik-baik...</p>
+                  </div>
+                ) : null}
+
+                {state.questionError ? (
+                  <div className="border-2 border-ember/50 bg-ember/10 p-3 text-sm text-ember">
+                    <p>{state.questionError}</p>
+                    <button
+                      onClick={() => void requestQuestion(state.encounter, state.previousQuestions, state.previousAttackTypes)}
+                      className="pixel-button pixel-button-sm mt-3 border-ember text-ember hover:bg-ember hover:text-void"
+                    >
+                      Coba lagi
+                    </button>
+                  </div>
+                ) : null}
+
+                {state.question ? (
+                  <div className="game-rise border-2 border-ridge/70 bg-[#111920] p-3">
+                    <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-gold">
+                      {bossName.split(" — ")[0]} menyerang
+                    </p>
+                    <p className="mt-2 text-[0.95rem] leading-7 text-bone">{state.question}</p>
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid grid-cols-3 gap-1.5" aria-hidden="true">
+                  <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
+                    Klaim
+                  </span>
+                  <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
+                    Bukti
+                  </span>
+                  <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
+                    Batas
+                  </span>
+                </div>
+
+                <textarea
+                  ref={textareaRef}
+                  value={answer}
+                  maxLength={1200}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={4}
+                  placeholder="Serang dengan bukti dari naskah..."
+                  className="pixel-input mt-2 resize-none"
+                  aria-label="Jawabanmu"
+                />
+
+                <div className="mt-2 flex items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em] text-ash/70">
+                  <span>Bukti lebih kuat daripada gaya bahasa</span>
+                  <span>{answer.length}/1200</span>
+                </div>
+
+                {answerError ? (
+                  <p className="mt-3 text-sm leading-6 text-ember">{answerError}</p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    onClick={handleObjection}
+                    className="pixel-button pixel-button-sm border-ember/60 bg-ember/10 text-ember hover:bg-ember hover:text-void"
+                    title="Tandai temuan ini salah. Tidak memotong Heart."
+                  >
+                    Objection!
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={
+                      answer.trim().length === 0 ||
+                      submitting ||
+                      !state.question ||
+                      state.questionLoading ||
+                      Boolean(state.questionError)
+                    }
+                    className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
+                  >
+                    {submitting ? "Menilai..." : "Serang ⚔"}
+                  </button>
+                </div>
+                <p className="mt-2 text-[0.6rem] leading-4 text-ash/70">
+                  Minimal tulis satu kalimat. Jawaban kosong tidak memotong Heart.
+                </p>
+              </div>
+            ) : null}
+
+            {!showBreakdown && status === "won" ? (
+              <p className="mt-4 border-2 border-moss/50 bg-moss/10 p-3 text-sm font-bold text-moss">
+                Monster tumbang. Ruang terbuka.
+              </p>
+            ) : null}
+          </section>
+        </div>
       </div>
     </div>
   );

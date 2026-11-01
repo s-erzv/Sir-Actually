@@ -3,12 +3,23 @@
 import { useEffect, useState } from "react";
 import { bus } from "@/game/bus";
 import { HEARTS_START } from "@/lib/balance";
-import type { FloorMap } from "@/lib/domain/types";
+import type { DungeonDimension, FloorMap } from "@/lib/domain/types";
 
 interface GameHudProps {
   floorMap: FloorMap;
   hearts: number;
+  heartsMax?: number;
+  points?: number;
 }
+
+const DIMENSION_NAMES: Record<DungeonDimension, string> = {
+  gap: "Veylith · Gap Hunter",
+  align: "Draeven · The Aligner",
+  method: "Kryvax · Methodologist",
+  audit: "Morvane · The Auditor",
+  ghost: "Nyxara · Ghost Library",
+  throne: "Eldravos · Final Boss",
+};
 
 const FLOOR_NAMES = [
   "",
@@ -20,26 +31,40 @@ const FLOOR_NAMES = [
   "Eldravos · Final Boss",
 ];
 
-export default function GameHud({ floorMap, hearts }: GameHudProps) {
+export default function GameHud({ floorMap, hearts, heartsMax = HEARTS_START, points = 0 }: GameHudProps) {
   const [roomCurrent, setRoomCurrent] = useState(0);
+  const [resolvedRooms, setResolvedRooms] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const onEncounterStart = (evt: { room: number }) => {
       setRoomCurrent(evt.room);
     };
+    const onEncounterEnd = () => {
+      setResolvedRooms((current) => new Set(current).add(roomCurrent));
+    };
     const onFloorRetry = () => {
       setRoomCurrent(0);
+      setResolvedRooms(new Set());
     };
 
     bus.on("encounter:start", onEncounterStart);
+    bus.on("encounter:end", onEncounterEnd);
     bus.on("floor:retry", onFloorRetry);
     return () => {
       bus.off("encounter:start", onEncounterStart);
+      bus.off("encounter:end", onEncounterEnd);
       bus.off("floor:retry", onFloorRetry);
     };
-  }, []);
+  }, [roomCurrent]);
 
-  const floorName = FLOOR_NAMES[floorMap.floorOrder] ?? `Lantai ${floorMap.floorOrder}`;
+  useEffect(() => {
+    setRoomCurrent(0);
+    setResolvedRooms(new Set());
+  }, [floorMap]);
+
+  const floorName = floorMap.dimension
+    ? DIMENSION_NAMES[floorMap.dimension]
+    : (FLOOR_NAMES[floorMap.floorOrder] ?? `Lantai ${floorMap.floorOrder}`);
 
   return (
     <div
@@ -53,15 +78,32 @@ export default function GameHud({ floorMap, hearts }: GameHudProps) {
         </span>
       </div>
       <div className="mt-1.5 truncate text-[0.7rem] font-bold text-bone">{floorName}</div>
+      <div className="mt-1.5 flex gap-0.5" aria-label={`${resolvedRooms.size} dari ${floorMap.rooms.length} ruang selesai`}>
+        {floorMap.rooms.map((room, index) => (
+          <span
+            key={room.id}
+            className={`h-1.5 flex-1 border border-void ${
+              resolvedRooms.has(index)
+                ? "bg-moss"
+                : index === roomCurrent
+                  ? "bg-gold"
+                  : "bg-ridge/60"
+            }`}
+            aria-hidden="true"
+          />
+        ))}
+      </div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex gap-1" aria-label={`${hearts} nyawa tersisa`}>
-          {Array.from({ length: HEARTS_START }).map((_, i) => (
-            <span key={i} className={i < hearts ? "text-blood" : "text-ridge/60"}>
+          {Array.from({ length: heartsMax }).map((_, i) => (
+            <span key={i} className={i < hearts ? "text-blood" : "text-ash/35"}>
               <Heart />
             </span>
           ))}
         </div>
-        <span className="font-pixel text-[0.46rem] text-ash">HP</span>
+        <span key={points} className="points-pop font-pixel text-[0.46rem] text-ash">
+          {points} poin
+        </span>
       </div>
     </div>
   );

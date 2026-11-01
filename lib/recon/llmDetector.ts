@@ -7,6 +7,7 @@ import {
   buildFindingsPrompt,
 } from "@/lib/prompts/findings_v1";
 import type { ClaimInput, CodeFindingDraft } from "./codeDetectors";
+import { quoteInChunks } from "@/lib/rag/validate";
 
 const OUTPUT_SCHEMA = z.object({
   findings: z
@@ -31,7 +32,6 @@ export interface LlmFindingInput {
   citations: string[];
   chunks: Array<{ section: string | null; text: string }>;
   alreadyDetected: Array<{ weaknessType: string; evidenceQuote: string }>;
-  sourceText: string;
 }
 
 function normalize(text: string): string {
@@ -65,7 +65,6 @@ export async function detectLlmFindings(
     );
   }
 
-  const source = normalize(input.sourceText);
   const seen = new Set(
     input.alreadyDetected.map(
       (finding) => `${finding.weaknessType}|${normalize(finding.evidenceQuote).toLowerCase()}`,
@@ -77,7 +76,7 @@ export async function detectLlmFindings(
 
   for (const finding of parsed.data.findings) {
     const quote = normalize(finding.evidence_quote);
-    if (!source.includes(quote)) {
+    if (!quoteInChunks(quote, input.chunks)) {
       discarded++;
       continue;
     }

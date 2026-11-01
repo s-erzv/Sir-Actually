@@ -48,14 +48,23 @@ export interface Database {
           id: string;
           display_name: string | null;
           created_at: string;
+          points_earned: number;
+          points_spent: number;
+          unlocked_characters: string[];
         };
         Insert: {
           id: string;
           display_name?: string | null;
           created_at?: string;
+          points_earned?: number;
+          points_spent?: number;
+          unlocked_characters?: string[];
         };
         Update: {
           display_name?: string | null;
+          points_earned?: number;
+          points_spent?: number;
+          unlocked_characters?: string[];
         };
       };
       manuscripts: {
@@ -364,6 +373,14 @@ export interface Database {
           hearts_left: number;
           rubric_version: string;
           model_version: string;
+          character_slug: string | null;
+          weapon_slug: string | null;
+          points_total: number;
+          points_credited: boolean;
+          rank: string | null;
+          dungeon_tier: string | null;
+          floor_count: number | null;
+          dungeon_title: string | null;
           started_at: string;
           finished_at: string | null;
         };
@@ -376,13 +393,52 @@ export interface Database {
           hearts_left: number;
           rubric_version: string;
           model_version: string;
+          character_slug?: string | null;
+          weapon_slug?: string | null;
+          points_total?: number;
+          points_credited?: boolean;
+          rank?: string | null;
+          dungeon_tier?: string | null;
+          floor_count?: number | null;
+          dungeon_title?: string | null;
           started_at?: string;
           finished_at?: string | null;
         };
         Update: {
           status?: "active" | "finished" | "closed_revised";
           hearts_left?: number;
+          character_slug?: string | null;
+          weapon_slug?: string | null;
+          points_total?: number;
+          points_credited?: boolean;
+          rank?: string | null;
+          dungeon_tier?: string | null;
+          floor_count?: number | null;
+          dungeon_title?: string | null;
           finished_at?: string | null;
+        };
+      };
+      run_points_events: {
+        Row: {
+          id: string;
+          run_id: string;
+          kind: string;
+          encounter_key: string | null;
+          seq: number;
+          amount: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          kind: string;
+          encounter_key?: string | null;
+          seq?: number;
+          amount: number;
+          created_at?: string;
+        };
+        Update: {
+          amount?: number;
         };
       };
       encounters: {

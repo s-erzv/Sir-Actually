@@ -11,7 +11,7 @@
  * - heartLost iff scoreTotal ≤ HEART_LOSS_MAX_SCORE (1)
  */
 
-import { HIT_CAP, HEART_LOSS_MAX_SCORE, BOSS_HP, MINION_HP } from "@/lib/balance";
+import { HIT_CAP, HIT_CAP_CEILING, HEART_LOSS_MAX_SCORE, BOSS_HP, MINION_HP } from "@/lib/balance";
 
 /**
  * Compute damage dealt by one answer.
@@ -26,9 +26,12 @@ export function computeDamage(
   scoreMax: number,
   isBoss: boolean,
   hpMax: number,
+  weaponBonus = 1,
 ): number {
   if (scoreMax <= 0 || hpMax <= 0) return 0;
-  const cap = isBoss ? HIT_CAP.boss : HIT_CAP.minion;
+  const baseCap = isBoss ? HIT_CAP.boss : HIT_CAP.minion;
+  const maxCap = isBoss ? HIT_CAP_CEILING.boss : HIT_CAP_CEILING.minion;
+  const cap = Math.min(baseCap * weaponBonus, maxCap);
   const raw = (scoreTotal / scoreMax) * cap * hpMax;
   return Math.max(0, Math.floor(raw));
 }

@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { bus } from "@/game/bus";
 import { TILE_SIZE, TileCode, isSolid } from "@/game/map/tiles";
-import { FRAME_PLAYER } from "@/game/map/tileFrames";
+import { playerFrameFor } from "@/game/map/tileFrames";
 import type { FloorMap } from "@/lib/domain/types";
 import type { Monster } from "./Monster";
 
@@ -41,6 +41,7 @@ export class Player {
     worldY: number,
     _layer: Phaser.Tilemaps.TilemapLayer,  // kept for API compat; collision via floorMap
     floorMap: FloorMap,
+    characterSlug?: string | null,
   ) {
     this.scene = scene;
     this.floorMap = floorMap;
@@ -48,7 +49,13 @@ export class Player {
     this.tileX = Math.floor(worldX / TILE_SIZE);
     this.tileY = Math.floor(worldY / TILE_SIZE);
 
-    this.sprite = scene.add.image(worldX, worldY, "tiles", FRAME_PLAYER);
+    const artKey = `char-${characterSlug ?? "arka"}`;
+    if (scene.textures.exists(artKey)) {
+      this.sprite = scene.add.image(worldX, worldY, artKey);
+      this.sprite.setScale(0.5);
+    } else {
+      this.sprite = scene.add.image(worldX, worldY, "tiles", playerFrameFor(characterSlug));
+    }
     this.sprite.setOrigin(0.5, 0.5).setDepth(10);
 
     if (scene.input.keyboard) {
@@ -64,6 +71,10 @@ export class Player {
     // Lock/unlock input when encounter overlay opens/closes
     bus.on("encounter:start", () => { this.inputLocked = true; });
     bus.on("encounter:end",   () => { this.inputLocked = false; });
+
+    // Floor intro and pause menu also freeze movement
+    bus.on("game:pause", () => { this.inputLocked = true; });
+    bus.on("game:resume", () => { this.inputLocked = false; });
   }
 
   /** Teleport to a tile position immediately (used on floor:retry). */
@@ -98,6 +109,14 @@ export class Player {
       return;
     }
 
+    if (code === TileCode.STAIRS) {
+      if (monsters.every((monster) => monster.resolved)) {
+        this.inputLocked = true;
+        bus.emit("stairs:reach", { floor: this.floorMap.floorOrder });
+      }
+      return;
+    }
+
     // Check if stepping into a monster tile
     const hitMonster = monsters.find(
       (m) => !m.resolved && m.tileX === nx && m.tileY === ny,
@@ -110,6 +129,7 @@ export class Player {
         bossSlug:    hitMonster.bossSlug,
         floor:       hitMonster.floor,
         room:        hitMonster.roomIndex,
+        isBoss:      hitMonster.isBoss,
         weaknessType: hitMonster.weaknessType,
         evidenceQuote: hitMonster.evidenceQuote,
       });
@@ -121,22 +141,10 @@ export class Player {
 
   private readDirection(): Direction | null {
     if (!this.scene.input.keyboard) return null;
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.up)
-    ) return "up";
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.down) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.down)
-    ) return "down";
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.left) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.left)
-    ) return "left";
-    if (
-      Phaser.Input.Keyboard.JustDown(this.cursors.right) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.right)
-    ) return "right";
+    if (this.cursors.up.isDown || this.wasd.up.isDown) return "up";
+    if (this.cursors.down.isDown || this.wasd.down.isDown) return "down";
+    if (this.cursors.left.isDown || this.wasd.left.isDown) return "left";
+    if (this.cursors.right.isDown || this.wasd.right.isDown) return "right";
     return null;
   }
 

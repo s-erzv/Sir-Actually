@@ -5,9 +5,10 @@ import type { FloorMap } from "@/lib/domain/types";
 
 interface PhaserGameProps {
   floorMap: FloorMap;
+  characterSlug?: string;
 }
 
-export default function PhaserGame({ floorMap }: PhaserGameProps) {
+export default function PhaserGame({ floorMap, characterSlug }: PhaserGameProps) {
   const gameRef = useRef<import("phaser").Game | null>(null);
 
   useEffect(() => {
@@ -36,8 +37,9 @@ export default function PhaserGame({ floorMap }: PhaserGameProps) {
         },
       });
 
-      // Pass floorMap to DungeonScene via the registry so it's available in init()
+      // Pass floorMap and the chosen character to DungeonScene via the registry.
       game.registry.set("floorMap", floorMap);
+      game.registry.set("characterSlug", characterSlug);
       gameRef.current = game;
     })();
 
@@ -45,7 +47,7 @@ export default function PhaserGame({ floorMap }: PhaserGameProps) {
       game?.destroy(true);
       gameRef.current = null;
     };
-  }, [floorMap]);
+  }, [floorMap, characterSlug]);
 
   // The Phaser canvas is mounted inside #game-root — no extra DOM element needed.
   return null;

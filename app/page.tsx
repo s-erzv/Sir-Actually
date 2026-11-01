@@ -13,15 +13,29 @@ const STEPS = [
   {
     number: "02",
     title: "Kunci peta",
-    body: "Periksa setiap klaim dan kutipan. Setelah dikonfirmasi, Research Map membeku jadi dungeon yang jujur.",
+    body: "Peta dikunci otomatis. Kamu tidak perlu menyetujui apa pun; langsung lihat denah dungeon.",
     tag: "VERIFY",
     sprite: "key" as SpriteKind,
   },
   {
     number: "03",
-    title: "Masuk ruang boss",
-    body: "Temuan berubah jadi monster. Pertahankan argumenmu, jawab pertanyaan, jangan kehilangan hati.",
-    tag: "BATTLE",
+    title: "Recon",
+    body: "Server memburu celah sitasi, gap argumen, dan klaim yang melampaui data. Setiap temuan jadi monster.",
+    tag: "SCAN",
+    sprite: "references" as SpriteKind,
+  },
+  {
+    number: "04",
+    title: "Pilih karakter",
+    body: "Tiga penjaga, enam senjata. Pilih gaya bertahanmu sebelum pintu pertama terbuka.",
+    tag: "LOADOUT",
+    sprite: "hero" as SpriteKind,
+  },
+  {
+    number: "05",
+    title: "Turun",
+    body: "Jelajahi ruang, tabrak monster, dan jawab serangan penguji. Hati habis, ekspedisi berakhir.",
+    tag: "DUNGEON",
     sprite: "sir" as SpriteKind,
   },
 ];
@@ -110,15 +124,15 @@ export default function Home() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="pixel-chip border-gold/50 bg-gold/10 text-gold">
-              Level 01 · Research boss battle
+              Ekspedisi 01 · Research boss battle
             </span>
-            <span className="pixel-chip">M5 · dungeon nyata</span>
+            <span className="pixel-chip">Save file · dungeon nyata</span>
           </div>
 
-          <h1 className="mt-6 font-pixel text-[2.2rem] font-bold uppercase leading-[1.12] tracking-[-0.02em] text-bone title-glow sm:text-[3.1rem] lg:text-[3.65rem]">
+          <h1 className="mt-6 font-pixel text-[1.9rem] font-bold uppercase leading-[1.18] text-bone sm:text-[2.5rem] lg:text-[2.85rem]">
             Naskahmu
             <br />
-            <span className="text-gold text-gold-glow">punya boss.</span>
+            <span className="text-gold">punya boss.</span>
           </h1>
 
           <p className="mt-6 max-w-xl text-[0.98rem] leading-7 text-ash">
@@ -132,24 +146,29 @@ export default function Home() {
               href="/dashboard"
               className="pixel-button border-gold bg-gold text-void hover:bg-bone"
             >
-              Masuk dungeon
+              Mulai ekspedisi
               <span aria-hidden="true" className="text-base leading-none">
-                →
+                ▶
               </span>
             </Link>
             <a
               href="#cara-kerja"
               className="pixel-button border-ridge bg-tomb/80 text-bone hover:border-rune hover:text-gold"
             >
-              Lihat jalur
+              Lihat alur
             </a>
           </div>
 
           <div className="mt-9 grid max-w-xl grid-cols-3 gap-2">
             <Stat value="6" label="Boss" />
-            <Stat value="14" label="Jenis temuan" />
-            <Stat value="3" label="Tahap recon" />
+            <Stat value="3" label="Karakter" />
+            <Stat value="5" label="Pos ekspedisi" />
           </div>
+
+          <p className="mt-4 flex items-center gap-2 text-[0.66rem] font-bold uppercase tracking-[0.08em] text-ash/70">
+            <span className="h-2 w-2 animate-flicker bg-moss" />
+            Naskah → peta → recon → karakter → dungeon
+          </p>
         </div>
 
         <DungeonPreview />
@@ -177,24 +196,24 @@ export default function Home() {
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div className="max-w-2xl">
             <p className="eyebrow">Jalur dungeon</p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight text-bone sm:text-4xl">
-              Tiga ruang. Satu naskah. Banyak alasan.
+            <h2 className="mt-3 font-pixel text-xl font-bold uppercase leading-[1.25] text-bone sm:text-2xl">
+              Lima pos. Satu naskah. Banyak alasan.
             </h2>
             <p className="mt-3 max-w-xl text-[0.95rem] leading-7 text-ash">
-              Bukan chatbot yang menilai gaya bahasa. Ini dungeon yang menuntut
+              Bukan chatbot yang menilai gaya bahasa. Ini ekspedisi yang menuntut
               bukti dari klaim yang benar-benar kamu tulis.
             </p>
           </div>
-          <span className="pixel-chip border-gold/40 text-gold">Rute utama</span>
+          <span className="pixel-chip border-gold/40 text-gold">Rute ekspedisi</span>
         </div>
 
-        <div className="relative mt-10 grid gap-4 md:grid-cols-3">
+        <div className="relative mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div
-            className="absolute left-[12%] right-[12%] top-14 hidden border-t-2 border-dashed border-ridge/80 md:block"
+            className="absolute left-[8%] right-[8%] top-14 hidden border-t-2 border-dashed border-ridge/80 lg:block"
             aria-hidden="true"
           />
           {STEPS.map((step) => (
-            <article key={step.number} className="pixel-panel-soft relative p-5">
+            <article key={step.number} className="pixel-panel-soft relative p-4">
               <div className="flex items-start justify-between gap-4">
                 <span className="font-pixel text-[0.7rem] font-bold text-gold">
                   ROOM {step.number}
@@ -204,12 +223,12 @@ export default function Home() {
               <div className="tile-floor mt-4 flex h-24 items-end justify-center border-2 border-void">
                 <PixelSprite
                   kind={step.sprite}
-                  size={54}
+                  size={58}
                   className="relative -mb-1 drop-shadow-[0_5px_0_rgba(0,0,0,0.45)]"
                 />
               </div>
-              <h3 className="mt-4 text-lg font-bold text-bone">{step.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-ash">{step.body}</p>
+              <h3 className="mt-3 font-pixel text-sm font-bold text-bone">{step.title}</h3>
+              <p className="mt-2 text-[0.78rem] leading-5 text-ash">{step.body}</p>
             </article>
           ))}
         </div>
@@ -220,7 +239,7 @@ export default function Home() {
           <div className="flex flex-wrap items-end justify-between gap-5">
             <div className="max-w-2xl">
               <p className="eyebrow">Bestiary</p>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-bone sm:text-4xl">
+              <h2 className="mt-3 font-pixel text-xl font-bold uppercase leading-[1.25] text-bone sm:text-2xl">
                 Penghuni dungeon.
               </h2>
               <p className="mt-3 text-[0.95rem] leading-7 text-ash">
@@ -239,24 +258,39 @@ export default function Home() {
                   boss.sprite === "sir" ? "ring-2 ring-gold/60" : ""
                 }`}
               >
-                <div className="tile-floor relative flex h-36 items-end justify-center border-b-2 border-void">
+                <div className="tile-floor relative flex h-44 items-end justify-center border-b-2 border-void">
+                  <span className="pointer-events-none absolute left-2 top-2 h-3 w-3 border-l-2 border-t-2 border-gold/40" aria-hidden="true" />
+                  <span className="pointer-events-none absolute right-2 top-2 h-3 w-3 border-r-2 border-t-2 border-gold/40" aria-hidden="true" />
+                  <span className="pointer-events-none absolute bottom-7 left-2 h-3 w-3 border-b-2 border-l-2 border-gold/40" aria-hidden="true" />
+                  <span className="pointer-events-none absolute bottom-7 right-2 h-3 w-3 border-b-2 border-r-2 border-gold/40" aria-hidden="true" />
                   <div
-                    className="absolute bottom-5 h-3 w-20 bg-black/40 blur-[1px]"
+                    className="pointer-events-none absolute bottom-10 h-16 w-24 rounded-full bg-gold/15 blur-xl"
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="absolute bottom-7 h-3 w-20 bg-black/50 blur-[1px]"
                     aria-hidden="true"
                   />
                   <PixelSprite
                     kind={boss.sprite}
-                    size={84}
-                    className="relative -mb-1 transition-transform duration-200 group-hover:translate-y-[-4px]"
+                    size={104}
+                    className="relative -mb-1 transition-transform duration-200 group-hover:translate-y-[-6px]"
                   />
                   <span className="absolute right-3 top-3 font-pixel text-[0.6rem] text-ash/80">
                     #{String(index + 1).padStart(2, "0")}
                   </span>
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-[#05080b]/85 px-3 py-1.5">
+                    <span className="font-pixel text-[0.5rem] uppercase tracking-[0.1em] text-ash">HP</span>
+                    <span className="h-2 flex-1 border border-void bg-[#0b131c]">
+                      <span className="block h-full w-full bg-gradient-to-r from-blood to-ember" />
+                    </span>
+                    <span className="font-pixel text-[0.5rem] text-blood">100</span>
+                  </div>
                 </div>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-base font-bold text-bone">{boss.name}</h3>
+                      <h3 className="font-pixel text-[0.95rem] font-bold text-bone">{boss.name}</h3>
                       <p className="text-xs text-ash/80 italic">{boss.title}</p>
                     </div>
                     <span className={`font-pixel text-[0.6rem] ${boss.tone}`}>
@@ -292,7 +326,7 @@ export default function Home() {
                   Monster kecil yang menguji setiap ruang temuan sebelum kamu berhadapan dengan Floor Lord:
                 </p>
               </div>
-              <span className="text-[0.68rem] text-ridge font-mono">8 Entitas Minion</span>
+              <span className="text-[0.68rem] text-ash/70 font-mono">8 Entitas Minion</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <span className="border border-ridge/60 bg-void/60 px-2.5 py-1 text-bone"><strong>Varkul</strong> · Brutish beast</span>
@@ -326,12 +360,12 @@ export default function Home() {
 
           <div className="relative max-w-2xl md:pr-56">
             <p className="eyebrow">Gerbang terakhir</p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight text-bone sm:text-4xl">
+            <h2 className="mt-3 font-pixel text-xl font-bold uppercase leading-[1.25] text-bone sm:text-2xl">
               Naskahmu sudah siap diuji?
             </h2>
             <p className="mt-3 text-[0.95rem] leading-7 text-ash">
-              Unggah naskah, konfirmasi peta, lalu lihat apakah argumenmu bertahan
-              saat setiap klaim diminta pertanggungjawaban.
+              Unggah naskah, lihat denah yang terbentuk, lalu lihat apakah
+              argumenmu bertahan saat setiap klaim diminta pertanggungjawaban.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
@@ -373,7 +407,7 @@ function SiteHeader() {
           <Logo />
         </Link>
 
-        <nav className="hidden items-center gap-6 text-[0.72rem] font-bold uppercase tracking-[0.07em] text-ash md:flex">
+        <nav className="hidden items-center gap-6 font-pixel text-[0.74rem] uppercase tracking-[0.02em] text-ash md:flex">
           <a href="#cara-kerja" className="hover:text-gold">
             Cara main
           </a>
@@ -389,7 +423,7 @@ function SiteHeader() {
           href="/login"
           className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
         >
-          Masuk
+          Lanjutkan
         </Link>
       </div>
     </header>
@@ -432,6 +466,9 @@ function DungeonPreview() {
           <div className="wall-stone absolute inset-x-0 top-0 z-10 h-[16%] border-b-2 border-void" />
           <div className="wall-stone absolute inset-x-0 bottom-0 z-10 h-[13%] border-t-2 border-void" />
 
+          <div className="pointer-events-none absolute left-[1%] top-[8%] z-0 h-[46%] w-[26%] rounded-full bg-[radial-gradient(circle,rgba(233,184,93,0.13),transparent_70%)]" />
+          <div className="pointer-events-none absolute right-[1%] top-[8%] z-0 h-[46%] w-[26%] rounded-full bg-[radial-gradient(circle,rgba(233,184,93,0.13),transparent_70%)]" />
+
           <div className="absolute left-[4%] top-[22%] z-20 flex flex-col items-center">
             <span className="torch-flame" />
             <span className="mt-2 h-7 w-1.5 bg-[#5b4228] shadow-[2px_0_0_#2c2014]" />
@@ -441,7 +478,7 @@ function DungeonPreview() {
             <span className="mt-2 h-7 w-1.5 bg-[#5b4228] shadow-[2px_0_0_#2c2014]" />
           </div>
 
-          <div className="absolute right-[3%] top-[31%] z-10 h-[38%] w-[17%] border-4 border-gold/70 bg-[#080b10] shadow-[inset_0_0_0_3px_#080b10]">
+          <div className="absolute right-[3%] top-[31%] z-10 h-[38%] w-[17%] border-4 border-gold/70 bg-[#0b131c] shadow-[inset_0_0_0_3px_#0a0f14,inset_0_0_22px_rgba(233,184,93,0.16)]">
             <div className="absolute inset-x-2 top-2 h-1 bg-gold/20" />
             <div className="absolute inset-x-0 bottom-2 text-center font-pixel text-[0.45rem] text-gold/60">
               EXIT
@@ -492,7 +529,8 @@ function DungeonPreview() {
         </div>
       </div>
 
-      <p className="mt-3 text-center text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash/70">
+      <p className="mt-3 flex items-center justify-center gap-2 text-center text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash/70">
+        <span className="h-2 w-2 animate-flicker bg-ember" />
         Contoh run · setiap temuan jadi ruang
       </p>
     </div>

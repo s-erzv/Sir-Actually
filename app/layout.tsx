@@ -12,13 +12,22 @@ const dmSans = localFont({
   display: "swap",
 });
 
+const silkscreen = localFont({
+  src: [
+    { path: "./fonts/Silkscreen-Regular.ttf", weight: "400", style: "normal" },
+    { path: "./fonts/Silkscreen-Bold.ttf", weight: "700", style: "normal" },
+  ],
+  variable: "--font-display",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Sir, Actually | Research Boss Battle",
   description: "Ubah naskah riset jadi dungeon. Setiap klaim punya boss.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0c0e0d",
+  themeColor: "#0a0f14",
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
@@ -31,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" className={dmSans.variable}>
+    <html lang="id" className={`${dmSans.variable} ${silkscreen.variable}`}>
       <body>{children}</body>
     </html>
   );

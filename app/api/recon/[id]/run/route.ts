@@ -6,6 +6,8 @@ import { detectCodeFindings } from "@/lib/recon/codeDetectors";
 import { detectLlmFindings } from "@/lib/recon/llmDetector";
 import { rankFindings } from "@/lib/recon/ranking";
 import { getLLMProvider, hasRealLLM } from "@/lib/llm";
+import { mergeChunks, retrieveChunks } from "@/lib/rag/retrieve";
+import type { RagRpcClient } from "@/lib/rag/types";
 import type { Database, Json } from "@/lib/supabase/database";
 
 export const maxDuration = 120;
@@ -145,7 +147,7 @@ export async function POST(
         if (!hasRealLLM()) {
           throw new Error("LLM belum dikonfigurasi untuk tahap detektor LLM.");
         }
-        const [{ data: claims }, { data: citations }, { data: chunks }, { data: existing }] =
+        const [{ data: claims }, { data: citations }, { data: existing }] =
           await Promise.all([
             admin
               .from("claims")
@@ -158,40 +160,64 @@ export async function POST(
               .eq("research_map_id", map.id)
               .eq("is_injected", false),
             admin
-              .from("manuscript_chunks")
-              .select("section_label, text")
-              .eq("manuscript_id", manuscript.id)
-              .eq("version", map.version)
-              .order("chunk_index")
-              .limit(24),
-            admin
               .from("findings")
               .select("weakness_type, evidence_quote")
               .eq("research_map_id", map.id),
           ]);
 
-        const detected = await detectLlmFindings(getLLMProvider(), {
-          claims: (claims ?? []).map((claim) => ({
-            id: claim.id,
-            kind: claim.kind,
-            text: claim.text,
-            sourceQuote: claim.source_quote,
-          })),
-          citations: (citations ?? []).map((citation) => citation.raw_text),
-          chunks: (chunks ?? []).map((chunk) => ({
-            section: chunk.section_label,
-            text: chunk.text,
-          })),
-          alreadyDetected: (existing ?? []).map((finding) => ({
-            weaknessType: finding.weakness_type,
-            evidenceQuote: finding.evidence_quote,
-          })),
-          sourceText: map.source_text,
+        const retrievalStarted = Date.now();
+        const ragClient = admin as unknown as RagRpcClient;
+        const retrieved = await Promise.all(
+          (claims ?? []).map((claim) =>
+            retrieveChunks(ragClient, {
+              manuscriptId: manuscript.id,
+              version: map.version,
+              query: [claim.text, claim.source_quote, claim.kind].filter(Boolean).join(" "),
+              limit: 4,
+            }),
+          ),
+        );
+        const chunks = mergeChunks(retrieved, 24);
+        timings.retrieval = Date.now() - retrievalStarted;
+
+        const detected =
+          chunks.length === 0
+            ? { findings: [], promptVersion: "rag_r0", discarded: 0 }
+            : await detectLlmFindings(getLLMProvider(), {
+                claims: (claims ?? []).map((claim) => ({
+                  id: claim.id,
+                  kind: claim.kind,
+                  text: claim.text,
+                  sourceQuote: claim.source_quote,
+                })),
+                citations: (citations ?? []).map((citation) => citation.raw_text),
+                chunks: chunks.map((chunk) => ({
+                  section: chunk.sectionLabel,
+                  text: chunk.text,
+                })),
+                alreadyDetected: (existing ?? []).map((finding) => ({
+                  weaknessType: finding.weakness_type,
+                  evidenceQuote: finding.evidence_quote,
+                })),
+              });
+
+        const findingKey = (weaknessType: string, quote: string) =>
+          `${weaknessType}|${quote.replace(/\s+/g, " ").trim().toLowerCase()}`;
+        const seenFindings = new Set(
+          (existing ?? []).map((finding) =>
+            findingKey(finding.weakness_type, finding.evidence_quote),
+          ),
+        );
+        const freshFindings = detected.findings.filter((finding) => {
+          const key = findingKey(finding.weaknessType, finding.evidenceQuote);
+          if (seenFindings.has(key)) return false;
+          seenFindings.add(key);
+          return true;
         });
 
-        if (detected.findings.length > 0) {
+        if (freshFindings.length > 0) {
           const { error } = await admin.from("findings").insert(
-            detected.findings.map((finding) => ({
+            freshFindings.map((finding) => ({
               research_map_id: map.id,
               weakness_type: finding.weaknessType,
               claim_id: finding.claimId,
@@ -222,6 +248,7 @@ export async function POST(
         const discarded = {
           ...(job.discarded as Record<string, unknown>),
           llm_quotes: detected.discarded,
+          retrieval_insufficient: chunks.length === 0,
         };
         const { data: doneJob } = await admin
           .from("recon_jobs")
@@ -236,6 +263,7 @@ export async function POST(
             cursor: {
               ...(job.cursor as Record<string, unknown>),
               findings: ranked.length,
+              retrieval_chunks: chunks.length,
             },
           })
           .eq("id", id)

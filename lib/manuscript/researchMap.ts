@@ -47,6 +47,25 @@ function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function citationKey(text: string): string {
+  return normalize(text)
+    .replace(/^\[\d+\]\s*/, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function dedupeCitations(citations: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const citation of citations) {
+    const key = citationKey(citation);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(citation);
+  }
+  return result;
+}
+
 const MAX_PROMPT_CHARS = 120_000;
 const TAIL_CHARS = 40_000;
 
@@ -76,13 +95,19 @@ export async function extractResearchMap(
   const source = normalize(sourceText);
   let discardedQuotes = 0;
   const claims: ExtractedClaim[] = [];
+  const seenText = new Set<string>();
+  const seenQuotes = new Set<string>();
 
   for (const claim of parsed.data.claims) {
     const quote = normalize(claim.source_quote);
+    const text = normalize(claim.text);
     if (!source.includes(quote)) {
       discardedQuotes++;
       continue;
     }
+    if (seenText.has(text) || seenQuotes.has(quote)) continue;
+    seenText.add(text);
+    seenQuotes.add(quote);
     claims.push({
       kind: claim.kind,
       text: claim.text.trim(),
@@ -99,7 +124,7 @@ export async function extractResearchMap(
 
   return {
     claims,
-    citations: parseBibliography(sourceText).entries,
+    citations: dedupeCitations(parseBibliography(sourceText).entries),
     promptVersion: PROMPT_VERSION,
     discardedQuotes,
   };

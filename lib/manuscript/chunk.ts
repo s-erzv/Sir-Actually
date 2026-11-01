@@ -12,7 +12,7 @@ const HEADING_PATTERNS = [
 ];
 
 function isHeading(line: string): boolean {
-  const trimmed = line.trim();
+  const trimmed = line.trim().replace(/^#{1,6}\s*/, "");
   if (trimmed.length === 0 || trimmed.length > 90) return false;
   return HEADING_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
@@ -64,7 +64,7 @@ export function chunkManuscript(
 
     if (isHeading(line)) {
       if (paragraphLines.length > 0) flushParagraph(lineStart);
-      sectionLabel = line.trim();
+      sectionLabel = line.trim().replace(/^#{1,6}\s*/, "");
       continue;
     }
 

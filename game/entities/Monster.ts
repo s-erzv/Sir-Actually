@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "@/game/map/tiles";
 import {
-  BOSS_FRAMES_BY_FLOOR,
+  bossFrame,
   minionFrame,
 } from "@/game/map/tileFrames";
 import { getMinionForRoom } from "@/lib/monsters";
@@ -17,6 +17,7 @@ export class Monster {
   readonly encounterId: string;
   readonly findingId: string;
   readonly bossSlug: string;
+  readonly isBoss: boolean;
   readonly floor: number;
   readonly roomIndex: number;
   readonly roomId: string;
@@ -36,23 +37,30 @@ export class Monster {
     room: Room,
     floorOrder: number,
     meta?: FindingMeta,
+    spawn?: {
+      findingId?: string | null;
+      bossSlug?: string;
+      weaknessType?: WeaknessType;
+      evidenceQuote?: string;
+    },
   ) {
     encounterCounter++;
     this.encounterId = `enc-${encounterCounter}`;
-    this.findingId = room.findingId ?? "";
+    this.findingId = spawn?.findingId ?? room.findingId ?? "";
+    this.isBoss = isBoss;
     this.floor = floorOrder;
     this.roomIndex = parseInt(room.id.split("-r")[1] ?? "0", 10);
     this.roomId = room.id;
     const minion = getMinionForRoom(floorOrder, this.roomIndex);
-    this.bossSlug = isBoss ? `boss-floor-${floorOrder}` : `minion-${minion.slug}`;
-    this.weaknessType = meta?.weaknessType ?? "gap_unsupported";
-    this.evidenceQuote = meta?.evidenceQuote ?? "";
+    this.bossSlug = spawn?.bossSlug ?? (isBoss ? `boss-floor-${floorOrder}` : `minion-${minion.slug}`);
+    this.weaknessType = spawn?.weaknessType ?? meta?.weaknessType ?? "gap_unsupported";
+    this.evidenceQuote = spawn?.evidenceQuote ?? meta?.evidenceQuote ?? "";
 
     this.tileX = Math.floor(worldX / TILE_SIZE);
     this.tileY = Math.floor(worldY / TILE_SIZE);
 
     const frame = isBoss
-      ? (BOSS_FRAMES_BY_FLOOR[floorOrder] ?? BOSS_FRAMES_BY_FLOOR[1]!)
+      ? bossFrame(spawn?.bossSlug, floorOrder)
       : minionFrame(floorOrder);
 
     this.sprite = scene.add.image(worldX, worldY, "tiles", frame);
@@ -76,9 +84,9 @@ export class Monster {
     // "!" marker above sprite so player knows they can interact
     this.exclamation = scene.add.text(worldX, worldY - TILE_SIZE * (isBoss ? 1.5 : 1), "!", {
       fontSize: "10px",
-      color: "#f0f1e8",
+      color: "#ffdd44",
       fontFamily: "Arial, sans-serif",
-      stroke: "#0c0e0d",
+      stroke: "#000000",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
   }
@@ -102,18 +110,18 @@ export class Monster {
       onComplete: () => { this.sprite.x = origX; },
     });
 
-    this.sprite.setTint(0xf0f1e8);
+    this.sprite.setTint(0xff4444);
     scene.time.delayedCall(120, () => {
       if (!this.resolved) this.sprite.clearTint();
     });
 
     const label = damage === 0 ? "MISS" : `-${damage}`;
-    const color = damage === 0 ? "#a2aa9d" : "#f0f1e8";
+    const color = damage === 0 ? "#aaaaaa" : "#ff4444";
     const dmgText = scene.add.text(this.sprite.x, this.sprite.y - 8, label, {
       fontSize: "10px",
       color,
       fontFamily: "Arial, sans-serif",
-      stroke: "#0c0e0d",
+      stroke: "#000000",
       strokeThickness: 2,
     }).setOrigin(0.5, 1).setDepth(100);
 

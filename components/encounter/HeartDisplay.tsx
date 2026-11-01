@@ -4,21 +4,22 @@ import { HEARTS_START } from "@/lib/balance";
 
 interface HeartDisplayProps {
   hearts: number;
+  heartsMax?: number;
 }
 
-export default function HeartDisplay({ hearts }: HeartDisplayProps) {
+export default function HeartDisplay({ hearts, heartsMax = HEARTS_START }: HeartDisplayProps) {
   return (
     <div
       className="flex items-center gap-1.5"
-      aria-label={`${hearts} of ${HEARTS_START} hearts remaining`}
+      aria-label={`${hearts} dari ${heartsMax} Heart tersisa`}
     >
-      {Array.from({ length: HEARTS_START }, (_, i) => (
-        <span key={i} className={i < hearts ? "text-blood" : "text-ridge/60"} aria-hidden="true">
+      {Array.from({ length: heartsMax }, (_, i) => (
+        <span key={i} className={i < hearts ? "text-blood" : "text-ash/35"} aria-hidden="true">
           <Heart />
         </span>
       ))}
       <span className="ml-1 text-[0.72rem] uppercase tracking-[0.12em] text-ash">
-        {hearts}/{HEARTS_START}
+        {hearts}/{heartsMax}
       </span>
     </div>
   );

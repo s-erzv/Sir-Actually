@@ -10,6 +10,7 @@ export type GameEvents = {
     bossSlug: string;
     floor: number;
     room: number;
+    isBoss?: boolean;
     weaknessType?: WeaknessType;
     evidenceQuote?: string;
   };
@@ -33,10 +34,20 @@ export type GameEvents = {
     encounterId: string;
     damage: number;
   };
+  /** Phaser → React: player reached the stairs and every monster is resolved. */
+  "stairs:reach": {
+    floor: number;
+  };
   /** React → Phaser: retry the current floor (from Kitab Nasihat). */
   "floor:retry": undefined;
   /** Phaser → React: reset hearts (used after floor:retry). */
   "hearts:reset": undefined;
+  /** React → Phaser: lock movement while a full-screen game overlay is open. */
+  "game:pause": undefined;
+  /** React → Phaser: unlock movement after the overlay closes. */
+  "game:resume": undefined;
+  /** React → Phaser: zoom the dungeon camera in/out. */
+  "camera:zoom": { delta: number };
 };
 
 export const bus = mitt<GameEvents>();

@@ -7,7 +7,7 @@ import {
   FRAME_BANNER_RED, FRAME_DOOR_LOCKED, FRAME_DOOR_OPEN,
   FRAME_STAIRS, FRAME_PROP, FRAME_FLOOR, floorAltFrame, wallDecorFrame,
 } from "@/game/map/tileFrames";
-import type { FloorMap } from "@/lib/domain/types";
+import type { DungeonDimension, FloorMap, Room } from "@/lib/domain/types";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
 
@@ -36,6 +36,15 @@ function tileCodeToFrame(code: TileCode, col: number, _row: number): number {
   }
 }
 
+const DIMENSION_TINT: Record<DungeonDimension, number> = {
+  gap: 0x8fbd72,
+  align: 0x6fb6c5,
+  method: 0x8f95d9,
+  audit: 0xe9b85d,
+  ghost: 0x9fe3d8,
+  throne: 0xcf5c68,
+};
+
 /** Calculate integer camera zoom that fills the viewport without black bars. */
 function calcZoom(viewW: number, viewH: number): number {
   const tilesWide = 20;
@@ -55,6 +64,8 @@ export class DungeonScene extends Phaser.Scene {
 
   // Keep bus off-handlers for clean shutdown
   private busOff: Array<() => void> = [];
+  private minZoom = 1;
+  private maxZoom = 6;
 
   constructor() {
     super({ key: "DungeonScene" });
@@ -68,8 +79,10 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor("#0c0e0d");
+    this.cameras.main.setBackgroundColor("#080b10");
     this.buildTilemap();
+    this.addAmbientLights();
+    this.addDust();
     this.spawnEntities();
     this.setupCamera();
     this.listenBus();
@@ -104,6 +117,9 @@ export class DungeonScene extends Phaser.Scene {
     this.groundLayer = groundLayer;
     this.wallLayer   = wallLayer;
     this.decorLayer  = decorLayer;
+    this.groundLayer.setDepth(0);
+    this.wallLayer.setDepth(1);
+    this.decorLayer.setDepth(2);
 
     // Populate layers tile by tile
     for (let row = 0; row < height; row++) {
@@ -137,11 +153,89 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------------
+  // Ambience — coloured room lights, torches, dust
+  // ---------------------------------------------------------------------------
+
+  private addAmbientLights(): void {
+    const tint = DIMENSION_TINT[this.floorMap.dimension ?? "gap"] ?? DIMENSION_TINT.gap;
+
+    for (const room of this.floorMap.rooms) {
+      const cx = (room.rect.x + room.rect.width / 2) * TILE_SIZE;
+      const cy = (room.rect.y + room.rect.height / 2) * TILE_SIZE;
+
+      const light = this.add
+        .image(cx, cy, "glow")
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(room.isBoss ? 0xcf5c68 : tint)
+        .setAlpha(room.isBoss ? 0.32 : 0.22)
+        .setDepth(3);
+      light.setDisplaySize(
+        room.rect.width * TILE_SIZE * 1.7,
+        room.rect.height * TILE_SIZE * 1.7,
+      );
+      this.tweens.add({
+        targets: light,
+        alpha: light.alpha * 0.68,
+        duration: 1600 + Math.random() * 1400,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+
+      for (const tileX of [room.rect.x + 1, room.rect.x + room.rect.width - 1]) {
+        const torch = this.add
+          .image(tileX * TILE_SIZE, (room.rect.y + 0.4) * TILE_SIZE, "glow-small")
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setTint(room.isBoss ? 0xff5a4a : 0xffb45e)
+          .setAlpha(0.55)
+          .setDepth(3);
+        torch.setDisplaySize(TILE_SIZE * 3.4, TILE_SIZE * 3.4);
+        this.tweens.add({
+          targets: torch,
+          alpha: 0.28,
+          duration: 420 + Math.random() * 320,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+    }
+  }
+
+  private addDust(): void {
+    const worldW = this.floorMap.width * TILE_SIZE;
+    const worldH = this.floorMap.height * TILE_SIZE;
+    const tint = DIMENSION_TINT[this.floorMap.dimension ?? "gap"] ?? 0xe9b85d;
+
+    for (let index = 0; index < 32; index += 1) {
+      const x = 16 + Math.random() * Math.max(16, worldW - 32);
+      const y = 16 + Math.random() * Math.max(16, worldH - 32);
+      const dust = this.add
+        .image(x, y, "dust")
+        .setDepth(9)
+        .setAlpha(0.12 + Math.random() * 0.32)
+        .setTint(index % 4 === 0 ? 0xffffff : tint);
+
+      this.tweens.add({
+        targets: dust,
+        y: y - 18 - Math.random() * 32,
+        alpha: 0,
+        duration: 3200 + Math.random() * 4200,
+        delay: Math.random() * 3200,
+        repeat: -1,
+        repeatDelay: Math.random() * 1200,
+        ease: "Sine.easeOut",
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Entities
   // ---------------------------------------------------------------------------
 
   private spawnEntities(): void {
     const { playerSpawn, rooms } = this.floorMap;
+    const characterSlug = this.game.registry.get("characterSlug") as string | undefined;
 
     this.player = new Player(
       this,
@@ -149,21 +243,37 @@ export class DungeonScene extends Phaser.Scene {
       playerSpawn.y * TILE_SIZE + TILE_SIZE / 2,
       this.decorLayer,
       this.floorMap,
+      characterSlug,
     );
 
     this.monsters = [];
     for (const room of rooms) {
+      this.spawnRoomMonsters(room);
+    }
+  }
+
+  private spawnRoomMonsters(room: Room): void {
+    const spawns = room.monsterSpawns?.length ? room.monsterSpawns : [room.monsterSpawn];
+    spawns.forEach((spawn, index) => {
+      const findingId = room.findingIds?.[index] ?? room.findingId;
+      const meta = findingId ? this.floorMap.findingMeta?.[findingId] : undefined;
       const monster = new Monster(
         this,
-        room.monsterSpawn.x * TILE_SIZE + TILE_SIZE / 2,
-        room.monsterSpawn.y * TILE_SIZE + TILE_SIZE / 2,
+        spawn.x * TILE_SIZE + TILE_SIZE / 2,
+        spawn.y * TILE_SIZE + TILE_SIZE / 2,
         room.isBoss,
         room,
         this.floorMap.floorOrder,
-        room.findingId ? this.floorMap.findingMeta?.[room.findingId] : undefined,
+        meta,
+        {
+          findingId,
+          bossSlug: room.kind === "minions" ? undefined : room.bossSlug,
+          weaknessType: meta?.weaknessType,
+          evidenceQuote: meta?.evidenceQuote,
+        },
       );
       this.monsters.push(monster);
-    }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -172,16 +282,44 @@ export class DungeonScene extends Phaser.Scene {
 
   private setupCamera(): void {
     const { width, height } = this.floorMap;
-    const zoom = calcZoom(this.scale.width, this.scale.height);
-    this.cameras.main.setZoom(zoom);
+    const baseZoom = calcZoom(this.scale.width, this.scale.height);
+    this.minZoom = Math.max(1, baseZoom - 1);
+    this.maxZoom = Math.min(9, baseZoom + 3);
+    this.cameras.main.setZoom(baseZoom);
     this.cameras.main.setBounds(0, 0, width * TILE_SIZE, height * TILE_SIZE);
     this.cameras.main.startFollow(this.player.sprite, true, 0.15, 0.15);
+
+    this.input.on(
+      "wheel",
+      (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
+        this.zoomBy(dy > 0 ? -0.5 : 0.5);
+      },
+    );
+  }
+
+  private zoomBy(delta: number): void {
+    const next = Phaser.Math.Clamp(
+      Math.round((this.cameras.main.zoom + delta) * 2) / 2,
+      this.minZoom,
+      this.maxZoom,
+    );
+    if (Math.abs(next - this.cameras.main.zoom) < 0.01) return;
+    this.tweens.add({
+      targets: this.cameras.main,
+      zoom: next,
+      duration: 140,
+      ease: "Sine.easeOut",
+    });
   }
 
   private listenResize(): void {
     const onResize = () => {
-      const zoom = calcZoom(this.scale.width, this.scale.height);
-      this.cameras.main.setZoom(zoom);
+      const baseZoom = calcZoom(this.scale.width, this.scale.height);
+      this.minZoom = Math.max(1, baseZoom - 1);
+      this.maxZoom = Math.min(9, baseZoom + 3);
+      this.cameras.main.setZoom(
+        Phaser.Math.Clamp(this.cameras.main.zoom, this.minZoom, this.maxZoom),
+      );
     };
     this.scale.on("resize", onResize);
     this.busOff.push(() => this.scale.off("resize", onResize));
@@ -198,7 +336,8 @@ export class DungeonScene extends Phaser.Scene {
       monster.markResolved(result);
 
       const room = this.floorMap.rooms.find((r) => r.id === monster.roomId);
-      if (room?.entranceDoor) {
+      const roomMonsters = this.monsters.filter((m) => m.roomId === monster.roomId);
+      if (room?.entranceDoor && roomMonsters.every((m) => m.resolved)) {
         this.unlockDoor(room.entranceDoor.x, room.entranceDoor.y);
       }
     };
@@ -213,14 +352,20 @@ export class DungeonScene extends Phaser.Scene {
       this.retryFloor();
     };
 
+    const onZoom = ({ delta }: { delta: number }) => {
+      this.zoomBy(delta);
+    };
+
     bus.on("encounter:end", onEncounterEnd);
     bus.on("boss:hit", onBossHit);
     bus.on("floor:retry", onFloorRetry);
+    bus.on("camera:zoom", onZoom);
 
     this.busOff.push(
       () => bus.off("encounter:end", onEncounterEnd),
       () => bus.off("boss:hit", onBossHit),
       () => bus.off("floor:retry", onFloorRetry),
+      () => bus.off("camera:zoom", onZoom),
     );
   }
 
@@ -279,16 +424,7 @@ export class DungeonScene extends Phaser.Scene {
 
     // Respawn monsters
     for (const room of this.floorMap.rooms) {
-      const monster = new Monster(
-        this,
-        room.monsterSpawn.x * TILE_SIZE + TILE_SIZE / 2,
-        room.monsterSpawn.y * TILE_SIZE + TILE_SIZE / 2,
-        room.isBoss,
-        room,
-        this.floorMap.floorOrder,
-        room.findingId ? this.floorMap.findingMeta?.[room.findingId] : undefined,
-      );
-      this.monsters.push(monster);
+      this.spawnRoomMonsters(room);
     }
 
     // Teleport player back to spawn
