@@ -125,6 +125,7 @@ export class Player {
       this.inputLocked = true;
       bus.emit("encounter:start", {
         encounterId: hitMonster.encounterId,
+        encounterKey: hitMonster.encounterKey,
         findingId:   hitMonster.findingId,
         bossSlug:    hitMonster.bossSlug,
         floor:       hitMonster.floor,

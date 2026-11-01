@@ -14,7 +14,7 @@ import LoadoutScreen from "@/components/loadout/LoadoutScreen";
 import FloorIntro from "@/components/game/FloorIntro";
 import PauseMenu from "@/components/game/PauseMenu";
 import DungeonEntry from "@/components/game/DungeonEntry";
-import { heartsForLoadout, type Loadout } from "@/lib/loadout";
+import { heartsForLoadout, isValidLoadout, type Loadout } from "@/lib/loadout";
 import { getMonsterDisplayName } from "@/lib/monsters";
 import type { SpriteKind } from "@/components/brand/PixelSprite";
 import { bus } from "@/game/bus";
@@ -51,6 +51,20 @@ interface DungeonPlanPayload {
   floors: FloorPlan[];
   source: string;
   model: string | null;
+}
+
+interface ActiveRunPayload {
+  run: null | {
+    id: string;
+    characterSlug: string | null;
+    weaponSlug: string | null;
+    hearts: number;
+    pointsTotal: number;
+    currentFloor: number;
+    progress: { resolved?: string[] } | null;
+    dungeonTitle: string | null;
+    floorCount: number | null;
+  };
 }
 
 const FLOOR_SPRITE: Record<string, SpriteKind> = {
@@ -111,6 +125,7 @@ export default function PlayPage() {
   const [inEncounter, setInEncounter] = useState(false);
   const [entryPhase, setEntryPhase] = useState<"idle" | "loading" | "enter">("idle");
   const [pendingCharacter, setPendingCharacter] = useState<Loadout["characterSlug"]>("arka");
+  const [resolvedKeys, setResolvedKeys] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,12 +174,49 @@ export default function PlayPage() {
           };
         }
 
+        const active = await authJson<ActiveRunPayload>(
+          `/api/run/active?researchMapId=${recon.map.id}`,
+        );
+
         setResearchMapId(recon.map.id);
         setDungeonTitle(dungeon.title);
         setDungeonTier(dungeon.tier);
         setPlans(plans);
-        setFloorIndex(0);
         setFindingMeta(findingMeta);
+
+        if (active.run) {
+          const rawLoadout = {
+            characterSlug: active.run.characterSlug ?? "arka",
+            weaponSlug: active.run.weaponSlug ?? "pedang_sitasi",
+          } as Loadout;
+          const resumeLoadout = isValidLoadout(rawLoadout.characterSlug, rawLoadout.weaponSlug)
+            ? rawLoadout
+            : ({ characterSlug: "arka", weaponSlug: "pedang_sitasi" } as Loadout);
+          const resumeIndex = Math.min(
+            Math.max(0, (active.run.currentFloor ?? 1) - 1),
+            plans.length - 1,
+          );
+          const keys = Array.isArray(active.run.progress?.resolved)
+            ? active.run.progress.resolved.filter((key): key is string => typeof key === "string")
+            : [];
+
+          const resumedFloor = generateFloorFromPlan(plans[resumeIndex]!, 20261101 + resumeIndex);
+          setLoadout(resumeLoadout);
+          setPendingCharacter(resumeLoadout.characterSlug);
+          setRunId(active.run.id);
+          setPoints(active.run.pointsTotal);
+          setHearts(active.run.hearts);
+          setFloorStartHearts(active.run.hearts);
+          setFloorIndex(resumeIndex);
+          setResolvedKeys(keys);
+          setFloorMap({ ...resumedFloor, findingMeta });
+          setShowFloorIntro(false);
+          setEntryPhase("enter");
+          setLoading(false);
+          return;
+        }
+
+        setFloorIndex(0);
         setFloorMap({ ...generated, findingMeta });
         setShowFloorIntro(true);
         setLoading(false);
@@ -218,6 +270,21 @@ export default function PlayPage() {
     [researchMapId, dungeonTitle, dungeonTier, plans.length],
   );
 
+  const persistProgress = useCallback(
+    async (currentFloor: number, keys: string[]) => {
+      if (!runId) return;
+      try {
+        await authJson("/api/run/progress", {
+          method: "POST",
+          body: JSON.stringify({ runId, currentFloor, resolvedKeys: keys }),
+        });
+      } catch {
+        // Progress is saved again on the next encounter/floor transition.
+      }
+    },
+    [runId],
+  );
+
   const advanceFloor = useCallback(async () => {
     if (!runId) return;
     const currentFloor = plans[floorIndex]?.floorOrder ?? floorIndex + 1;
@@ -258,7 +325,38 @@ export default function PlayPage() {
     setFloorMap({ ...generated, findingMeta });
     setFloorStartHearts(hearts);
     setShowFloorIntro(true);
-  }, [plans, findingMeta, floorIndex, runId, hearts, floorStartHearts]);
+    void persistProgress(plans[next]!.floorOrder, resolvedKeys);
+  }, [plans, findingMeta, floorIndex, runId, hearts, floorStartHearts, persistProgress, resolvedKeys]);
+
+  useEffect(() => {
+    const onEncounterEnd = (event: {
+      encounterKey?: string;
+      result: "won" | "conceded" | "disputed" | "fled";
+    }) => {
+      if (!event.encounterKey || event.result === "fled") return;
+      setResolvedKeys((current) => {
+        const next = [...new Set([...current, event.encounterKey!])];
+        void persistProgress(floorIndex + 1, next);
+        return next;
+      });
+    };
+
+    const onFloorRetry = () => {
+      const floorOrder = plans[floorIndex]?.floorOrder ?? floorIndex + 1;
+      setResolvedKeys((current) => {
+        const next = current.filter((key) => !key.startsWith(`f${floorOrder}-`));
+        void persistProgress(floorOrder, next);
+        return next;
+      });
+    };
+
+    bus.on("encounter:end", onEncounterEnd);
+    bus.on("floor:retry", onFloorRetry);
+    return () => {
+      bus.off("encounter:end", onEncounterEnd);
+      bus.off("floor:retry", onFloorRetry);
+    };
+  }, [persistProgress, floorIndex, plans]);
 
   useEffect(() => {
     bus.on("stairs:reach", advanceFloor);
@@ -465,7 +563,11 @@ export default function PlayPage() {
       className="relative overflow-hidden bg-[#0D0F15]"
       style={{ width: "100vw", height: "100dvh" }}
     >
-      <PhaserGame floorMap={floorMap} characterSlug={loadout.characterSlug} />
+      <PhaserGame
+        floorMap={floorMap}
+        characterSlug={loadout.characterSlug}
+        resolvedKeys={resolvedKeys}
+      />
       <div
         className="pointer-events-none absolute inset-0 z-[5]"
         style={{

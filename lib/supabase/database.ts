@@ -381,6 +381,8 @@ export interface Database {
           dungeon_tier: string | null;
           floor_count: number | null;
           dungeon_title: string | null;
+          current_floor: number;
+          progress: Json;
           started_at: string;
           finished_at: string | null;
         };
@@ -401,6 +403,8 @@ export interface Database {
           dungeon_tier?: string | null;
           floor_count?: number | null;
           dungeon_title?: string | null;
+          current_floor?: number;
+          progress?: Json;
           started_at?: string;
           finished_at?: string | null;
         };
@@ -415,6 +419,8 @@ export interface Database {
           dungeon_tier?: string | null;
           floor_count?: number | null;
           dungeon_title?: string | null;
+          current_floor?: number;
+          progress?: Json;
           finished_at?: string | null;
         };
       };

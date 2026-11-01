@@ -6,10 +6,13 @@ import type { FloorMap } from "@/lib/domain/types";
 interface PhaserGameProps {
   floorMap: FloorMap;
   characterSlug?: string;
+  resolvedKeys?: string[];
 }
 
-export default function PhaserGame({ floorMap, characterSlug }: PhaserGameProps) {
+export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: PhaserGameProps) {
   const gameRef = useRef<import("phaser").Game | null>(null);
+  const resolvedKeysRef = useRef(resolvedKeys ?? []);
+  resolvedKeysRef.current = resolvedKeys ?? [];
 
   useEffect(() => {
     if (gameRef.current) return;
@@ -40,6 +43,7 @@ export default function PhaserGame({ floorMap, characterSlug }: PhaserGameProps)
       // Pass floorMap and the chosen character to DungeonScene via the registry.
       game.registry.set("floorMap", floorMap);
       game.registry.set("characterSlug", characterSlug);
+      game.registry.set("resolvedKeys", resolvedKeysRef.current);
       gameRef.current = game;
     })();
 

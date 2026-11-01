@@ -250,6 +250,25 @@ export class DungeonScene extends Phaser.Scene {
     for (const room of rooms) {
       this.spawnRoomMonsters(room);
     }
+
+    const resolvedKeys = new Set(
+      (this.game.registry.get("resolvedKeys") as string[] | undefined) ?? [],
+    );
+    if (resolvedKeys.size > 0) {
+      for (const monster of this.monsters) {
+        if (resolvedKeys.has(monster.encounterKey)) monster.markResolvedImmediate();
+      }
+      for (const room of rooms) {
+        const roomMonsters = this.monsters.filter((monster) => monster.roomId === room.id);
+        if (
+          room.entranceDoor &&
+          roomMonsters.length > 0 &&
+          roomMonsters.every((monster) => monster.resolved)
+        ) {
+          this.unlockDoor(room.entranceDoor.x, room.entranceDoor.y);
+        }
+      }
+    }
   }
 
   private spawnRoomMonsters(room: Room): void {
@@ -271,6 +290,7 @@ export class DungeonScene extends Phaser.Scene {
           weaknessType: meta?.weaknessType,
           evidenceQuote: meta?.evidenceQuote,
         },
+        index,
       );
       this.monsters.push(monster);
     });

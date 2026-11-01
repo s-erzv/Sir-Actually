@@ -6,6 +6,7 @@ export type GameEvents = {
   /** Phaser → React: player walked into a monster/encounter trigger. */
   "encounter:start": {
     encounterId: string;
+    encounterKey: string;
     findingId: string;
     bossSlug: string;
     floor: number;
@@ -17,6 +18,7 @@ export type GameEvents = {
   /** React → Phaser: player finished (or skipped) the encounter. */
   "encounter:end": {
     encounterId: string;
+    encounterKey?: string;
     result: "won" | "conceded" | "disputed" | "fled";
   };
   /** Phaser → React: player tried to walk through a locked door. */

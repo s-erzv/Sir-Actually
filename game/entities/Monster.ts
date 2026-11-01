@@ -15,6 +15,7 @@ export class Monster {
   private breathTween: Phaser.Tweens.Tween | null = null;
 
   readonly encounterId: string;
+  readonly encounterKey: string;
   readonly findingId: string;
   readonly bossSlug: string;
   readonly isBoss: boolean;
@@ -43,9 +44,11 @@ export class Monster {
       weaknessType?: WeaknessType;
       evidenceQuote?: string;
     },
+    monsterIndex = 0,
   ) {
     encounterCounter++;
     this.encounterId = `enc-${encounterCounter}`;
+    this.encounterKey = `${room.id}:${monsterIndex}`;
     this.findingId = spawn?.findingId ?? room.findingId ?? "";
     this.isBoss = isBoss;
     this.floor = floorOrder;
@@ -160,6 +163,15 @@ export class Monster {
       ease: "Linear",
       onComplete: () => { this.sprite.destroy(); },
     });
+  }
+
+  /** Remove immediately (used when resuming a saved run). */
+  markResolvedImmediate(): void {
+    this.resolved = true;
+    this.breathTween?.stop();
+    this.exclamation?.destroy();
+    this.exclamation = null;
+    this.sprite.destroy();
   }
 
   /** Hard destroy (used on floor:retry). */

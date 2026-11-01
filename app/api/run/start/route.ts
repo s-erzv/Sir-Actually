@@ -51,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const hearts = heartsForLoadout(body.characterSlug);
     const { data: active, error: activeError } = await admin
       .from("runs")
-      .select("id, points_total, hearts_left")
+      .select("id, points_total, hearts_left, current_floor, progress")
       .eq("research_map_id", map.id)
       .eq("status", "active")
       .maybeSingle();
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .update({
           character_slug: body.characterSlug,
           weapon_slug: body.weaponSlug,
-          hearts_left: hearts,
+          hearts_left: active.hearts_left,
           dungeon_title: body.dungeonTitle ?? null,
           dungeon_tier: body.dungeonTier ?? null,
           floor_count: body.floorCount ?? null,
@@ -73,7 +73,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         runId: active.id,
         pointsTotal: active.points_total ?? 0,
-        hearts,
+        hearts: active.hearts_left,
+        currentFloor: active.current_floor ?? 1,
+        progress: active.progress ?? {},
         resumed: true,
       });
     }
@@ -90,6 +92,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       dungeon_title: body.dungeonTitle ?? null,
       dungeon_tier: body.dungeonTier ?? null,
       floor_count: body.floorCount ?? null,
+      current_floor: 1,
+      progress: {},
     };
     const { data: run, error } = await admin.from("runs").insert(insert).select("id").single();
     if (error) throw new ApiError(error.message, 500);

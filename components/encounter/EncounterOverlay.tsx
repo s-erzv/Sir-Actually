@@ -215,6 +215,7 @@ export default function EncounterOverlay({
       if (!state) return;
       bus.emit("encounter:end", {
         encounterId: state.encounter.encounterId,
+        encounterKey: state.encounter.encounterKey,
         result: status,
       });
       setState(null);
