@@ -18,11 +18,18 @@ export class BootScene extends Phaser.Scene {
       frameHeight: 16,
       spacing: 1,
     });
+    // Kenney Roguelike pack (CC0) — loot/props scattered in rooms. 1 px spacing.
+    this.load.spritesheet("rl", "/assets/roguelike/roguelikeSheet_transparent.png", {
+      frameWidth: 16,
+      frameHeight: 16,
+      spacing: 1,
+    });
   }
 
   create(): void {
     // Apply NEAREST filter so pixel art stays crisp at integer zooms.
     this.textures.get("tiles").setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.textures.get("rl").setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.createGlowTexture("glow");
     this.createGlowTexture("glow-small");
     this.createDustTexture("dust");

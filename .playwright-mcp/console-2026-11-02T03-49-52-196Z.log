@@ -1,0 +1,7 @@
+[     502ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/1tl5_next_dist_0yzg03bru4ebc._.js:719
+[     573ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/1tl5_next_dist_0yzg03bru4ebc._.js:719
+[     833ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/1tl5_next_dist_0yzg03bru4ebc._.js:719
+[     937ms] [LOG] [Fast Refresh] done in 205ms @ http://localhost:3000/_next/static/chunks/1tl5_next_dist_0yzg03bru4ebc._.js:719
+[     988ms] [WARNING] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior @ http://localhost:3000/_next/static/chunks/1tl5_next_dist_0yzg03bru4ebc._.js:719
+[    1090ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/login:0
+[   53229ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://ucicdzbftfcoiesendcy.supabase.co/auth/v1/token?grant_type=password:0

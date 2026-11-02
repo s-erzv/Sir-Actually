@@ -26,6 +26,10 @@ export type GameEvents = {
     doorTileX: number;
     doorTileY: number;
   };
+  /** Phaser → React: a cleared room opened the door to the next one. */
+  "door:opened": { roomNumber: number };
+  /** Phaser → React: monsters left in the room the player must clear next. */
+  "room:progress": { roomNumber: number; remaining: number; total: number } | null;
   /** Internal: a door should now be unlocked in the tilemap. */
   "door:unlock": {
     doorTileX: number;

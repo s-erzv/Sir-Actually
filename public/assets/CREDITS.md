@@ -50,3 +50,20 @@ and license. Only CC0 (Creative Commons Zero) assets are used.
 
 *This file must be updated whenever a new asset is added to `public/assets/`.*
 *Do not add assets with unclear or non-CC0 licenses.*
+
+---
+
+## Kenney Roguelike Pack
+
+- **Author**: Kenney Vleugels for Kenney (www.kenney.nl)
+- **Source**: https://opengameart.org/content/roguelikerpg-pack-1700-tiles
+- **License**: CC0
+- **Files**: `public/assets/roguelike/` (16×16 tiles, 1 px spacing, 57 columns)
+- **Used for**: loot/props scattered in rooms (`DungeonScene.addLoot`)
+
+## Kenney Pixel UI Pack
+
+- **Author**: Kenney (www.kenney.nl)
+- **Source**: https://opengameart.org/content/pixel-ui-pack-750-assets
+- **License**: CC0
+- **Files**: `public/assets/pixel-ui/` (downloaded, not yet wired into the UI)

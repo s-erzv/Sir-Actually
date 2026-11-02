@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { bus } from "@/game/bus";
+import { playSfx } from "@/game/audio";
 import { TILE_SIZE, TileCode, isSolid } from "@/game/map/tiles";
 import { playerFrameFor } from "@/game/map/tileFrames";
 import type { FloorMap } from "@/lib/domain/types";
@@ -25,6 +26,7 @@ export class Player {
   private tileX: number;
   private tileY: number;
   private moving = false;
+  private lastLockedSfx = 0;
   private inputLocked = false; // locked during encounter overlay
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -109,6 +111,11 @@ export class Player {
       // If blocked by a locked door, tell the overlay
       if (code === TileCode.DOOR_LOCKED) {
         bus.emit("door:locked", { doorTileX: nx, doorTileY: ny });
+        const now = this.scene.time.now;
+        if (now - this.lastLockedSfx > 500) {
+          this.lastLockedSfx = now;
+          playSfx("doorLocked");
+        }
       }
       return;
     }
@@ -157,6 +164,7 @@ export class Player {
     this.tileX = tx;
     this.tileY = ty;
     this.moving = true;
+    playSfx("step");
 
     this.scene.tweens.add({
       targets: this.sprite,

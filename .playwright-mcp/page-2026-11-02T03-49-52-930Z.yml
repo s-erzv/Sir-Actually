@@ -1,0 +1,34 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - link "Sir, Actually Sir, Actually" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e6]:
+          - img "Sir, Actually" [ref=e7]
+          - generic [ref=e18]: Sir, Actually
+      - generic [ref=e20]:
+        - link "Naskah baru" [ref=e21] [cursor=pointer]:
+          - /url: /upload
+        - button "Keluar" [ref=e22] [cursor=pointer]
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - paragraph [ref=e26]: Kamp ekspedisi
+          - heading "Pilih save file." [level=1] [ref=e27]
+          - paragraph [ref=e28]: Memuat sesi...
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - paragraph [ref=e31]: "0"
+            - paragraph [ref=e32]: Naskah
+          - generic [ref=e33]:
+            - paragraph [ref=e34]: "0"
+            - paragraph [ref=e35]: Siap turun
+          - generic [ref=e36]:
+            - paragraph [ref=e37]: "0"
+            - paragraph [ref=e38]: Temuan
+      - generic [ref=e39]: Membuka arsip...
+      - generic [ref=e41]:
+        - generic [ref=e42]: Setiap klaim menunggu pertanggungjawaban.
+        - link "Kembali ke gerbang" [ref=e43] [cursor=pointer]:
+          - /url: /
+  - button "Open Next.js Dev Tools" [ref=e49] [cursor=pointer]

@@ -167,6 +167,20 @@ export class Monster {
     }
 
     const scene = this.sprite.scene;
+    const tint = result === "won" ? 0xffd166 : 0xcbd5e1;
+    for (let i = 0; i < 10; i++) {
+      const angle = (Math.PI * 2 * i) / 10;
+      const spark = scene.add.rectangle(this.sprite.x, this.sprite.y, 2, 2, tint).setDepth(9);
+      scene.tweens.add({
+        targets: spark,
+        x: this.sprite.x + Math.cos(angle) * 14,
+        y: this.sprite.y + Math.sin(angle) * 14,
+        alpha: 0,
+        duration: 420,
+        ease: "Quad.easeOut",
+        onComplete: () => spark.destroy(),
+      });
+    }
     scene.tweens.add({
       targets: this.sprite,
       alpha: 0,

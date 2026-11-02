@@ -127,6 +127,8 @@ export default function PlayPage() {
   const [pendingCharacter, setPendingCharacter] = useState<Loadout["characterSlug"]>("arka");
   const [resolvedKeys, setResolvedKeys] = useState<string[]>([]);
   const [doorNotice, setDoorNotice] = useState(false);
+  const [doorOpened, setDoorOpened] = useState<number | null>(null);
+  const [roomProgress, setRoomProgress] = useState<{ roomNumber: number; remaining: number; total: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -375,8 +377,23 @@ export default function PlayPage() {
       setDoorNotice(true);
       window.setTimeout(() => setDoorNotice(false), 2200);
     };
+    let openedTimer = 0;
+    const onDoorOpened = ({ roomNumber }: { roomNumber: number }) => {
+      setDoorOpened(roomNumber);
+      window.clearTimeout(openedTimer);
+      openedTimer = window.setTimeout(() => setDoorOpened(null), 2400);
+    };
+    const onRoomProgress = (progress: { roomNumber: number; remaining: number; total: number } | null) =>
+      setRoomProgress(progress);
     bus.on("door:locked", onDoorLocked);
-    return () => bus.off("door:locked", onDoorLocked);
+    bus.on("door:opened", onDoorOpened);
+    bus.on("room:progress", onRoomProgress);
+    return () => {
+      window.clearTimeout(openedTimer);
+      bus.off("door:locked", onDoorLocked);
+      bus.off("door:opened", onDoorOpened);
+      bus.off("room:progress", onRoomProgress);
+    };
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -660,8 +677,23 @@ export default function PlayPage() {
         </Link>
       </div>
       <p className="absolute bottom-2 left-2 z-10 max-w-[55vw] border-2 border-void bg-void/85 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash shadow-[inset_0_0_0_1px_#34424e]">
-        WASD / panah · scroll zoom · tabrak monster · Esc jeda
+        WASD / panah · scroll zoom · tabrak monster · M suara · Esc jeda
       </p>
+
+      {roomProgress ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 border-2 border-ember/60 bg-[#0a0f14]/90 px-3 py-1 shadow-[3px_3px_0_#05080b]">
+          <p className="font-pixel text-[0.5rem] text-bone">
+            RUANG {roomProgress.roomNumber} · SISA {roomProgress.remaining}/{roomProgress.total} MONSTER
+          </p>
+        </div>
+      ) : null}
+
+      {doorOpened ? (
+        <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-emerald-400/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
+          <p className="font-pixel text-[0.52rem] text-emerald-300">PINTU TERBUKA</p>
+          <p className="mt-1 text-[0.72rem] leading-5 text-bone">Jalan ke ruang {doorOpened} sudah terbuka.</p>
+        </div>
+      ) : null}
 
       {doorNotice ? (
         <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-ember/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">

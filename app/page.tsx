@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { PixelSprite, type SpriteKind } from "@/components/brand/PixelSprite";
+import { LandingDiorama } from "@/components/game/LandingDiorama";
 
 const STEPS: Array<{
   number: string;
