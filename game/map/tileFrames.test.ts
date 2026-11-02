@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PLAYER_FRAMES_BY_CHARACTER, playerFrameFor } from "./tileFrames";
+import {
+  MINION_FRAMES_BY_SLUG,
+  PLAYER_FRAMES_BY_CHARACTER,
+  playerFrameFor,
+} from "./tileFrames";
 
 describe("playerFrameFor", () => {
   it("gives each character a distinct in-game sprite", () => {
@@ -18,5 +22,11 @@ describe("playerFrameFor", () => {
 
   it("falls back to the default frame", () => {
     expect(playerFrameFor("unknown")).toBe(87);
+  });
+
+  it("gives each minion a distinct in-game frame", () => {
+    const frames = Object.values(MINION_FRAMES_BY_SLUG);
+    expect(frames).toHaveLength(8);
+    expect(new Set(frames).size).toBe(8);
   });
 });

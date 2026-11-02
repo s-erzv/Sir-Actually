@@ -1,11 +1,11 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE } from "@/game/map/tiles";
+import { TILE_SIZE, TileCode, isSolid } from "@/game/map/tiles";
 import {
   bossFrame,
-  minionFrame,
+  minionFrameForSlug,
 } from "@/game/map/tileFrames";
 import { getMinionForRoom } from "@/lib/monsters";
-import type { FindingMeta, Room, WeaknessType } from "@/lib/domain/types";
+import type { FindingMeta, FloorMap, Room, WeaknessType } from "@/lib/domain/types";
 
 let encounterCounter = 0;
 
@@ -25,10 +25,12 @@ export class Monster {
   readonly weaknessType: WeaknessType;
   readonly evidenceQuote: string;
 
-  readonly tileX: number;
-  readonly tileY: number;
+  tileX: number;
+  tileY: number;
 
   resolved = false;
+  private moving = false;
+  private readonly room: Room;
 
   constructor(
     scene: Phaser.Scene,
@@ -54,6 +56,7 @@ export class Monster {
     this.floor = floorOrder;
     this.roomIndex = parseInt(room.id.split("-r")[1] ?? "0", 10);
     this.roomId = room.id;
+    this.room = room;
     const minion = getMinionForRoom(floorOrder, this.roomIndex);
     this.bossSlug = spawn?.bossSlug ?? (isBoss ? `boss-floor-${floorOrder}` : `minion-${minion.slug}`);
     this.weaknessType = spawn?.weaknessType ?? meta?.weaknessType ?? "gap_unsupported";
@@ -64,7 +67,7 @@ export class Monster {
 
     const frame = isBoss
       ? bossFrame(spawn?.bossSlug, floorOrder)
-      : minionFrame(floorOrder);
+      : minionFrameForSlug(minion.slug, floorOrder);
 
     this.sprite = scene.add.image(worldX, worldY, "tiles", frame);
     this.sprite.setOrigin(0.5, 0.5);
@@ -83,11 +86,12 @@ export class Monster {
         repeat: -1,
       });
     } else {
-      // Minions idle-bob so rooms never look like static screenshots.
+      // Scale pulse instead of moving y: chase movement also tweens x/y.
       this.breathTween = scene.tweens.add({
         targets: this.sprite,
-        y: worldY - 2,
-        duration: 1200 + Math.random() * 600,
+        scaleX: 1.06,
+        scaleY: 1.06,
+        duration: 1100 + Math.random() * 500,
         ease: "Sine.easeInOut",
         yoyo: true,
         repeat: -1,
@@ -169,6 +173,91 @@ export class Monster {
       duration: 400,
       ease: "Linear",
       onComplete: () => { this.sprite.destroy(); },
+    });
+  }
+
+  /**
+   * Chase the player while they are inside this monster's room.
+   * Movement is one tile at a time, bounded by the room and blocking tiles.
+   */
+  updateChase(
+    playerTile: { x: number; y: number },
+    floorMap: FloorMap,
+    occupied: ReadonlySet<string>,
+  ): void {
+    if (this.resolved || this.moving) return;
+
+    const minX = this.room.rect.x + 1;
+    const maxX = this.room.rect.x + this.room.rect.width - 2;
+    const minY = this.room.rect.y + 1;
+    const maxY = this.room.rect.y + this.room.rect.height - 2;
+    const insideRoom =
+      playerTile.x >= minX &&
+      playerTile.x <= maxX &&
+      playerTile.y >= minY &&
+      playerTile.y <= maxY;
+    if (!insideRoom) return;
+    if (playerTile.x === this.tileX && playerTile.y === this.tileY) return;
+
+    const startKey = `${this.tileX},${this.tileY}`;
+    const goalKey = `${playerTile.x},${playerTile.y}`;
+    if (startKey === goalKey) return;
+
+    const queue: Array<{ x: number; y: number }> = [{ x: this.tileX, y: this.tileY }];
+    const previous = new Map<string, string | null>([[startKey, null]]);
+    let found = false;
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const currentKey = `${current.x},${current.y}`;
+      if (currentKey === goalKey) {
+        found = true;
+        break;
+      }
+
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = current.x + dx;
+        const ny = current.y + dy;
+        if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
+        const key = `${nx},${ny}`;
+        if (previous.has(key)) continue;
+        if (occupied.has(key) && key !== goalKey) continue;
+        const code = (floorMap.tiles[ny]?.[nx] ?? TileCode.VOID) as TileCode;
+        if (isSolid(code) || code === TileCode.VOID) continue;
+        previous.set(key, currentKey);
+        queue.push({ x: nx, y: ny });
+      }
+    }
+
+    if (!found) return;
+
+    let stepKey = goalKey;
+    while (true) {
+      const parent = previous.get(stepKey);
+      if (!parent || parent === startKey) break;
+      stepKey = parent;
+    }
+    const [stepX, stepY] = stepKey.split(",").map(Number) as [number, number];
+    if (stepX === this.tileX && stepY === this.tileY) return;
+
+    this.tileX = stepX;
+    this.tileY = stepY;
+    this.moving = true;
+    if (this.exclamation) {
+      this.exclamation.setPosition(
+        stepX * TILE_SIZE + TILE_SIZE / 2,
+        stepY * TILE_SIZE + TILE_SIZE / 2 - TILE_SIZE * (this.isBoss ? 1.5 : 1),
+      );
+    }
+    this.sprite.scene.tweens.add({
+      targets: this.sprite,
+      x: stepX * TILE_SIZE + TILE_SIZE / 2,
+      y: stepY * TILE_SIZE + TILE_SIZE / 2,
+      duration: 170,
+      ease: "Linear",
+      onComplete: () => {
+        this.moving = false;
+      },
     });
   }
 

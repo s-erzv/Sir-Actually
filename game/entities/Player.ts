@@ -77,6 +77,10 @@ export class Player {
     bus.on("game:resume", () => { this.inputLocked = false; });
   }
 
+  getTile(): { x: number; y: number } {
+    return { x: this.tileX, y: this.tileY };
+  }
+
   /** Teleport to a tile position immediately (used on floor:retry). */
   teleport(tileX: number, tileY: number): void {
     this.tileX = tileX;

@@ -172,9 +172,26 @@ export function bossFrame(slug: string | undefined, floorOrder: number): number 
   return BOSS_FRAMES_BY_FLOOR[floorOrder] ?? BOSS_FRAMES_BY_FLOOR[1]!;
 }
 
+/** Distinct sprite frames for the eight dungeon creatures. */
+export const MINION_FRAMES_BY_SLUG: Record<string, number> = {
+  varkul: 112,
+  nethrix: 122,
+  zorveth: 110,
+  thalgrim: 109,
+  xyrath: 120,
+  othrak: 111,
+  velmora: 108,
+  grivak: 123,
+};
+
 /** Minion frame for a given floor (1–4). Cycles through FRAME_MINION array. */
 export function minionFrame(floor: number): number {
   return FRAME_MINION[(floor - 1) % FRAME_MINION.length] ?? FRAME_MINION[0];
+}
+
+export function minionFrameForSlug(slug?: string | null, floorOrder = 1): number {
+  if (slug && MINION_FRAMES_BY_SLUG[slug] !== undefined) return MINION_FRAMES_BY_SLUG[slug]!;
+  return minionFrame(floorOrder);
 }
 
 /** Pick a random floor-alt frame seeded by position (deterministic). */

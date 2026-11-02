@@ -66,6 +66,7 @@ export class DungeonScene extends Phaser.Scene {
   private busOff: Array<() => void> = [];
   private minZoom = 1;
   private maxZoom = 6;
+  private encounterActive = false;
 
   constructor() {
     super({ key: "DungeonScene" });
@@ -350,7 +351,12 @@ export class DungeonScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   private listenBus(): void {
+    const onEncounterStart = () => {
+      this.encounterActive = true;
+    };
+
     const onEncounterEnd = ({ encounterId, result }: { encounterId: string; result: "won" | "conceded" | "disputed" | "fled" }) => {
+      this.encounterActive = false;
       const monster = this.monsters.find((m) => m.encounterId === encounterId);
       if (!monster) return;
       monster.markResolved(result);
@@ -376,12 +382,14 @@ export class DungeonScene extends Phaser.Scene {
       this.zoomBy(delta);
     };
 
+    bus.on("encounter:start", onEncounterStart);
     bus.on("encounter:end", onEncounterEnd);
     bus.on("boss:hit", onBossHit);
     bus.on("floor:retry", onFloorRetry);
     bus.on("camera:zoom", onZoom);
 
     this.busOff.push(
+      () => bus.off("encounter:start", onEncounterStart),
       () => bus.off("encounter:end", onEncounterEnd),
       () => bus.off("boss:hit", onBossHit),
       () => bus.off("floor:retry", onFloorRetry),
@@ -414,7 +422,24 @@ export class DungeonScene extends Phaser.Scene {
   // Floor retry — respawn all monsters, relock doors, reset player position
   // ---------------------------------------------------------------------------
 
+  private startEncounter(monster: Monster): void {
+    if (this.encounterActive || monster.resolved) return;
+    this.encounterActive = true;
+    bus.emit("encounter:start", {
+      encounterId: monster.encounterId,
+      encounterKey: monster.encounterKey,
+      findingId: monster.findingId,
+      bossSlug: monster.bossSlug,
+      floor: monster.floor,
+      room: monster.roomIndex,
+      isBoss: monster.isBoss,
+      weaknessType: monster.weaknessType,
+      evidenceQuote: monster.evidenceQuote,
+    });
+  }
+
   private retryFloor(): void {
+    this.encounterActive = false;
     // Destroy all existing monster sprites
     for (const m of this.monsters) m.destroy();
     this.monsters = [];
@@ -458,6 +483,19 @@ export class DungeonScene extends Phaser.Scene {
 
   update(): void {
     this.player.update(this.monsters);
+    if (this.encounterActive) return;
+
+    const playerTile = this.player.getTile();
+    const activeMonsters = this.monsters.filter((monster) => !monster.resolved);
+    const occupied = new Set(activeMonsters.map((monster) => `${monster.tileX},${monster.tileY}`));
+    for (const monster of activeMonsters) {
+      monster.updateChase(playerTile, this.floorMap, occupied);
+    }
+
+    const caught = activeMonsters.find(
+      (monster) => monster.tileX === playerTile.x && monster.tileY === playerTile.y,
+    );
+    if (caught) this.startEncounter(caught);
   }
 
   // ---------------------------------------------------------------------------
