@@ -148,13 +148,20 @@ export class Monster {
     });
   }
 
-  markResolved(_result: "won" | "conceded" | "disputed" | "fled"): void {
+  markResolved(result: "won" | "conceded" | "disputed" | "fled"): void {
     this.resolved = true;
     this.breathTween?.stop();
     this.exclamation?.destroy();
     this.exclamation = null;
 
-    // Fade out sprite
+    // Conceded monsters stay in the room as greyed-out witnesses. Only a
+    // real win (or a disputed finding) removes the sprite.
+    if (result === "conceded") {
+      this.sprite.setTint(0x6b7280);
+      this.sprite.setAlpha(0.45);
+      return;
+    }
+
     const scene = this.sprite.scene;
     scene.tweens.add({
       targets: this.sprite,

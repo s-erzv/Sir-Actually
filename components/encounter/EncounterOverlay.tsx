@@ -232,7 +232,7 @@ export default function EncounterOverlay({
     setAnswerError(null);
     setAttackPhase("attack");
     const startedAt = Date.now();
-    const waitingTimer = window.setTimeout(() => setAttackPhase("waiting"), 820);
+    const waitingTimer = window.setTimeout(() => setAttackPhase("waiting"), 620);
 
     try {
       const data = await authJson<{
@@ -266,7 +266,7 @@ export default function EncounterOverlay({
       });
 
       window.clearTimeout(waitingTimer);
-      const remaining = Math.max(0, 900 - (Date.now() - startedAt));
+      const remaining = Math.max(0, 650 - (Date.now() - startedAt));
       if (remaining > 0) await wait(remaining);
 
       setAttackPhase("hit");
@@ -297,7 +297,7 @@ export default function EncounterOverlay({
           : null,
       );
       setAnswer("");
-      await wait(680);
+      await wait(460);
       setState((prev) => (prev ? { ...prev, showBreakdown: true } : null));
       setAttackPhase("idle");
       setSubmitting(false);
@@ -440,7 +440,7 @@ export default function EncounterOverlay({
           <aside className="tile-floor relative border-b-2 border-void p-3 lg:border-b-0 lg:border-r-2">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(233,184,93,0.14),transparent_65%)]" aria-hidden="true" />
 
-            <div className="battle-arena relative h-36 overflow-hidden border-2 border-void bg-[#070b10]">
+            <div className={`battle-arena relative h-36 overflow-hidden border-2 border-void bg-[#070b10] ${attackPhase === "hit" ? "battle-arena-hit" : ""}`}>
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#0a0f14] to-transparent" aria-hidden="true" />
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(233,184,93,0.1),transparent_65%)]" aria-hidden="true" />
               <span className="absolute left-2 top-2 font-pixel text-[0.46rem] text-moss">KAMU</span>
@@ -456,7 +456,7 @@ export default function EncounterOverlay({
                 />
               </div>
 
-              <div className={`battle-monster absolute bottom-3 right-[10%] ${attackPhase === "hit" ? "battle-monster-hit" : ""} ${status === "won" ? "battle-monster-dead" : ""}`}>
+              <div className={`battle-monster absolute bottom-3 right-[10%] ${attackPhase === "hit" ? "battle-monster-hit" : ""} ${attackPhase === "hit" && lastEvaluation?.damage === 0 ? "battle-monster-miss" : ""} ${status === "won" ? "battle-monster-dead" : ""}`}>
                 <PixelSprite
                   kind={spriteForWeakness(weaknessType)}
                   size={isBoss ? 92 : 74}
@@ -464,7 +464,13 @@ export default function EncounterOverlay({
                 />
               </div>
 
-              {attackPhase === "attack" ? <span className="battle-slash" aria-hidden="true" /> : null}
+              {attackPhase === "attack" ? (
+                <>
+                  <span className="battle-slash" aria-hidden="true" />
+                  <span className="battle-slash battle-slash-b" aria-hidden="true" />
+                </>
+              ) : null}
+              {attackPhase === "hit" ? <span className="battle-impact" aria-hidden="true" /> : null}
               {attackPhase === "hit" && lastEvaluation ? (
                 <span
                   key={`${lastEvaluation.damage}-${state.questionsAsked}`}
@@ -527,9 +533,36 @@ export default function EncounterOverlay({
                           : "Hasil serangan"}
                   </span>
                   <span className={`font-pixel text-[0.6rem] ${lastEvaluation.damage > 0 ? "text-blood" : "text-ash"}`}>
-                    {lastEvaluation.damage > 0 ? `−${lastEvaluation.damage} HP` : "MISS"}
+                    {lastEvaluation.damage > 0 ? `−${lastEvaluation.damage} HP` : "0 DAMAGE"}
                   </span>
                 </div>
+
+                <div className="mb-2 grid grid-cols-3 gap-1.5">
+                  <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
+                    <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Damage</span>
+                    <span className={`mt-0.5 block font-pixel text-sm ${lastEvaluation.damage > 0 ? "text-blood" : "text-ash"}`}>
+                      {lastEvaluation.damage}
+                    </span>
+                  </span>
+                  <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
+                    <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Skor</span>
+                    <span className="mt-0.5 block font-pixel text-sm text-gold">
+                      {lastEvaluation.scoreTotal}/{lastEvaluation.scoreMax}
+                    </span>
+                  </span>
+                  <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
+                    <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Heart</span>
+                    <span className={`mt-0.5 block font-pixel text-sm ${lastEvaluation.heartLost ? "text-blood" : "text-moss"}`}>
+                      {lastEvaluation.heartLost ? "−1" : "aman"}
+                    </span>
+                  </span>
+                </div>
+
+                {lastEvaluation.heartLost ? (
+                  <p className="mb-2 border border-blood/30 bg-blood/10 px-2 py-1 text-[0.66rem] leading-5 text-blood">
+                    Heart berkurang karena skor jawaban ≤ 1. Damage ke monster tetap 0 kalau skor 0.
+                  </p>
+                ) : null}
                 {state.lastWeapon ? (
                   <p className="mb-2 flex items-center justify-between gap-2 border-b border-ridge/40 pb-2 text-[0.58rem] font-bold uppercase tracking-[0.08em]">
                     <span className="text-ash">Senjata otomatis</span>

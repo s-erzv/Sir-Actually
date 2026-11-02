@@ -257,6 +257,29 @@ export function getLLMProvider(): LLMProvider {
   return _provider;
 }
 
+/**
+ * Judges should be fast. Boss models can be slow reasoning models, so the
+ * judge uses a dedicated (overridable) model when running on Kagiro.
+ */
+export function getLLMProviderForJudge(): LLMProvider {
+  const base = getLLMProvider();
+  if (base.providerName !== "kagiro") return base;
+
+  const model = process.env.LLM_MODEL_JUDGE ?? "deepseek-4-1-flash";
+  if (model === base.modelName) return base;
+
+  const cached = _bossProviders.get(model);
+  if (cached) return cached;
+
+  try {
+    const provider = new FetchLLMProvider({ ...getLLMConfig(), model });
+    _bossProviders.set(model, provider);
+    return provider;
+  } catch {
+    return base;
+  }
+}
+
 export function getLLMProviderForBoss(bossSlug?: string | null): LLMProvider {
   const base = getLLMProvider();
   if (base.providerName !== "kagiro") return base;

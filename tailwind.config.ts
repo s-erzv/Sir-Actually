@@ -60,6 +60,22 @@ const config: Config = {
           "0%": { transform: "translateX(-12px)", opacity: "0" },
           "100%": { transform: "translateX(0)", opacity: "1" },
         },
+        "hero-reveal": {
+          "0%": { opacity: "0", transform: "translateY(12px) scale(0.98)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        "fade-up": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "glow-pulse": {
+          "0%, 100%": { opacity: "0.55" },
+          "50%": { opacity: "0.9" },
+        },
+        "scanline-drift": {
+          "0%": { backgroundPosition: "0 0" },
+          "100%": { backgroundPosition: "0 32px" },
+        },
       },
       animation: {
         flicker: "flicker 2s infinite steps(2,end)",
@@ -68,6 +84,9 @@ const config: Config = {
         torch: "torch-flicker 1.2s infinite steps(2,end)",
         bob: "bob 2.4s infinite steps(2,end)",
         "walk-in": "walk-in 400ms steps(4,end) both",
+        "hero-reveal": "hero-reveal 600ms steps(6,end) both",
+        "fade-up": "fade-up 500ms steps(4,end) both",
+        "glow-pulse": "glow-pulse 3s ease-in-out infinite",
       },
     },
   },

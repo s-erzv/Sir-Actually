@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { getLLMProviderForBoss } from "@/lib/llm";
+import { getLLMProviderForJudge } from "@/lib/llm";
 import { validateQuotes } from "@/lib/judge/validateQuotes";
 import { applyRules } from "@/lib/judge/rules";
 import { computeDamage, computeHeartLoss } from "@/lib/judge/damage";
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const scoreMax = getScoreMax(weaknessType);
     const hpMax = body.isBoss ? BOSS_HP : MINION_HP;
 
-    const provider = getLLMProviderForBoss(body.bossSlug);
+    const provider = getLLMProviderForJudge();
     if (provider.providerName === "dummy") {
       throw new ApiError("LLM belum dikonfigurasi untuk menilai jawaban.", 503);
     }
@@ -169,11 +169,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const maxQuestions = body.isBoss ? MAX_QUESTIONS_BOSS : MAX_QUESTIONS_MINION;
 
     let encounterStatus: EncounterStatus;
-    if (newHp <= 0) {
+    if (newHp <= 0 && damage > 0) {
       encounterStatus = "won";
     } else if (newHearts <= 0) {
       encounterStatus = "lost";
-    } else if (newQuestionsAsked >= maxQuestions) {
+    } else if (newHp <= 0 || newQuestionsAsked >= maxQuestions) {
+      // A zero-damage answer must never kill a monster; if HP was already
+      // exhausted by an earlier hit, the room closes as conceded instead.
       encounterStatus = "conceded";
     } else {
       encounterStatus = "active";
