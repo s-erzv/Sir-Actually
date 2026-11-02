@@ -10,6 +10,7 @@ import type {
 } from "@/lib/domain/types";
 import { BOSS_HP, MINION_HP, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
 import { getWeapon, type Loadout } from "@/lib/loadout";
+import { MONSTER_LEVEL_LABELS, monsterLevelFor } from "@/lib/planner/difficulty";
 import { getMonsterDisplayName } from "@/lib/monsters";
 import { authJson } from "@/lib/api/client";
 import { PixelSprite, heroForCharacter, spriteForWeakness } from "@/components/brand/PixelSprite";
@@ -128,6 +129,8 @@ export default function EncounterOverlay({
           previousQuestions,
           previousAttackTypes,
           isBoss: encounter.isBoss ?? encounter.bossSlug.startsWith("boss"),
+          floorOrder: encounter.floor,
+          roomOrder: encounter.room,
           ...(encounter.findingId ? { findingId: encounter.findingId } : {}),
         };
         const data = await authJson<{ question: string; attackType: string }>(
@@ -401,6 +404,12 @@ export default function EncounterOverlay({
 
   const bossName      = getMonsterDisplayName(encounter.bossSlug) || "Examiner";
   const isBoss        = encounter.isBoss ?? encounter.bossSlug.startsWith("boss");
+  const level         = monsterLevelFor({
+    floorOrder: encounter.floor,
+    roomOrder: encounter.room,
+    isBoss,
+    bossSlug: encounter.bossSlug,
+  });
 
   // Show Kitab Nasihat
   if (showAdvice) {
@@ -432,7 +441,7 @@ export default function EncounterOverlay({
             PERTARUNGAN · LANTAI {encounter.floor} · RUANG {encounter.room + 1}
           </span>
           <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash">
-            {statusLabel(status)}
+            {statusLabel(status)} · Tingkat {level}
           </span>
         </div>
 
@@ -445,7 +454,7 @@ export default function EncounterOverlay({
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(233,184,93,0.1),transparent_65%)]" aria-hidden="true" />
               <span className="absolute left-2 top-2 font-pixel text-[0.46rem] text-moss">KAMU</span>
               <span className="absolute right-2 top-2 font-pixel text-[0.46rem] text-blood">
-                {isBoss ? "BOSS" : "ANTEK"}
+                {isBoss ? "BOSS" : "ANTEK"} · T{level} {MONSTER_LEVEL_LABELS[level]}
               </span>
 
               <div className={`battle-player absolute bottom-3 left-[13%] ${attackPhase === "attack" ? "battle-player-attack" : ""}`}>

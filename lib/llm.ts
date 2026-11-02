@@ -17,6 +17,7 @@ export interface JudgeInput {
   rubricCriteria: RubricCriterion[];
   previousQuestions: string[];
   contextChunks?: Array<{ section: string | null; text: string }>;
+  monsterLevel?: 1 | 2 | 3;
 }
 
 export interface QuestionInput {

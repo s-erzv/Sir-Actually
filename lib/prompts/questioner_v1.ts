@@ -12,6 +12,8 @@ ATURAN:
 - Ajukan pertanyaan terbuka, bukan pertanyaan ya/tidak.
 - Satu pertanyaan hanya menyerang satu hal.`;
 
+import { levelInstruction, type MonsterLevel } from "@/lib/planner/difficulty";
+
 export function buildQuestionPrompt(input: {
   evidenceQuote: string;
   weaknessType: string;
@@ -20,6 +22,7 @@ export function buildQuestionPrompt(input: {
   researchMapSummary: string;
   previousQuestions: string[];
   contextChunks?: Array<{ section: string | null; text: string }>;
+  monsterLevel?: MonsterLevel;
 }): string {
   const previous = input.previousQuestions.length
     ? input.previousQuestions.map((q) => `- ${q}`).join("\n")
@@ -27,6 +30,9 @@ export function buildQuestionPrompt(input: {
   return `Persona penguji: ${input.bossPersona}
 Tipe kelemahan: ${input.weaknessType}
 Bentuk serangan: ${input.attackType}
+Tingkat monster: ${input.monsterLevel ?? 1}
+
+${levelInstruction(input.monsterLevel ?? 1)}
 
 Ringkasan riset:
 <<<RESEARCH_MAP>>>

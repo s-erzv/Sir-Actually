@@ -5,6 +5,11 @@ import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getLLMProviderForBoss } from "@/lib/llm";
 import { pickAttackType, type AttackType } from "@/lib/planner/attackType";
+import {
+  attackTypesForLevel,
+  maxQuestionWordsForLevel,
+  monsterLevelFor,
+} from "@/lib/planner/difficulty";
 import { BOSS_ROSTER, MINION_ROSTER, getMonsterDisplayName } from "@/lib/monsters";
 import { PROMPT_VERSION } from "@/lib/prompts/questioner_v1";
 import { retrieveChunks } from "@/lib/rag/retrieve";
@@ -22,6 +27,8 @@ const BODY = z.object({
   previousQuestions: z.array(z.string().max(2000)).max(12).default([]),
   previousAttackTypes: z.array(z.string().max(40)).max(12).default([]),
   isBoss: z.boolean().optional(),
+  floorOrder: z.number().int().min(1).max(12).default(1),
+  roomOrder: z.number().int().min(0).max(40).default(0),
 });
 
 function personaFor(bossSlug: string): string {
@@ -34,12 +41,12 @@ function personaFor(bossSlug: string): string {
   return getMonsterDisplayName(bossSlug);
 }
 
-function questionIsValid(question: string): boolean {
+function questionIsValid(question: string, maxWords = 28): boolean {
   const text = question.trim();
   if (!text || text.includes("\n") || text.includes("[Dummy]")) return false;
   if ((text.match(/\?/g) ?? []).length !== 1) return false;
   const words = text.split(/\s+/).filter(Boolean);
-  return words.length <= 28;
+  return words.length <= maxWords;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -99,10 +106,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .maybeSingle();
     if (weaknessError) throw new ApiError(weaknessError.message, 500);
 
-    const allowed = ((weakness?.attack_types ?? []) as AttackType[]).filter(Boolean);
-    if (allowed.length === 0) {
+    const rawAllowed = ((weakness?.attack_types ?? []) as AttackType[]).filter(Boolean);
+    if (rawAllowed.length === 0) {
       throw new ApiError("Tipe kelemahan belum punya bentuk serangan.", 422);
     }
+    const level = monsterLevelFor({
+      floorOrder: body.floorOrder,
+      roomOrder: body.roomOrder,
+      isBoss: body.isBoss ?? false,
+      bossSlug: body.bossSlug,
+    });
+    const allowed = attackTypesForLevel(rawAllowed, level);
     const lastAttack = body.previousAttackTypes.at(-1) as AttackType | undefined;
     const attackType = pickAttackType(
       allowed,
@@ -135,10 +149,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       researchMapSummary: summary,
       previousQuestions: body.previousQuestions,
       contextChunks,
+      monsterLevel: level,
     };
 
+    const maxWords = maxQuestionWordsForLevel(level);
     let question = await provider.generateQuestion(input);
-    if (!questionIsValid(question)) {
+    if (!questionIsValid(question, maxWords)) {
       question = await provider.generateQuestion({
         ...input,
         previousQuestions: [
@@ -147,13 +163,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ],
       });
     }
-    if (!questionIsValid(question)) {
+    if (!questionIsValid(question, maxWords)) {
       throw new ApiError("Questioner gagal membuat pertanyaan yang valid.", 502);
     }
 
     return NextResponse.json({
       question: question.trim(),
       attackType,
+      level,
       promptVersion: PROMPT_VERSION,
       model: provider.modelName,
     });
