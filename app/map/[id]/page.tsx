@@ -75,6 +75,10 @@ export default function MapPage() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState("Membuka peta...");
+  const [activeRun, setActiveRun] = useState<{
+    currentFloor: number;
+    resolvedKeys: string[];
+  } | null>(null);
   const [step, setStep] = useState<string | null>(null);
   const [stepsDone, setStepsDone] = useState(0);
   const [stepsTotal, setStepsTotal] = useState(3);
@@ -134,6 +138,25 @@ export default function MapPage() {
           if (run.job.status === "failed") {
             throw new Error(run.job.error ?? "Recon gagal.");
           }
+        }
+
+        try {
+          const active = await authJson<{
+            run: null | {
+              currentFloor: number;
+              progress: { resolved?: string[] } | null;
+            };
+          }>(`/api/run/active?researchMapId=${mapPayload.map.id}`);
+          if (!cancelled && active.run) {
+            setActiveRun({
+              currentFloor: active.run.currentFloor ?? 1,
+              resolvedKeys: Array.isArray(active.run.progress?.resolved)
+                ? active.run.progress.resolved.filter((key): key is string => typeof key === "string")
+                : [],
+            });
+          }
+        } catch {
+          // Map still works without a resumable run.
         }
 
         setRunning(false);
@@ -225,6 +248,9 @@ export default function MapPage() {
           findingCount={stubs.length}
           citationCount={payload.citations.length}
           href={`/play/${reconId}`}
+          currentFloor={activeRun?.currentFloor ?? 1}
+          resolvedKeys={activeRun?.resolvedKeys ?? []}
+          hasActiveRun={Boolean(activeRun)}
         />
       </div>
     </main>
