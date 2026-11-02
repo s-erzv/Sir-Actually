@@ -171,22 +171,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       throw new ApiError("Debrief gagal menghasilkan JSON valid.", 502);
     }
 
-    const allAnswers = normalize(
-      [body.playerAnswer, ...history.map((entry) => entry.answer)].join("\n"),
-    );
+    const answers = [body.playerAnswer, ...history.map((entry) => entry.answer)]
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const allAnswers = normalize(answers.join("\n"));
     const source = normalize(map.source_text);
-    if (!allAnswers.includes(normalize(output.data.answer_quote))) {
-      throw new ApiError("Kutipan jawaban pada debrief tidak valid.", 502);
+
+    // LLM output can drift from the allowed rubric/quotes. Repair it instead
+    // of blocking the player from reading their Catatan Penjaga.
+    const criterionId = ids.has(output.data.criterion_id)
+      ? output.data.criterion_id
+      : (failedCriteria[0]?.id ?? rubric[0]!.id);
+
+    let answerQuote = output.data.answer_quote;
+    if (!allAnswers.includes(normalize(answerQuote))) {
+      const fallbackAnswer = answers.at(-1) ?? "";
+      answerQuote = fallbackAnswer.slice(0, 200).trim();
+      if (answerQuote.length < 3) answerQuote = answers[0]?.slice(0, 200).trim() ?? "jawaban kosong";
     }
-    if (!source.includes(normalize(output.data.evidence_quote))) {
-      throw new ApiError("Kutipan naskah pada debrief tidak valid.", 502);
-    }
-    if (!ids.has(output.data.criterion_id)) {
-      throw new ApiError("Kriteria pada debrief tidak ada di rubrik.", 502);
+
+    let evidenceQuoteOut = output.data.evidence_quote;
+    if (!source.includes(normalize(evidenceQuoteOut))) {
+      evidenceQuoteOut = source.includes(normalize(evidenceQuote))
+        ? evidenceQuote
+        : map.source_text.slice(0, 240).trim();
     }
 
     return NextResponse.json({
       ...output.data,
+      criterion_id: criterionId,
+      answer_quote: answerQuote,
+      evidence_quote: evidenceQuoteOut,
       promptVersion: PROMPT_VERSION,
       model: provider.modelName,
     });
