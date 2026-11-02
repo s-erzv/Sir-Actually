@@ -30,8 +30,10 @@ describe("generateFloorFromPlan", () => {
     )!;
     const map = generateFloorFromPlan(plan, 42);
 
-    expect(map.rooms).toHaveLength(3);
-    expect(map.rooms.map((room) => room.monsterSpawns?.length)).toEqual([3, 3, 1]);
+    expect(map.rooms).toHaveLength(7);
+    expect(map.rooms.map((room) => room.monsterSpawns?.length)).toEqual([
+      1, 1, 1, 1, 1, 1, 1,
+    ]);
     expect(map.rooms.at(-1)!.isBoss).toBe(true);
     expect(map.rooms.at(-1)!.findingIds).toEqual([findings[0]!.id]);
     expect(map.tiles.some((row) => row.includes(TileCode.STAIRS))).toBe(true);

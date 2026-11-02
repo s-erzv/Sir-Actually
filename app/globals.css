@@ -338,6 +338,12 @@ a {
   border-bottom: 2px solid;
 }
 
+.debrief-paper {
+  background-color: #e8d9b8;
+  background-image: linear-gradient(180deg, #f1e5c8 0%, #e3d0a6 55%, #d8c49a 100%);
+  color: #2b2318;
+}
+
 .parchment {
   border: 2px solid var(--bone);
   background-color: var(--bone);

@@ -14,6 +14,10 @@ import type { WeaknessType } from "@/lib/domain/types";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+const SCORES = z
+  .array(z.object({ criterionId: z.string(), level: z.number().int().min(0).max(2) }))
+  .max(6);
+
 const BODY = z.object({
   researchMapId: z.string().uuid(),
   findingId: z.string().uuid().optional(),
@@ -22,9 +26,16 @@ const BODY = z.object({
   evidenceQuote: z.string().max(4000).optional(),
   playerAnswer: z.string().max(4000),
   missing: z.string().max(2000).optional(),
-  scores: z
-    .array(z.object({ criterionId: z.string(), level: z.number().int().min(0).max(2) }))
-    .max(6)
+  scores: SCORES.optional(),
+  history: z
+    .array(
+      z.object({
+        answer: z.string().max(4000),
+        scores: SCORES.default([]),
+        missing: z.string().max(2000).default(""),
+      }),
+    )
+    .max(12)
     .optional(),
 });
 
@@ -87,9 +98,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const rubric = RUBRICS[weaknessType];
     if (!rubric) throw new ApiError("Rubrik tidak ditemukan.", 422);
     const ids = new Set(rubric.map((criterion) => criterion.id));
+    const history = body.history ?? [];
     const failedCriteria = rubric.map((criterion) => {
-      const score = body.scores?.find((item) => item.criterionId === criterion.id);
-      return { id: criterion.id, label: criterion.label, level: score?.level ?? 0 };
+      const levels = history.flatMap((entry) =>
+        entry.scores
+          .filter((item) => item.criterionId === criterion.id)
+          .map((item) => item.level),
+      );
+      const lastScore = body.scores?.find((item) => item.criterionId === criterion.id);
+      if (lastScore) levels.push(lastScore.level);
+      return {
+        id: criterion.id,
+        label: criterion.label,
+        level: levels.length > 0 ? Math.min(...levels) : 0,
+      };
     });
 
     const focusClaim =
@@ -128,6 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       failedCriteria,
       evidenceQuote,
       claimsSummary,
+      history,
       contextChunks: retrieval.chunks.map((chunk) => ({
         section: chunk.sectionLabel,
         text: chunk.text,
@@ -148,9 +171,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       throw new ApiError("Debrief gagal menghasilkan JSON valid.", 502);
     }
 
-    const answer = normalize(body.playerAnswer);
+    const allAnswers = normalize(
+      [body.playerAnswer, ...history.map((entry) => entry.answer)].join("\n"),
+    );
     const source = normalize(map.source_text);
-    if (!answer.includes(normalize(output.data.answer_quote))) {
+    if (!allAnswers.includes(normalize(output.data.answer_quote))) {
       throw new ApiError("Kutipan jawaban pada debrief tidak valid.", 502);
     }
     if (!source.includes(normalize(output.data.evidence_quote))) {

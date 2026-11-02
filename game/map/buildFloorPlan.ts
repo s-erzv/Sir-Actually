@@ -9,7 +9,7 @@ import type {
 } from "@/lib/domain/types";
 import { LOW_CONFIDENCE } from "@/lib/balance";
 
-export const MONSTERS_PER_ROOM_MAX = 3;
+export const MONSTERS_PER_ROOM_MAX = 1;
 
 export const RESEARCH_DIMENSIONS: readonly ResearchDimension[] = [
   "gap",

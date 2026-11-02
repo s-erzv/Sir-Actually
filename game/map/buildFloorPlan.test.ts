@@ -54,7 +54,7 @@ describe("buildFloorPlan", () => {
     expect(gap.monsterCount).toBe(1);
   });
 
-  it("packs all non-boss findings into rooms of at most 3, boss last", () => {
+  it("spreads every non-boss finding into its own room, boss last", () => {
     const findings = Array.from({ length: 7 }, (_, index) =>
       finding("sample_unreported", index + 1),
     );
@@ -62,11 +62,13 @@ describe("buildFloorPlan", () => {
     const method = floors.find((floor) => floor.dimension === "method")!;
 
     expect(method.monsterCount).toBe(7);
-    expect(method.rooms).toHaveLength(3);
-    expect(method.rooms[0]!.monsterIds).toHaveLength(MONSTERS_PER_ROOM_MAX);
-    expect(method.rooms[1]!.monsterIds).toHaveLength(MONSTERS_PER_ROOM_MAX);
-    expect(method.rooms[2]!.kind).toBe("boss");
-    expect(method.rooms[2]!.monsterIds).toEqual([findings[0]!.id]);
+    expect(method.rooms).toHaveLength(7);
+    expect(method.rooms.every((room, index) =>
+      index === method.rooms.length - 1
+        ? room.kind === "boss"
+        : room.kind === "minions" && room.monsterIds.length === MONSTERS_PER_ROOM_MAX
+    )).toBe(true);
+    expect(method.rooms.at(-1)!.monsterIds).toEqual([findings[0]!.id]);
   });
 
   it("uses the lowest rank number as boss", () => {

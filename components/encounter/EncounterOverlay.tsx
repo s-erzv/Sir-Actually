@@ -61,6 +61,7 @@ interface EncounterRuntimeState {
   lastLootAwarded: number;
   lastLootKind: "zonk" | "coins" | "gem";
   lastPointsTotal: number;
+  history: Array<{ answer: string; evaluation: EvaluationResult }>;
 }
 
 interface EncounterOverlayProps {
@@ -196,6 +197,7 @@ export default function EncounterOverlay({
         lastLootAwarded: 0,
         lastLootKind: "zonk",
         lastPointsTotal: 0,
+        history: [],
       });
       setAnswer("");
       setAnswerError(null);
@@ -296,6 +298,10 @@ export default function EncounterOverlay({
               lastPointsTotal: data.pointsTotal,
               showBreakdown: false,
               showAdvice: false,
+              history: [
+                ...prev.history,
+                { answer, evaluation: data.evaluation },
+              ],
             }
           : null,
       );
@@ -423,6 +429,14 @@ export default function EncounterOverlay({
         playerAnswer={state.lastAnswer}
         missing={state.lastEvaluation?.missing ?? ""}
         scores={adviceScores}
+        history={state.history.map((entry) => ({
+          answer: entry.answer,
+          scores: entry.evaluation.scores.map((score) => ({
+            criterionId: score.criterionId,
+            level: score.level,
+          })),
+          missing: entry.evaluation.missing,
+        }))}
         onRetry={handleRetry}
         onRevise={() => {}} // disabled in M2
       />
