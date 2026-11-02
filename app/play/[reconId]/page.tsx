@@ -126,6 +126,7 @@ export default function PlayPage() {
   const [entryPhase, setEntryPhase] = useState<"idle" | "loading" | "enter">("idle");
   const [pendingCharacter, setPendingCharacter] = useState<Loadout["characterSlug"]>("arka");
   const [resolvedKeys, setResolvedKeys] = useState<string[]>([]);
+  const [doorNotice, setDoorNotice] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,6 +369,15 @@ export default function PlayPage() {
     const timer = window.setTimeout(() => setEntryPhase("idle"), 1900);
     return () => window.clearTimeout(timer);
   }, [entryPhase]);
+
+  useEffect(() => {
+    const onDoorLocked = () => {
+      setDoorNotice(true);
+      window.setTimeout(() => setDoorNotice(false), 2200);
+    };
+    bus.on("door:locked", onDoorLocked);
+    return () => bus.off("door:locked", onDoorLocked);
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (typeof document === "undefined") return;
@@ -652,6 +662,15 @@ export default function PlayPage() {
       <p className="absolute bottom-2 left-2 z-10 max-w-[55vw] border-2 border-void bg-void/85 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash shadow-[inset_0_0_0_1px_#34424e]">
         WASD / panah · scroll zoom · tabrak monster · Esc jeda
       </p>
+
+      {doorNotice ? (
+        <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-ember/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
+          <p className="font-pixel text-[0.52rem] text-ember">PINTU TERKUNCI</p>
+          <p className="mt-1 text-[0.72rem] leading-5 text-bone">
+            Selesaikan semua monster di ruangan ini dulu untuk membuka pintu berikutnya.
+          </p>
+        </div>
+      ) : null}
 
       {showFloorIntro && activePlan ? (
         <FloorIntro
