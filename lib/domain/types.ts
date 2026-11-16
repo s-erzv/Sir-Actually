@@ -23,6 +23,14 @@ export type WeaknessType =
   | "citation_not_found"
   | "citation_claim_mismatch";
 
+/**
+ * What an encounter is about. Findings use a WeaknessType; a dweller quizzes
+ * understanding of a claim and is deliberately NOT a weakness type, so it can
+ * never be mistaken for a finding.
+ */
+export const COMPREHENSION = "comprehension" as const;
+export type EncounterTopic = WeaknessType | typeof COMPREHENSION;
+
 export type Floor = 1 | 2 | 3 | 4;
 
 export interface FindingStub {

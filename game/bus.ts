@@ -1,5 +1,5 @@
 import mitt from "mitt";
-import type { AttackStyle, Quality, WeaknessType } from "@/lib/domain/types";
+import type { AttackStyle, EncounterTopic, Quality } from "@/lib/domain/types";
 
 /** Events emitted between Phaser and React via the shared bus. */
 export type GameEvents = {
@@ -12,7 +12,8 @@ export type GameEvents = {
     floor: number;
     room: number;
     isBoss?: boolean;
-    weaknessType?: WeaknessType;
+    /** A finding's weakness type, or "comprehension" for a dweller. */
+    weaknessType?: EncounterTopic;
     evidenceQuote?: string;
   };
   /** React → Phaser: player finished (or skipped) the encounter. */
