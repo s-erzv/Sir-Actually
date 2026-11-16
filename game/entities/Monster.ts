@@ -130,47 +130,130 @@ export class Monster {
   }
 
   /**
-   * Called when a boss:hit event fires.
-   * Shake the sprite, flash red, show a floating damage number.
+   * An answer landed. White flash, knockback away from the attacker, a slash
+   * across the sprite, sparks and a damage number sized by the hit.
    */
-  playHit(scene: Phaser.Scene, damage: number): void {
+  playHit(scene: Phaser.Scene, damage: number, from?: { x: number; y: number }): void {
     if (this.resolved) return;
+    const homeX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const homeY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
 
-    const origX = this.sprite.x;
+    if (damage <= 0) {
+      // A miss: the monster sidesteps.
+      scene.tweens.add({
+        targets: this.sprite,
+        x: homeX + 4,
+        duration: 70,
+        ease: "Quad.easeOut",
+        yoyo: true,
+        onComplete: () => this.sprite.setPosition(homeX, homeY),
+      });
+      this.floatText(scene, "MISS", "#9aa3ad", 10);
+      return;
+    }
 
+    const heavy = damage >= 35;
+    const dx = from ? homeX - from.x : 0;
+    const dy = from ? homeY - from.y : -1;
+    const length = Math.hypot(dx, dy) || 1;
+    const push = heavy ? 7 : 4;
+
+    this.sprite.setTintFill(0xffffff);
+    scene.time.delayedCall(90, () => {
+      if (this.resolved) return;
+      this.sprite.setTint(0xff5a5a);
+      scene.time.delayedCall(140, () => {
+        if (!this.resolved) this.sprite.clearTint();
+      });
+    });
     scene.tweens.add({
       targets: this.sprite,
-      x: { from: origX - 3, to: origX + 3 },
-      duration: 40,
-      ease: "Sine.easeInOut",
+      x: homeX + (dx / length) * push,
+      y: homeY + (dy / length) * push,
+      duration: 80,
+      ease: "Quad.easeOut",
       yoyo: true,
-      repeat: 3,
-      onComplete: () => { this.sprite.x = origX; },
+      hold: 40,
+      onComplete: () => this.sprite.setPosition(homeX, homeY),
     });
 
-    this.sprite.setTint(0xff4444);
-    scene.time.delayedCall(120, () => {
-      if (!this.resolved) this.sprite.clearTint();
-    });
-
-    const label = damage === 0 ? "MISS" : `-${damage}`;
-    const color = damage === 0 ? "#aaaaaa" : "#ff4444";
-    const dmgText = scene.add.text(this.sprite.x, this.sprite.y - 8, label, {
-      fontSize: "10px",
-      color,
-      fontFamily: "Arial, sans-serif",
-      stroke: "#000000",
-      strokeThickness: 2,
-    }).setOrigin(0.5, 1).setDepth(100);
-
+    // Slash: a bright streak that sweeps across the monster.
+    const slash = scene.add
+      .rectangle(homeX, homeY, heavy ? 30 : 22, 3, 0xfff3c4)
+      .setDepth(60)
+      .setRotation(-0.9)
+      .setScale(0.2, 1);
     scene.tweens.add({
-      targets: dmgText,
-      y: dmgText.y - 30,
+      targets: slash,
+      scaleX: 1,
       alpha: 0,
-      duration: 700,
+      duration: 160,
       ease: "Cubic.easeOut",
-      onComplete: () => { dmgText.destroy(); },
+      onComplete: () => slash.destroy(),
     });
+    this.burst(scene, 0xfff3c4, heavy ? 10 : 6, heavy ? 16 : 11, 260);
+    this.floatText(scene, `-${damage}`, heavy ? "#ffd166" : "#ff6b6b", heavy ? 14 : 11);
+  }
+
+  /** The answer cost a Heart: the monster lunges at the player. */
+  playCounter(scene: Phaser.Scene, target: { x: number; y: number }): void {
+    if (this.resolved) return;
+    const homeX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const homeY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
+    const dx = target.x - homeX;
+    const dy = target.y - homeY;
+    const length = Math.hypot(dx, dy) || 1;
+    scene.tweens.add({
+      targets: this.sprite,
+      x: homeX + (dx / length) * 8,
+      y: homeY + (dy / length) * 8,
+      duration: 90,
+      ease: "Back.easeIn",
+      yoyo: true,
+      onComplete: () => this.sprite.setPosition(homeX, homeY),
+    });
+  }
+
+  private floatText(scene: Phaser.Scene, label: string, color: string, size: number): void {
+    const text = scene.add
+      .text(this.sprite.x, this.sprite.y - 10, label, {
+        fontSize: `${size}px`,
+        color,
+        fontFamily: "monospace",
+        fontStyle: "bold",
+        stroke: "#05070a",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(100)
+      .setScale(0.4);
+    scene.tweens.add({ targets: text, scale: 1, duration: 120, ease: "Back.easeOut" });
+    scene.tweens.add({
+      targets: text,
+      y: text.y - 26,
+      alpha: 0,
+      delay: 160,
+      duration: 620,
+      ease: "Cubic.easeOut",
+      onComplete: () => text.destroy(),
+    });
+  }
+
+  private burst(scene: Phaser.Scene, tint: number, count: number, radius: number, duration: number): void {
+    for (let index = 0; index < count; index++) {
+      const angle = (Math.PI * 2 * index) / count + Math.random() * 0.5;
+      const reach = radius * (0.6 + Math.random() * 0.6);
+      const spark = scene.add.rectangle(this.sprite.x, this.sprite.y, 2, 2, tint).setDepth(59);
+      scene.tweens.add({
+        targets: spark,
+        x: this.sprite.x + Math.cos(angle) * reach,
+        y: this.sprite.y + Math.sin(angle) * reach,
+        alpha: 0,
+        duration: duration * (0.7 + Math.random() * 0.6),
+        ease: "Quad.easeOut",
+        onComplete: () => spark.destroy(),
+      });
+    }
   }
 
   markResolved(result: "won" | "conceded" | "disputed" | "fled"): void {
@@ -188,26 +271,48 @@ export class Monster {
     }
 
     const scene = this.sprite.scene;
-    const tint = result === "won" ? 0xffd166 : 0xcbd5e1;
-    for (let i = 0; i < 10; i++) {
-      const angle = (Math.PI * 2 * i) / 10;
-      const spark = scene.add.rectangle(this.sprite.x, this.sprite.y, 2, 2, tint).setDepth(9);
+    if (result !== "won") {
+      this.burst(scene, 0xcbd5e1, 8, 12, 380);
       scene.tweens.add({
-        targets: spark,
-        x: this.sprite.x + Math.cos(angle) * 14,
-        y: this.sprite.y + Math.sin(angle) * 14,
+        targets: this.sprite,
         alpha: 0,
-        duration: 420,
-        ease: "Quad.easeOut",
-        onComplete: () => spark.destroy(),
+        duration: 400,
+        onComplete: () => this.sprite.destroy(),
       });
+      return;
     }
+
+    // Slain: stagger, flash, then burst apart.
+    const baseScale = this.sprite.scaleX;
+    this.sprite.setTintFill(0xffffff);
     scene.tweens.add({
       targets: this.sprite,
-      alpha: 0,
-      duration: 400,
-      ease: "Linear",
-      onComplete: () => { this.sprite.destroy(); },
+      angle: { from: -12, to: 12 },
+      duration: 60,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => {
+        this.burst(scene, 0xffd166, this.isBoss ? 22 : 14, this.isBoss ? 30 : 20, 520);
+        this.burst(scene, 0xff6b6b, this.isBoss ? 12 : 8, this.isBoss ? 20 : 13, 420);
+        const ring = scene.add.circle(this.sprite.x, this.sprite.y, 4).setStrokeStyle(2, 0xffd166).setDepth(58);
+        scene.tweens.add({
+          targets: ring,
+          scale: this.isBoss ? 7 : 4.5,
+          alpha: 0,
+          duration: 420,
+          ease: "Cubic.easeOut",
+          onComplete: () => ring.destroy(),
+        });
+        scene.tweens.add({
+          targets: this.sprite,
+          scaleX: baseScale * 1.6,
+          scaleY: 0,
+          alpha: 0,
+          duration: 220,
+          ease: "Quad.easeIn",
+          onComplete: () => this.sprite.destroy(),
+        });
+      },
     });
   }
 

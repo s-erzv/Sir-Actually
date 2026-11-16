@@ -19,7 +19,7 @@ export const MONSTERS_PER_ROOM_MAX = 1;
  * different version are reset once, because `progress.resolved` uses
  * positional keys (`f2-r1:0`) that would point at the wrong monster.
  */
-export const FLOOR_LAYOUT_VERSION = 6;
+export const FLOOR_LAYOUT_VERSION = 7;
 
 export const RESEARCH_DIMENSIONS: readonly ResearchDimension[] = [
   "gap",

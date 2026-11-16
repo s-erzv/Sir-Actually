@@ -18,7 +18,12 @@ import {
   type MonsterLevel,
 } from "@/lib/planner/difficulty";
 import { BOSS_ROSTER, MINION_ROSTER, getMonsterDisplayName } from "@/lib/monsters";
-import { PROMPT_VERSION } from "@/lib/prompts/questioner_v1";
+import { z } from "zod";
+import {
+  PROMPT_VERSION,
+  QUESTIONER_SYSTEM,
+  buildQuestionBatchPrompt,
+} from "@/lib/prompts/questioner_v1";
 import { retrieveChunks } from "@/lib/rag/retrieve";
 import { RUBRICS } from "@/lib/rubrics";
 import { pickTargetCriteria, type GeneratedQuestion } from "@/lib/encounter/schema";
@@ -44,6 +49,8 @@ export interface GenerateQuestionsInput {
   previousAttackTypes?: AttackType[];
   count: number;
 }
+
+const BATCH_SCHEMA = z.object({ questions: z.array(z.string().max(600)).max(8) });
 
 export function personaFor(bossSlug: string): string {
   const boss = BOSS_ROSTER[bossSlug];
@@ -153,31 +160,42 @@ export async function generateEncounterQuestions(
   const maxWords = maxQuestionWordsForLevel(level);
   const questions: GeneratedQuestion[] = [];
 
+  // Plan every slot first (attack form + criteria are decided by code), then
+  // ask for all the texts in one call instead of one call per question.
+  const slots: Array<{ attackType: AttackType; targetCriteria: ReturnType<typeof pickTargetCriteria> }> = [];
   for (let index = 0; index < count; index += 1) {
     const attackType = pickAttackType(allowed, usedAttacks, usedAttacks.at(-1), 0);
-    const targetCriteria = pickTargetCriteria(rubricCriteria, attackType, input.isBoss);
-    const promptInput = {
-      evidenceQuote,
-      weaknessType,
-      attackType,
-      bossPersona: personaFor(input.bossSlug),
-      researchMapSummary: summary,
-      previousQuestions,
-      targetCriteria,
-      contextChunks,
-      monsterLevel: level,
-    };
+    slots.push({ attackType, targetCriteria: pickTargetCriteria(rubricCriteria, attackType, input.isBoss) });
+    usedAttacks.push(attackType);
+  }
+  const bossPersona = personaFor(input.bossSlug);
 
-    let question = "";
-    let accepted = false;
-    let repair: string | null = null;
+  let drafts: string[] = [];
+  try {
+    const raw = await provider.completeJson(
+      QUESTIONER_SYSTEM,
+      buildQuestionBatchPrompt({
+        evidenceQuote,
+        weaknessType,
+        bossPersona,
+        researchMapSummary: summary,
+        previousQuestions,
+        contextChunks,
+        monsterLevel: level,
+        slots,
+      }),
+      0.3,
+    );
+    const parsed = BATCH_SCHEMA.safeParse(raw);
+    if (parsed.success) drafts = parsed.data.questions;
+  } catch {
+    // Fall through: every slot is retried on its own, then templated.
+  }
 
-    for (let attempt = 0; attempt < 2 && !accepted; attempt += 1) {
-      question = await provider.generateQuestion({
-        ...promptInput,
-        previousQuestions: repair ? [...previousQuestions, repair] : previousQuestions,
-      });
-      const quality = checkQuestionQuality({
+  for (const [index, slot] of slots.entries()) {
+    const { attackType, targetCriteria } = slot;
+    const check = (question: string) =>
+      checkQuestionQuality({
         question,
         targetCriteria,
         evidenceQuote,
@@ -185,13 +203,29 @@ export async function generateEncounterQuestions(
         previousQuestions,
         maxWords,
       });
-      if (quality.ok) {
-        accepted = true;
-      } else {
-        repair = quality.repair;
+
+    let question = (drafts[index] ?? "").trim();
+    let quality = question ? check(question) : { ok: false as const, repair: "Tulis satu pertanyaan." };
+    if (!quality.ok) {
+      try {
+        question = await provider.generateQuestion({
+          evidenceQuote,
+          weaknessType,
+          attackType,
+          bossPersona,
+          researchMapSummary: summary,
+          previousQuestions: [...previousQuestions, quality.repair],
+          targetCriteria,
+          contextChunks,
+          monsterLevel: level,
+        });
+        quality = check(question);
+      } catch {
+        quality = { ok: false as const, repair: "" };
       }
     }
-    if (!accepted) question = templateQuestion(attackType, targetCriteria);
+    const source = quality.ok ? "llm" : "template";
+    if (!quality.ok) question = templateQuestion(attackType, targetCriteria);
 
     const trimmed = question.trim();
     questions.push({
@@ -202,10 +236,9 @@ export async function generateEncounterQuestions(
       targetCriterionIds: targetCriteria.map((criterion) => criterion.id),
       level,
       promptVersion: PROMPT_VERSION,
-      model: provider.modelName,
+      model: source === "llm" ? provider.modelName : "template",
     });
     previousQuestions.push(trimmed);
-    usedAttacks.push(attackType);
   }
 
   return questions;

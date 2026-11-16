@@ -24,6 +24,7 @@
  * No Phaser imports. Importable in Node/Vitest.
  */
 
+import { generateLabyrinthFloor } from "./labyrinth";
 import type { FindingStub, Floor, FloorMap, FloorPlan, Rect, Room, Vec2 } from "@/lib/domain/types";
 import { TileCode } from "./tiles";
 
@@ -879,6 +880,11 @@ function wallCorridors(tiles: number[][], roomRects: readonly Rect[]): void {
  * stays locked until every minion is resolved.
  */
 export function generateFloorFromPlan(plan: FloorPlan, seed: number): FloorMap {
+  return generateLabyrinthFloor(plan, seed);
+}
+
+/** Previous cell-grid generator, kept only for layout comparison in tests. */
+export function generateCellGridFloorFromPlan(plan: FloorPlan, seed: number): FloorMap {
   if (plan.rooms.length === 0) {
     throw new Error("generateFloorFromPlan: plan must contain at least one room");
   }

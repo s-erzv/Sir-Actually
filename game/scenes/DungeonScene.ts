@@ -72,6 +72,7 @@ export class DungeonScene extends Phaser.Scene {
   private encounterActive = false;
   private worldPaused = false;
   private lastPlayerTileKey = "";
+  private darkness: Phaser.GameObjects.Image | null = null;
 
   constructor(key = "DungeonScene") {
     super({ key });
@@ -93,6 +94,7 @@ export class DungeonScene extends Phaser.Scene {
     this.addCorridorLights();
     this.addDust();
     this.spawnEntities();
+    this.addDarkness();
     this.emitPlayerTile();
     this.emitRoomProgress();
     this.setupCamera();
@@ -466,6 +468,26 @@ export class DungeonScene extends Phaser.Scene {
   // Camera
   // ---------------------------------------------------------------------------
 
+  /** Torchlight: everything beyond a few tiles of the player falls to black. */
+  private addDarkness(): void {
+    if (!this.textures.exists("darkness")) return;
+    const size = 2400; // world px; covers the view at the widest zoom
+    this.darkness = this.add
+      .image(this.player.sprite.x, this.player.sprite.y, "darkness")
+      .setDisplaySize(size, size)
+      .setDepth(50);
+    // Slow flicker so the light feels like a flame, not a spotlight.
+    this.tweens.add({
+      targets: this.darkness,
+      displayWidth: size * 1.04,
+      displayHeight: size * 1.04,
+      duration: 1400,
+      ease: "Sine.easeInOut",
+      yoyo: true,
+      repeat: -1,
+    });
+  }
+
   private setupCamera(): void {
     const { width, height } = this.floorMap;
     const baseZoom = calcZoom(this.scale.width, this.scale.height);
@@ -527,16 +549,51 @@ export class DungeonScene extends Phaser.Scene {
       if (!monster) return;
       playSfx(result === "won" ? "win" : "lose");
       monster.markResolved(result);
+      if (result === "won") {
+        this.cameras.main.shake(monster.isBoss ? 420 : 220, monster.isBoss ? 0.012 : 0.006);
+        this.cameras.main.flash(monster.isBoss ? 260 : 140, 255, 220, 150, false);
+      }
 
       this.unlockBossDoorIfCleared();
       this.emitRoomProgress();
     };
 
-    const onBossHit = ({ encounterId, damage }: { encounterId: string; damage: number }) => {
+    const onBossHit = ({
+      encounterId,
+      damage,
+      heartLost,
+    }: {
+      encounterId: string;
+      damage: number;
+      heartLost?: boolean;
+    }) => {
       const monster = this.monsters.find((m) => m.encounterId === encounterId);
       if (!monster) return;
-      playSfx("hit");
-      monster.playHit(this, damage);
+      const playerAt = { x: this.player.sprite.x, y: this.player.sprite.y };
+      const monsterAt = { x: monster.sprite.x, y: monster.sprite.y };
+
+      this.player.attack(monsterAt.x, monsterAt.y);
+      // The blow lands at the end of the lunge.
+      this.time.delayedCall(70, () => {
+        playSfx(damage > 0 ? "hit" : "miss");
+        monster.playHit(this, damage, playerAt);
+        if (damage > 0) {
+          this.cameras.main.shake(damage >= 35 ? 160 : 90, damage >= 35 ? 0.008 : 0.004);
+          this.hitStop(damage >= 35 ? 90 : 50);
+        }
+      });
+
+      if (heartLost) {
+        this.time.delayedCall(420, () => {
+          monster.playCounter(this, playerAt);
+          this.time.delayedCall(90, () => {
+            playSfx("hurt");
+            this.player.hurt(monsterAt.x, monsterAt.y);
+            this.cameras.main.shake(200, 0.01);
+            this.cameras.main.flash(160, 190, 30, 30, false);
+          });
+        });
+      }
     };
 
     const onFloorRetry = () => {
@@ -578,6 +635,14 @@ export class DungeonScene extends Phaser.Scene {
       () => bus.off("game:resume", onGameResume),
       () => bus.off("player:step", onPlayerStep),
     );
+  }
+
+  /** Freeze tweens for a few frames so a hit reads as impact. */
+  private hitStop(ms: number): void {
+    this.tweens.timeScale = 0.05;
+    window.setTimeout(() => {
+      if (this.sys.isActive()) this.tweens.timeScale = 1;
+    }, ms);
   }
 
   private unlockDoor(tileX: number, tileY: number): void {
@@ -668,6 +733,7 @@ export class DungeonScene extends Phaser.Scene {
 
   update(): void {
     this.player.update(this.monsters);
+    this.darkness?.setPosition(this.player.sprite.x, this.player.sprite.y);
     this.emitPlayerTile();
     if (!this.encounterActive && !this.worldPaused) {
       this.collectLootAt(this.player.getTile());

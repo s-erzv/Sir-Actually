@@ -6,6 +6,8 @@
   https://kenney.nl/assets/tiny-dungeon
 - **Roguelike/RPG pack** by Kenney — CC0. Loot and prop sprites.
   https://kenney.nl/assets/roguelike-rpg-pack
+- **Ninja Adventure Asset Pack** by Pixel-Boy and AAA — CC0. Animated characters.
+  https://pixel-boy.itch.io/ninja-adventure-asset-pack
 - **Silkscreen** — Google Fonts, SIL Open Font License 1.1.
 - **DM Sans** — Google Fonts, SIL Open Font License 1.1.
 

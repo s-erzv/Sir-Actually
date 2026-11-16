@@ -7,3 +7,7 @@ out
 *.tsbuildinfo
 .DS_Store
 supabase/.temp
+.playwright-mcp
+
+# Source archive for public/assets/ninja-adventure; only the files in use are committed.
+Ninja Adventure - Asset Pack.zip

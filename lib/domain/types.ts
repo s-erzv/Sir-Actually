@@ -96,6 +96,8 @@ export interface FloorMap {
   findingMeta?: Record<string, FindingMeta>;
   dimension?: DungeonDimension;
   bossSlug?: string;
+  /** Tips of the maze's dead-end corridors; loot is placed here. */
+  deadEnds?: Vec2[];
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +160,11 @@ export interface JudgeRawOutput {
   addressed?: boolean;
   /** Judge confidence in this evaluation (0–1). */
   confidence?: number;
+  /**
+   * How the answer relates to the question (judge_v2). `answers` and `thin`
+   * engage the question; `off_topic` and `nonsense` do not and cost a Heart.
+   */
+  verdict?: "answers" | "thin" | "off_topic" | "nonsense";
 }
 
 /** A validated + possibly capped criterion score. */

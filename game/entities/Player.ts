@@ -5,6 +5,13 @@ import { TILE_SIZE, TileCode, isSolid } from "@/game/map/tiles";
 import { playerFrameFor } from "@/game/map/tileFrames";
 import type { FloorMap } from "@/lib/domain/types";
 import type { Monster } from "./Monster";
+import {
+  attackFrame,
+  idleFrame,
+  sheetKey,
+  walkAnimKey,
+  type Facing,
+} from "@/lib/sprites/sheets";
 
 const TWEEN_DURATION = 120; // ms per tile move
 
@@ -19,7 +26,11 @@ const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
 };
 
 export class Player {
-  readonly sprite: Phaser.GameObjects.Image;
+  readonly sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+  /** Set when the character has an animated sheet. */
+  private readonly animSlug: string | null = null;
+  private facing: Facing = "down";
+  private stopTimer: Phaser.Time.TimerEvent | null = null;
 
   private scene: Phaser.Scene;
   private floorMap: FloorMap;
@@ -52,8 +63,12 @@ export class Player {
     this.tileX = Math.floor(worldX / TILE_SIZE);
     this.tileY = Math.floor(worldY / TILE_SIZE);
 
-    const artKey = `char-${characterSlug ?? "arka"}`;
-    if (scene.textures.exists(artKey)) {
+    const slug = characterSlug ?? "arka";
+    const artKey = `char-${slug}`;
+    if (scene.textures.exists(sheetKey(slug))) {
+      this.animSlug = slug;
+      this.sprite = scene.add.sprite(worldX, worldY, sheetKey(slug), idleFrame("down"));
+    } else if (scene.textures.exists(artKey)) {
       this.sprite = scene.add.image(worldX, worldY, artKey);
       this.sprite.setScale(0.5);
     } else {
@@ -105,6 +120,7 @@ export class Player {
   step(dir: Direction, monsters: Monster[]): void {
     if (this.moving || this.inputLocked) return;
 
+    this.face(dir);
     const { dx, dy } = DIR_DELTA[dir];
     const nx = this.tileX + dx;
     const ny = this.tileY + dy;
@@ -169,6 +185,11 @@ export class Player {
     this.tileY = ty;
     this.moving = true;
     playSfx("step");
+    this.stopTimer?.remove();
+    this.stopTimer = null;
+    if (this.animSlug && this.sprite instanceof Phaser.GameObjects.Sprite) {
+      this.sprite.anims.play(walkAnimKey(this.animSlug, this.facing), true);
+    }
 
     this.scene.tweens.add({
       targets: this.sprite,
@@ -176,7 +197,72 @@ export class Player {
       y: ty * TILE_SIZE + TILE_SIZE / 2,
       duration: TWEEN_DURATION,
       ease: "Sine.easeInOut",
-      onComplete: () => { this.moving = false; },
+      onComplete: () => {
+        this.moving = false;
+        // Held keys chain steps; only settle to idle if no step follows.
+        this.stopTimer = this.scene.time.delayedCall(60, () => this.standStill());
+      },
     });
+  }
+
+  /** Turn to a direction without moving (bumping a wall, facing a monster). */
+  private face(dir: Facing): void {
+    this.facing = dir;
+    if (!this.moving) this.standStill();
+  }
+
+  private standStill(): void {
+    if (this.moving) return;
+    if (this.animSlug && this.sprite instanceof Phaser.GameObjects.Sprite) {
+      this.sprite.anims.stop();
+      this.sprite.setFrame(idleFrame(this.facing));
+    }
+  }
+
+  /** Lunge at a target and strike; used when an answer lands. */
+  attack(targetX: number, targetY: number): void {
+    const homeX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const homeY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
+    const dx = targetX - homeX;
+    const dy = targetY - homeY;
+    this.facing = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "right" : "left") : dy >= 0 ? "down" : "up";
+    if (this.animSlug && this.sprite instanceof Phaser.GameObjects.Sprite) {
+      this.sprite.anims.stop();
+      this.sprite.setFrame(attackFrame(this.facing));
+    }
+    const length = Math.hypot(dx, dy) || 1;
+    this.scene.tweens.add({
+      targets: this.sprite,
+      x: homeX + (dx / length) * 6,
+      y: homeY + (dy / length) * 6,
+      duration: 70,
+      ease: "Quad.easeOut",
+      yoyo: true,
+      onComplete: () => {
+        this.sprite.setPosition(homeX, homeY);
+        this.standStill();
+      },
+    });
+  }
+
+  /** Recoil and flash when an answer costs a Heart. */
+  hurt(fromX: number, fromY: number): void {
+    const homeX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const homeY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
+    const length = Math.hypot(homeX - fromX, homeY - fromY) || 1;
+    this.sprite.setTintFill(0xff5a5a);
+    this.scene.tweens.add({
+      targets: this.sprite,
+      x: homeX + ((homeX - fromX) / length) * 5,
+      y: homeY + ((homeY - fromY) / length) * 5,
+      duration: 80,
+      ease: "Quad.easeOut",
+      yoyo: true,
+      onComplete: () => {
+        this.sprite.setPosition(homeX, homeY);
+        this.sprite.clearTint();
+      },
+    });
+    this.scene.tweens.add({ targets: this.sprite, alpha: 0.35, duration: 90, yoyo: true, repeat: 3 });
   }
 }

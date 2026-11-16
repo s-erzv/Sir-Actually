@@ -16,9 +16,8 @@ import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getLLMProviderForJudge } from "@/lib/llm";
-import { validateQuotes } from "@/lib/judge/validateQuotes";
-import { applyRules } from "@/lib/judge/rules";
-import { computeDamage, computeHeartLoss } from "@/lib/judge/damage";
+import { evaluateAnswer } from "@/lib/judge/evaluate";
+import { computeDamage } from "@/lib/judge/damage";
 import { RUBRICS, getScoreMax } from "@/lib/rubrics";
 import { AnswerRequestSchema, AttackTypeSchema, pickTargetCriteria } from "@/lib/encounter/schema";
 import { checkQuestionQuality } from "@/lib/encounter/questionQuality";
@@ -257,26 +256,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       throw new ApiError("LLM belum dikonfigurasi untuk menilai jawaban.", 503);
     }
 
-    const rawOutput = await provider.judgeAnswer({
+    const judged = await evaluateAnswer(provider, {
       playerAnswer: body.answer,
       question: questionText,
       evidenceQuote,
       weaknessType,
-      rubricCriteria: targetCriteria,
-      previousQuestions: [],
+      targetCriteria,
+      sourceText: map.source_text,
+      knownCitations: (citations ?? []).map((citation) => citation.raw_text),
       contextChunks: retrieval.chunks.map((chunk) => ({
         section: chunk.sectionLabel,
         text: chunk.text,
       })),
     });
-
-    const validated = validateQuotes(rawOutput, body.answer, rubricIds);
-    const { scores, caps } = applyRules(validated, {
-      playerAnswer: body.answer,
-      sourceText: map.source_text,
-      weaknessType,
-      knownCitations: (citations ?? []).map((citation) => citation.raw_text),
-    });
+    const { rawOutput, scores, caps, scoreTotal, addressed } = judged;
 
     const characterSlug = body.characterSlug ?? "";
     const character = getCharacter(characterSlug);
@@ -294,12 +287,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       : { weaponSlug: null, bonus: 1 };
     const weaponBonus = pickedWeapon.bonus;
 
-    const scoreTotal = scores.reduce((sum, score) => sum + score.level, 0);
     const damage = computeDamage(scoreTotal, scoreMax, isBoss, hpMax, weaponBonus);
-    // Benefit of the doubt: if the Judge omitted `addressed` on a question-bound
-    // answer, do not punish the player with a Heart.
-    const addressed = rawOutput.addressed ?? (questionText ? true : undefined);
-    let heartLost = computeHeartLoss(scoreTotal, addressed);
+    let heartLost = judged.heartLost;
 
     // Sena's Perisai Batas: once per floor, cancel one Heart loss.
     if (heartLost && pickedWeapon.weaponSlug === "perisai_batas") {

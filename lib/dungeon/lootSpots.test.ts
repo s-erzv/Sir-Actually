@@ -19,7 +19,7 @@ function finding(rank: number): FindingStub {
 }
 
 describe("lootSpotsForFloor", () => {
-  it("places deterministic loot on walkable room tiles", () => {
+  it("places deterministic loot on walkable tiles, including maze dead ends", () => {
     const plan = buildFloorPlan([1, 2, 3, 4].map(finding), true).find(
       (floor) => floor.dimension === "method",
     )!;
@@ -30,7 +30,8 @@ describe("lootSpotsForFloor", () => {
     expect(new Set(spots.map((spot) => spot.key)).size).toBe(spots.length);
     expect(spots).toEqual(lootSpotsForFloor(map));
     for (const spot of spots) {
-      expect(map.tiles[spot.y]?.[spot.x]).toBe(TileCode.FLOOR);
+      expect([TileCode.FLOOR, TileCode.FLOOR_ALT]).toContain(map.tiles[spot.y]?.[spot.x]);
     }
+    expect(spots.filter((spot) => spot.key.startsWith("nook:")).length).toBe(map.deadEnds!.length);
   });
 });

@@ -2,175 +2,170 @@ import { describe, expect, it } from "vitest";
 import { buildFloorPlan } from "./buildFloorPlan";
 import { generateFloorFromPlan } from "./generateFloor";
 import { TileCode, isSolid } from "./tiles";
-import type { FindingStub, WeaknessType } from "@/lib/domain/types";
+import type { FindingStub, FloorMap, FloorPlan, WeaknessType } from "@/lib/domain/types";
 
-let nextId = 0;
-
-function finding(weaknessType: WeaknessType, rank: number): FindingStub {
-  nextId += 1;
+function finding(id: string, weaknessType: WeaknessType, rank: number): FindingStub {
   return {
-    id: `plan-finding-${nextId}`,
+    id,
     weaknessType,
     severity: 2,
     centrality: 2,
     confidence: 0.8,
-    evidenceQuote: `quote ${nextId}`,
+    evidenceQuote: `kutipan ${id}`,
     floor: 1,
     rank,
   };
 }
 
-describe("generateFloorFromPlan", () => {
-  it("keeps every planned room, adds maze chambers, and spawns one monster per finding", () => {
-    const findings = Array.from({ length: 7 }, (_, index) =>
-      finding("sample_unreported", index + 1),
-    );
-    const plan = buildFloorPlan(findings, true).find(
-      (floor) => floor.dimension === "method",
-    )!;
-    const map = generateFloorFromPlan(plan, 42);
+function methodPlan(count: number): FloorPlan {
+  const types: WeaknessType[] = [
+    "rq_method_mismatch",
+    "sample_unreported",
+    "generalization_beyond_sample",
+    "limitation_missing",
+  ];
+  const findings = Array.from({ length: count }, (_, index) =>
+    finding(`f${index}`, types[index % types.length]!, index + 1),
+  );
+  return buildFloorPlan(findings, true)[0]!;
+}
 
-    const populated = map.rooms.filter((room) => (room.findingIds?.length ?? 0) > 0);
-    expect(populated).toHaveLength(plan.rooms.length);
-    expect(map.rooms.length).toBe(plan.rooms.length); // filler cells are corridors
+const walkable = (map: FloorMap, x: number, y: number): boolean => {
+  const code = (map.tiles[y]?.[x] ?? TileCode.VOID) as TileCode;
+  return code !== TileCode.VOID && !isSolid(code);
+};
 
-    const plannedSpawns = plan.rooms.reduce((sum, room) => sum + room.monsterIds.length, 0);
-    const actualSpawns = map.rooms.reduce(
-      (sum, room) => sum + (room.monsterSpawns?.length ?? 0),
-      0,
-    );
-    expect(actualSpawns).toBe(plannedSpawns);
-    for (const room of populated) {
-      expect(room.monsterSpawns?.length).toBe(room.findingIds!.length);
-    }
-
-    for (const room of map.rooms) {
-      for (const spawn of room.monsterSpawns ?? []) {
-        expect(isSolid(map.tiles[spawn.y]?.[spawn.x] as TileCode)).toBe(false);
-      }
-    }
-    expect(map.rooms.at(-1)!.isBoss).toBe(true);
-    expect(map.rooms.at(-1)!.findingIds).toEqual([findings[0]!.id]);
-    expect(map.tiles.some((row) => row.includes(TileCode.STAIRS))).toBe(true);
-  });
-
-  it("keeps Ghost and Throne as special single-monster rooms", () => {
-    const plan = buildFloorPlan([], true);
-    const ghost = generateFloorFromPlan(plan[0]!, 7);
-    const throne = generateFloorFromPlan(plan[1]!, 7);
-
-    expect(ghost.dimension).toBe("ghost");
-    expect(ghost.bossSlug).toBe("nyxara");
-    expect(ghost.rooms[0]!.kind).toBe("special");
-    expect(ghost.rooms[0]!.findingId).toBeNull();
-    expect(ghost.rooms[0]!.monsterSpawns).toHaveLength(1);
-
-    expect(throne.dimension).toBe("throne");
-    expect(throne.bossSlug).toBe("eldravos");
-    expect(throne.rooms[0]!.kind).toBe("special");
-  });
-
-  it("locks only the boss gate; maze branches stay open", () => {
-    const findings = [
-      finding("gap_unsupported", 1),
-      finding("gap_answered_by_own_refs", 2),
-      finding("gap_unsupported", 3),
-      finding("gap_unsupported", 4),
-    ];
-    const plan = buildFloorPlan(findings, true).find(
-      (floor) => floor.dimension === "gap",
-    )!;
-    const map = generateFloorFromPlan(plan, 11);
-
-    const boss = map.rooms.find((room) => room.isBoss)!;
-    expect(boss.entranceDoor).not.toBeNull();
-    expect(map.tiles[boss.entranceDoor!.y]![boss.entranceDoor!.x]).toBe(
-      TileCode.DOOR_LOCKED,
-    );
-
-    const otherDoors = map.rooms.filter((room) => !room.isBoss && room.entranceDoor);
-    expect(otherDoors.length).toBeGreaterThan(0);
-    for (const room of otherDoors) {
-      expect(map.tiles[room.entranceDoor!.y]![room.entranceDoor!.x]).toBe(
-        TileCode.DOOR_OPEN,
-      );
-    }
-  });
-
-  it("builds a branching, connected maze instead of one hallway", () => {
-    const findings = Array.from({ length: 7 }, (_, index) =>
-      finding("sample_unreported", index + 1),
-    );
-    const plan = buildFloorPlan(findings, true).find(
-      (floor) => floor.dimension === "method",
-    )!;
-    const map = generateFloorFromPlan(plan, 42);
-
-    const cols = new Set(map.rooms.map((room) => room.rect.x));
-    const rows = new Set(map.rooms.map((room) => room.rect.y));
-    expect(cols.size).toBeGreaterThan(1);
-    expect(rows.size).toBeGreaterThan(1);
-
-    const seen = new Set<string>();
-    const queue = [map.playerSpawn];
-    while (queue.length > 0) {
-      const point = queue.shift()!;
-      const key = `${point.x},${point.y}`;
+/** Tiles reachable from the spawn; locked doors count as passable when asked. */
+function reach(map: FloorMap, throughLocked: boolean): Set<string> {
+  const seen = new Set<string>([`${map.playerSpawn.x},${map.playerSpawn.y}`]);
+  const queue = [map.playerSpawn];
+  for (let head = 0; head < queue.length; head++) {
+    const { x, y } = queue[head]!;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const key = `${nx},${ny}`;
       if (seen.has(key)) continue;
+      const locked = map.tiles[ny]?.[nx] === TileCode.DOOR_LOCKED;
+      if (!(walkable(map, nx, ny) || (throughLocked && locked))) continue;
       seen.add(key);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const nx = point.x + dx;
-        const ny = point.y + dy;
-        const code = (map.tiles[ny]?.[nx] ?? TileCode.VOID) as TileCode;
-        if (code === TileCode.VOID) continue;
-        if (isSolid(code) && code !== TileCode.DOOR_LOCKED) continue;
-        queue.push({ x: nx, y: ny });
-      }
+      queue.push({ x: nx, y: ny });
     }
+  }
+  return seen;
+}
 
-    for (const room of map.rooms) {
-      for (const spawn of room.monsterSpawns ?? []) {
-        expect(seen.has(`${spawn.x},${spawn.y}`)).toBe(true);
+describe("generateFloorFromPlan (labirin)", () => {
+  it("satu ruang per temuan, satu monster per ruang, boss terakhir", () => {
+    for (const count of [1, 2, 6, 14]) {
+      const plan = methodPlan(count);
+      const map = generateFloorFromPlan(plan, 20261101);
+      expect(map.rooms).toHaveLength(plan.rooms.length);
+      expect(map.rooms.at(-1)!.isBoss).toBe(true);
+      expect(map.rooms.filter((room) => room.isBoss)).toHaveLength(1);
+      for (const room of map.rooms) {
+        expect(room.monsterSpawns).toHaveLength(1);
+        expect(room.findingIds).toHaveLength(1);
       }
+      const spawns = map.rooms.map((room) => `${room.monsterSpawn.x},${room.monsterSpawn.y}`);
+      expect(new Set(spawns).size).toBe(spawns.length);
+      const ids = map.rooms.flatMap((room) => room.findingIds ?? []);
+      expect(new Set(ids).size).toBe(count);
     }
-    expect(seen.has(`${map.stairs.x},${map.stairs.y}`)).toBe(true);
-
-    const passable = (x: number, y: number) => {
-      const code = map.tiles[y]?.[x];
-      return (
-        code === TileCode.FLOOR ||
-        code === TileCode.FLOOR_ALT ||
-        code === TileCode.DOOR_OPEN ||
-        code === TileCode.DOOR_LOCKED
-      );
-    };
-    const openings = map.rooms.map((room) => {
-      const { x, y, width, height } = room.rect;
-      const sideOpen = (
-        fromX: number,
-        fromY: number,
-        dx: number,
-        dy: number,
-        length: number,
-      ) =>
-        Array.from({ length }, (_, index) =>
-          passable(fromX + dx * index, fromY + dy * index),
-        ).some(Boolean);
-
-      return [
-        sideOpen(x - 1, y, 0, 1, height),
-        sideOpen(x + width, y, 0, 1, height),
-        sideOpen(x, y - 1, 1, 0, width),
-        sideOpen(x, y + height, 1, 0, width),
-      ].filter(Boolean).length;
-    });
-    expect(Math.max(...openings)).toBeGreaterThanOrEqual(3);
   });
 
-  it("is deterministic for the same seed", () => {
-    const findings = [finding("sample_unreported", 1), finding("sample_unreported", 2)];
-    const plan = buildFloorPlan(findings, true)[0]!;
-    expect(generateFloorFromPlan(plan, 99)).toEqual(generateFloorFromPlan(plan, 99));
-    expect(generateFloorFromPlan(plan, 99)).not.toEqual(generateFloorFromPlan(plan, 100));
+  it("hanya gerbang boss yang terkunci; semua sarang antek terbuka", () => {
+    const map = generateFloorFromPlan(methodPlan(6), 7);
+    const locked = map.tiles.flat().filter((code) => code === TileCode.DOOR_LOCKED);
+    expect(locked).toHaveLength(1);
+    const boss = map.rooms.at(-1)!;
+    expect(map.tiles[boss.entranceDoor!.y]![boss.entranceDoor!.x]).toBe(TileCode.DOOR_LOCKED);
+    for (const room of map.rooms.slice(0, -1)) {
+      expect(map.tiles[room.entranceDoor!.y]![room.entranceDoor!.x]).toBe(TileCode.DOOR_OPEN);
+    }
+  });
+
+  it("boss tunggal tanpa antek tidak dikunci", () => {
+    const map = generateFloorFromPlan(methodPlan(1), 7);
+    expect(map.tiles.flat()).not.toContain(TileCode.DOOR_LOCKED);
+  });
+
+  it("semua antek terjangkau sebelum gerbang boss; boss dan tangga setelahnya", () => {
+    for (const seed of [1, 7, 20261101, 20261104]) {
+      const map = generateFloorFromPlan(methodPlan(6), seed);
+      const before = reach(map, false);
+      const after = reach(map, true);
+      const boss = map.rooms.at(-1)!;
+      for (const room of map.rooms.slice(0, -1)) {
+        expect(before.has(`${room.monsterSpawn.x},${room.monsterSpawn.y}`)).toBe(true);
+      }
+      expect(before.has(`${boss.monsterSpawn.x},${boss.monsterSpawn.y}`)).toBe(false);
+      expect(after.has(`${boss.monsterSpawn.x},${boss.monsterSpawn.y}`)).toBe(true);
+      // Stairs are a trigger tile next to walkable floor inside the boss room.
+      const nextToStairs = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) =>
+        after.has(`${map.stairs.x + dx!},${map.stairs.y + dy!}`),
+      );
+      expect(map.tiles[map.stairs.y]![map.stairs.x]).toBe(TileCode.STAIRS);
+      expect(nextToStairs).toBe(true);
+    }
+  });
+
+  it("terasa labirin: lorong bercabang, ada jalan buntu, tanpa lorong lurus panjang", () => {
+    const map = generateFloorFromPlan(methodPlan(6), 20261101);
+    const inRoom = (x: number, y: number) =>
+      map.rooms.some(
+        (room) =>
+          x >= room.rect.x &&
+          x < room.rect.x + room.rect.width &&
+          y >= room.rect.y &&
+          y < room.rect.y + room.rect.height,
+      );
+    let junctions = 0;
+    let corridorTiles = 0;
+    let longestRun = 0;
+    for (let y = 0; y < map.height; y++) {
+      let run = 0;
+      for (let x = 0; x < map.width; x++) {
+        const isCorridor = walkable(map, x, y) && !inRoom(x, y);
+        run = isCorridor ? run + 1 : 0;
+        longestRun = Math.max(longestRun, run);
+        if (!isCorridor) continue;
+        corridorTiles++;
+        const exits = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) =>
+          walkable(map, x + dx!, y + dy!),
+        ).length;
+        if (exits >= 3) junctions++;
+      }
+    }
+    expect(junctions).toBeGreaterThanOrEqual(6);
+    expect(map.deadEnds!.length).toBeGreaterThanOrEqual(2);
+    expect(corridorTiles).toBeGreaterThan(120);
+    expect(longestRun).toBeLessThanOrEqual(22);
+    // Compact: the old cell grid was 94x78 for the same plan.
+    expect(map.width * map.height).toBeLessThan(2400);
+  });
+
+  it("jalan buntu berisi jarahan yang bisa didatangi", () => {
+    const map = generateFloorFromPlan(methodPlan(6), 20261101);
+    const before = reach(map, false);
+    for (const tip of map.deadEnds!) {
+      expect(before.has(`${tip.x},${tip.y}`)).toBe(true);
+    }
+  });
+
+  it("Ghost dan Takhta tetap satu ruang khusus", () => {
+    const plans = buildFloorPlan([finding("a", "sample_unreported", 1)], true);
+    for (const plan of plans.filter((item) => item.dimension !== "method")) {
+      const map = generateFloorFromPlan(plan, 3);
+      expect(map.rooms).toHaveLength(1);
+      expect(map.rooms[0]!.kind).toBe("special");
+      expect(map.tiles.flat()).not.toContain(TileCode.DOOR_LOCKED);
+    }
+  });
+
+  it("deterministik untuk seed yang sama, berbeda untuk seed lain", () => {
+    const plan = methodPlan(6);
+    expect(generateFloorFromPlan(plan, 11)).toEqual(generateFloorFromPlan(plan, 11));
+    expect(generateFloorFromPlan(plan, 11).tiles).not.toEqual(generateFloorFromPlan(plan, 12).tiles);
   });
 });

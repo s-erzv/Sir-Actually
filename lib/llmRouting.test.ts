@@ -16,11 +16,11 @@ describe("resolveBossModel", () => {
   });
 
   it("uses cheap model tiers for every boss floor and minion", () => {
-    expect(resolveBossModel("boss-floor-1")).toBe("deepseek-v4-flash");
-    expect(resolveBossModel("boss-floor-2")).toBe("deepseek-v4-flash");
-    expect(resolveBossModel("boss-floor-3")).toBe("deepseek-4-1-flash");
-    expect(resolveBossModel("boss-floor-4")).toBe("deepseek-4-1-flash");
-    expect(resolveBossModel("boss-floor-5")).toBe("deepseek-4-1-flash");
+    expect(resolveBossModel("boss-floor-1")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("boss-floor-2")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("boss-floor-3")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("boss-floor-4")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("boss-floor-5")).toBe("glm-5-3-flash");
     expect(resolveBossModel("boss-floor-6")).toBe("glm-5-3-flash");
   });
 
@@ -30,46 +30,47 @@ describe("resolveBossModel", () => {
   });
 
   it("routes canon fantasy monster names and minions correctly", () => {
-    expect(resolveBossModel("veylith")).toBe("deepseek-v4-flash");
-    expect(resolveBossModel("draeven")).toBe("deepseek-v4-flash");
-    expect(resolveBossModel("kryvax")).toBe("deepseek-4-1-flash");
-    expect(resolveBossModel("morvane")).toBe("deepseek-4-1-flash");
-    expect(resolveBossModel("nyxara")).toBe("deepseek-4-1-flash");
+    expect(resolveBossModel("veylith")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("draeven")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("kryvax")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("morvane")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("nyxara")).toBe("glm-5-3-flash");
     expect(resolveBossModel("eldravos")).toBe("glm-5-3-flash");
-    expect(resolveBossModel("minion-varkul")).toBe("deepseek-v4-flash");
-    expect(resolveBossModel("minion-nethrix")).toBe("deepseek-v4-flash");
+    expect(resolveBossModel("minion-varkul")).toBe("glm-5-3-flash");
+    expect(resolveBossModel("minion-nethrix")).toBe("glm-5-3-flash");
   });
 
   it("lets env override a single boss without touching the table", () => {
     process.env.LLM_MODEL_BOSS_FLOOR_3 = "qwen3.8-max";
     expect(resolveBossModel("boss-floor-3")).toBe("qwen3.8-max");
-    expect(resolveBossModel("boss-floor-2")).toBe("deepseek-v4-flash");
+    expect(resolveBossModel("boss-floor-2")).toBe("glm-5-3-flash");
 
-    process.env.LLM_MODEL_MINION_VARKUL = "glm-5-3-flash";
-    expect(resolveBossModel("minion-varkul")).toBe("glm-5-3-flash");
+    process.env.LLM_MODEL_MINION_VARKUL = "kimi-k3";
+    expect(resolveBossModel("minion-varkul")).toBe("kimi-k3");
   });
 
   it("is case-insensitive and returns undefined for unknown slugs", () => {
-    expect(resolveBossModel("GAP_HUNTER")).toBe("deepseek-v4-flash");
+    expect(resolveBossModel("GAP_HUNTER")).toBe("glm-5-3-flash");
     expect(resolveBossModel("unknown")).toBeUndefined();
     expect(resolveBossModel(null)).toBeUndefined();
   });
 
   it("routes judges per monster, with env caps", () => {
-    expect(resolveJudgeModel("minion-varkul")).toBe("deepseek-v4-flash");
+    expect(resolveJudgeModel("minion-varkul")).toBe("glm-5-3-flash");
     expect(resolveJudgeModel("eldravos")).toBe("glm-5-3-flash");
-    expect(resolveJudgeModel(undefined)).toBe("deepseek-v4-flash");
+    expect(resolveJudgeModel(undefined)).toBe("glm-5-3-flash");
 
-    process.env.LLM_MODEL_JUDGE = "deepseek-4-1-flash";
-    expect(resolveJudgeModel("eldravos")).toBe("deepseek-4-1-flash");
+    process.env.LLM_MODEL_JUDGE = "kimi-k3";
+    expect(resolveJudgeModel("eldravos")).toBe("kimi-k3");
 
-    process.env.LLM_MODEL_JUDGE_ELDRAVOS = "glm-5-3-flash";
-    expect(resolveJudgeModel("eldravos")).toBe("glm-5-3-flash");
+    process.env.LLM_MODEL_JUDGE_ELDRAVOS = "qwen3.8-max";
+    expect(resolveJudgeModel("eldravos")).toBe("qwen3.8-max");
+    expect(resolveJudgeModel("kryvax")).toBe("kimi-k3");
   });
 
   it("routes analysis away from LLM_MODEL", () => {
-    expect(resolveAnalysisModel()).toBe("deepseek-v4-flash");
-    process.env.LLM_MODEL_ANALYSIS = "glm-5-3-flash";
     expect(resolveAnalysisModel()).toBe("glm-5-3-flash");
+    process.env.LLM_MODEL_ANALYSIS = "kimi-k3";
+    expect(resolveAnalysisModel()).toBe("kimi-k3");
   });
 });

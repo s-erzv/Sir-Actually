@@ -43,6 +43,8 @@ export type GameEvents = {
   "boss:hit": {
     encounterId: string;
     damage: number;
+    /** The answer cost a Heart: the monster strikes back. */
+    heartLost?: boolean;
   };
   /** Phaser → React: player reached the stairs and every monster is resolved. */
   "stairs:reach": {

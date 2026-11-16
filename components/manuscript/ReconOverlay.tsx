@@ -3,9 +3,9 @@
 import { PixelSprite } from "@/components/brand/PixelSprite";
 
 const STEPS = [
-  { step: "citations", label: "Memeriksa rujukan" },
-  { step: "code", label: "Menjalankan detektor kode" },
-  { step: "llm", label: "AI membaca klaim" },
+  { step: "code", label: "Menyisir struktur naskah" },
+  { step: "llm", label: "Empat penguji membaca naskah bersamaan" },
+  { step: "done", label: "Menyusun temuan jadi monster" },
 ] as const;
 
 interface ReconOverlayProps {
@@ -55,7 +55,7 @@ export default function ReconOverlay({
         <div className="p-5">
           <p className="font-pixel text-[0.6rem] text-gold">{progressText}</p>
           <p className="mt-2 text-sm leading-6 text-ash">
-            Mencocokkan kutipan, memeriksa rujukan, lalu menilai klaim. Jangan tutup halaman.
+            Rujukan dicek sambil empat penguji membaca naskahmu. Biasanya selesai di bawah setengah menit.
           </p>
 
           <div className="bar-track mt-4" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateQuotes, normalizeWs } from "./validateQuotes";
+import { anchorQuote, validateQuotes, normalizeWs } from "./validateQuotes";
 import type { JudgeRawOutput } from "@/lib/domain/types";
 
 const RUBRIC_IDS = ["evidence_present", "reasoning_clear", "source_cited"];
@@ -94,5 +94,27 @@ describe("validateQuotes", () => {
 
   it("normalizeWs collapses tabs and newlines", () => {
     expect(normalizeWs("hello\t\nworld  foo")).toBe("hello world foo");
+  });
+});
+
+describe("anchorQuote (toleransi kutipan Judge)", () => {
+  const answer =
+    "Saya memilih korelasi karena pertanyaan penelitian saya menanyakan hubungan dua variabel. Kedua variabelnya berskala interval.";
+
+  it("menerima kutipan yang beda huruf besar dan tanda baca", () => {
+    expect(anchorQuote("saya memilih korelasi, karena pertanyaan penelitian saya", answer)).toContain(
+      "Saya memilih korelasi",
+    );
+  });
+
+  it("menerima kutipan yang dirapikan, mengembalikan kalimat asli pemain", () => {
+    const anchored = anchorQuote("memilih korelasi karena pertanyaan penelitian menanyakan hubungan variabel", answer);
+    expect(anchored).toBe(
+      "Saya memilih korelasi karena pertanyaan penelitian saya menanyakan hubungan dua variabel.",
+    );
+  });
+
+  it("menolak kutipan yang tidak pernah ditulis pemain", () => {
+    expect(anchorQuote("sampel dihitung dengan rumus Slovin sebanyak 100 orang", answer)).toBeNull();
   });
 });

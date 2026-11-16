@@ -75,6 +75,7 @@ export const JudgeOutputSchema = z.object({
   missing: z.string().min(1).max(600),
   addressed: z.boolean().optional(),
   confidence: z.number().min(0).max(1).optional(),
+  verdict: z.enum(["answers", "thin", "off_topic", "nonsense"]).optional(),
 });
 
 export type JudgeOutput = z.infer<typeof JudgeOutputSchema>;

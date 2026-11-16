@@ -1,5 +1,13 @@
 import * as Phaser from "phaser";
 import { CHARACTER_PATHS } from "@/lib/sprites/characters";
+import {
+  CHARACTER_SHEETS,
+  SHEET_FRAME,
+  sheetKey,
+  walkAnimKey,
+  walkFrames,
+  type Facing,
+} from "@/lib/sprites/sheets";
 
 /**
  * BootScene: loads all assets, then starts DungeonScene.
@@ -24,6 +32,13 @@ export class BootScene extends Phaser.Scene {
       frameHeight: 16,
       spacing: 1,
     });
+    // Animated character sheets (walk cycle in four directions + attack).
+    for (const [slug, path] of Object.entries(CHARACTER_SHEETS)) {
+      this.load.spritesheet(sheetKey(slug), path, {
+        frameWidth: SHEET_FRAME,
+        frameHeight: SHEET_FRAME,
+      });
+    }
   }
 
   create(): void {
@@ -33,7 +48,9 @@ export class BootScene extends Phaser.Scene {
     this.createGlowTexture("glow");
     this.createGlowTexture("glow-small");
     this.createDustTexture("dust");
+    this.createDarknessTexture("darkness");
     this.createCharacterTextures();
+    this.createCharacterAnimations();
     const map = this.game.registry.get("floorMap") as { dimension?: string } | undefined;
     const sceneKey =
       map?.dimension === "ghost"
@@ -86,6 +103,48 @@ export class BootScene extends Phaser.Scene {
       }
       texture.refresh();
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+  }
+
+  /**
+   * Darkness with a hole of torchlight in the middle. Drawn over the world
+   * and kept centred on the player, so the dungeon is only lit around them.
+   */
+  private createDarknessTexture(key: string): void {
+    if (this.textures.exists(key)) return;
+    const size = 1024;
+    const texture = this.textures.createCanvas(key, size, size);
+    if (!texture) return;
+    const ctx = texture.getContext();
+    const half = size / 2;
+    const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+    gradient.addColorStop(0, "rgba(5,6,10,0)");
+    gradient.addColorStop(0.04, "rgba(5,6,10,0.04)");
+    gradient.addColorStop(0.07, "rgba(5,6,10,0.5)");
+    gradient.addColorStop(0.105, "rgba(5,6,10,0.84)");
+    gradient.addColorStop(0.16, "rgba(5,6,10,0.93)");
+    gradient.addColorStop(1, "rgba(5,6,10,0.95)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    texture.refresh();
+    this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+  }
+
+  private createCharacterAnimations(): void {
+    for (const slug of Object.keys(CHARACTER_SHEETS)) {
+      const key = sheetKey(slug);
+      if (!this.textures.exists(key)) continue;
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      for (const facing of ["down", "up", "left", "right"] as Facing[]) {
+        const animKey = walkAnimKey(slug, facing);
+        if (this.anims.exists(animKey)) continue;
+        this.anims.create({
+          key: animKey,
+          frames: this.anims.generateFrameNumbers(key, { frames: walkFrames(facing) }),
+          frameRate: 12,
+          repeat: -1,
+        });
+      }
     }
   }
 

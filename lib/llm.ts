@@ -32,41 +32,46 @@ export interface QuestionInput {
   previousQuestions: string[];
   targetCriteria?: Array<{ id: string; label: string }>;
   contextChunks?: Array<{ section: string | null; text: string }>;
+  monsterLevel?: 1 | 2 | 3;
 }
 
 /**
- * Kagiro model routing, chosen by credit multiplier:
- *   2.5x deepseek-v4-flash
- *   3.5x deepseek-4-1-flash
- *   4.5x glm-5-3-flash
- * Expensive models (Claude 15x, glm5-3 7.5x, qwen-plus 7.3x) are opt-in via
- * LLM_MODEL_<SLUG>, not defaults.
+ * Default for latency-sensitive work (reading the manuscript, judging).
+ * Measured 2026-11-16 on one Recon specialist prompt: glm-5-3-flash 7 s,
+ * deepseek-v4-flash 19-28 s, at roughly the same credit cost once reasoning
+ * tokens are counted.
+ */
+export const FAST_MODEL = "glm-5-3-flash";
+
+/**
+ * Kagiro model per monster. Every slot defaults to the fast model; a slower or
+ * pricier model is opt-in per monster via LLM_MODEL_<SLUG>.
  */
 export const KAGIRO_BOSS_MODELS: Record<string, string> = {
   // Floor slugs
-  "boss-floor-1": "deepseek-v4-flash",
-  "boss-floor-2": "deepseek-v4-flash",
-  "boss-floor-3": "deepseek-4-1-flash",
-  "boss-floor-4": "deepseek-4-1-flash",
-  "boss-floor-5": "deepseek-4-1-flash",
-  "boss-floor-6": "glm-5-3-flash",
+  "boss-floor-1": FAST_MODEL,
+  "boss-floor-2": FAST_MODEL,
+  "boss-floor-3": FAST_MODEL,
+  "boss-floor-4": FAST_MODEL,
+  "boss-floor-5": FAST_MODEL,
+  "boss-floor-6": FAST_MODEL,
 
   // Fantasy names (Canon roster)
-  veylith: "deepseek-v4-flash",
-  draeven: "deepseek-v4-flash",
-  kryvax: "deepseek-4-1-flash",
-  morvane: "deepseek-4-1-flash",
-  nyxara: "deepseek-4-1-flash",
-  eldravos: "glm-5-3-flash",
+  veylith: FAST_MODEL,
+  draeven: FAST_MODEL,
+  kryvax: FAST_MODEL,
+  morvane: FAST_MODEL,
+  nyxara: FAST_MODEL,
+  eldravos: FAST_MODEL,
 
   // Legacy role slugs
-  gap_hunter: "deepseek-v4-flash",
-  aligner: "deepseek-v4-flash",
-  methodologist: "deepseek-4-1-flash",
-  auditor: "deepseek-4-1-flash",
-  ghost: "deepseek-4-1-flash",
-  sir_actually: "glm-5-3-flash",
-  minion: "deepseek-v4-flash",
+  gap_hunter: FAST_MODEL,
+  aligner: FAST_MODEL,
+  methodologist: FAST_MODEL,
+  auditor: FAST_MODEL,
+  ghost: FAST_MODEL,
+  sir_actually: FAST_MODEL,
+  minion: FAST_MODEL,
 };
 
 export function resolveBossModel(bossSlug?: string | null): string | undefined {
@@ -153,14 +158,43 @@ class FetchLLMProvider implements LLMProvider {
     return (await this.complete(system, user, temperature, false)).trim();
   }
 
+  /**
+   * One logical completion: bounded concurrency plus retry with backoff on
+   * rate limits and transient upstream errors. Providers throttle per key, so
+   * an unbounded Promise.all would turn a fan-out into a wall of 429s.
+   */
   private async complete(
     system: string,
     user: string,
     temperature: number,
     jsonMode: boolean,
   ): Promise<string> {
-    const { provider, model, apiKey, baseUrl } = this.config;
     await assertDailyBudget();
+    return withLlmSlot(async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await this.completeOnce(system, user, temperature, jsonMode);
+        } catch (error) {
+          const retryable =
+            error instanceof LLMHttpError
+              ? RETRYABLE_STATUS.has(error.status)
+              : error instanceof TypeError; // network failure from fetch
+          if (!retryable || attempt >= LLM_MAX_RETRIES) throw error;
+          const hinted = error instanceof LLMHttpError ? error.retryAfterMs : null;
+          const backoff = hinted ?? 1200 * 2 ** attempt + Math.random() * 400;
+          await new Promise((resolve) => setTimeout(resolve, Math.min(backoff, 15_000)));
+        }
+      }
+    });
+  }
+
+  private async completeOnce(
+    system: string,
+    user: string,
+    temperature: number,
+    jsonMode: boolean,
+  ): Promise<string> {
+    const { provider, model, apiKey, baseUrl } = this.config;
     const signal = AbortSignal.timeout(90_000);
     const maxTokens = Math.max(
       256,
@@ -289,12 +323,54 @@ class FetchLLMProvider implements LLMProvider {
   }
 }
 
+export class LLMHttpError extends Error {
+  constructor(
+    readonly status: number,
+    body: string,
+    readonly retryAfterMs: number | null,
+  ) {
+    super(`LLM ${status}: ${body}`);
+    this.name = "LLMHttpError";
+  }
+}
+
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
+const LLM_MAX_RETRIES = 3;
+const LLM_MAX_CONCURRENCY = Math.max(
+  1,
+  Math.min(16, Number(process.env.LLM_MAX_CONCURRENCY ?? 4) || 4),
+);
+
+let llmActive = 0;
+const llmWaiters: Array<() => void> = [];
+
+/** Process-wide semaphore shared by every provider instance. */
+async function withLlmSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (llmActive >= LLM_MAX_CONCURRENCY) {
+    await new Promise<void>((resolve) => llmWaiters.push(resolve));
+  } else {
+    llmActive++;
+  }
+  try {
+    return await task();
+  } finally {
+    const next = llmWaiters.shift();
+    if (next) next(); // hand the slot straight to the next waiter
+    else llmActive--;
+  }
+}
+
 async function readProviderResponse(
   response: Response,
 ): Promise<Record<string, unknown>> {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`LLM ${response.status}: ${text.slice(0, 500)}`);
+    const retryAfter = Number(response.headers.get("retry-after"));
+    throw new LLMHttpError(
+      response.status,
+      text.slice(0, 500),
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : null,
+    );
   }
   try {
     return JSON.parse(text) as Record<string, unknown>;
@@ -321,20 +397,14 @@ export function resolveJudgeModel(bossSlug?: string | null): string {
   const override = slug
     ? process.env[`LLM_MODEL_JUDGE_${slug.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`]
     : undefined;
-  return (
-    override ??
-    process.env.LLM_MODEL_JUDGE ??
-    resolveBossModel(bossSlug) ??
-    "deepseek-v4-flash"
-  );
+  // One judge for every monster: the same answer must score the same in any
+  // room. Measured on Kagiro: glm-5-3-flash answers in ~3 s with almost no
+  // reasoning tokens; the deepseek flash models spend 2-4k reasoning tokens.
+  return override ?? process.env.LLM_MODEL_JUDGE ?? FAST_MODEL;
 }
 
 export function resolveAnalysisModel(): string {
-  return (
-    process.env.LLM_MODEL_ANALYSIS ??
-    process.env.LLM_MODEL_EXTRACT ??
-    "deepseek-v4-flash"
-  );
+  return process.env.LLM_MODEL_ANALYSIS ?? process.env.LLM_MODEL_EXTRACT ?? FAST_MODEL;
 }
 
 export function getLLMProviderForJudge(bossSlug?: string | null): LLMProvider {

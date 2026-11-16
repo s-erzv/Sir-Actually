@@ -67,3 +67,13 @@ and license. Only CC0 (Creative Commons Zero) assets are used.
 - **Source**: https://opengameart.org/content/pixel-ui-pack-750-assets
 - **License**: CC0
 - **Files**: `public/assets/pixel-ui/` (downloaded, not yet wired into the UI)
+
+## Ninja Adventure Asset Pack
+
+- **Author**: Pixel-Boy and AAA
+- **Source**: https://pixel-boy.itch.io/ninja-adventure-asset-pack (files taken from the
+  author's repository, https://github.com/pixel-boy/NinjaAdventure)
+- **License**: CC0
+- **Files**: `public/assets/ninja-adventure/characters/` (64x112 sheets, 16x16 frames:
+  columns down/up/left/right, rows 0-3 walk, row 4 attack)
+- **Used for**: animated player characters (`lib/sprites/sheets.ts`)

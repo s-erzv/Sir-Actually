@@ -49,5 +49,19 @@ export function lootSpotsForFloor(map: FloorMap): LootSpot[] {
     }
   }
 
+  // Every surviving dead end pays off: exploring the maze is never wasted.
+  for (const tip of map.deadEnds ?? []) {
+    if (taken.has(`${tip.x},${tip.y}`)) continue;
+    const code = map.tiles[tip.y]?.[tip.x];
+    if (code !== TileCode.FLOOR && code !== TileCode.FLOOR_ALT) continue;
+    taken.add(`${tip.x},${tip.y}`);
+    spots.push({
+      key: `nook:${tip.x},${tip.y}`,
+      x: tip.x,
+      y: tip.y,
+      frame: LOOT_FRAMES[Math.floor(rand() * LOOT_FRAMES.length)]!,
+    });
+  }
+
   return spots;
 }

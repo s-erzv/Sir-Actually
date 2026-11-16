@@ -59,7 +59,9 @@ function burst(c: AudioContext, start: number, dur: number, vol: number, freq: n
   src.stop(start + dur + 0.02);
 }
 
-export type Sfx = "step" | "doorOpen" | "doorLocked" | "encounter" | "win" | "lose" | "hit" | "pickup";
+export type Sfx =
+  | "step" | "doorOpen" | "doorLocked" | "encounter" | "win" | "lose" | "hit" | "pickup"
+  | "miss" | "hurt";
 
 export function playSfx(name: Sfx): void {
   if (muted) return;
@@ -90,9 +92,19 @@ export function playSfx(name: Sfx): void {
     case "lose":
       [330, 247, 196].forEach((f, i) => tone(c, f, t + i * 0.12, 0.2, 0.05, "triangle"));
       break;
-    case "hit":
-      burst(c, t, 0.12, 0.2, 1800, "bandpass");
-      tone(c, 140, t, 0.1, 0.07, "square");
+    case "hit": // sharp slash, then the body of the blow
+      burst(c, t, 0.05, 0.16, 5200, "highpass");
+      burst(c, t + 0.02, 0.14, 0.24, 1500, "bandpass");
+      tone(c, 150, t + 0.02, 0.12, 0.09, "square");
+      tone(c, 75, t + 0.03, 0.16, 0.09, "sine");
+      break;
+    case "miss": // blade through air
+      burst(c, t, 0.14, 0.09, 2600, "highpass");
+      break;
+    case "hurt": // low thud + falling tone
+      burst(c, t, 0.16, 0.22, 500);
+      tone(c, 220, t, 0.18, 0.08, "sawtooth");
+      tone(c, 110, t + 0.06, 0.22, 0.08, "triangle");
       break;
     case "pickup":
       [880, 1320].forEach((f, i) => tone(c, f, t + i * 0.06, 0.12, 0.045, "sine"));

@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = "questioner_v1";
+export const PROMPT_VERSION = "questioner_v2";
 
 export const QUESTIONER_SYSTEM = `Kamu adalah penguji dalam game riset. Ajukan SATU pertanyaan menantang dalam bahasa Indonesia.
 
@@ -62,4 +62,62 @@ Pertanyaan sebelumnya yang tidak boleh diulang:
 ${previous}
 
 Tulis satu pertanyaan baru.`;
+}
+
+/**
+ * All questions for one monster in a single call. Each slot fixes the attack
+ * form and the criteria it will be judged on; the model only writes the text.
+ */
+export function buildQuestionBatchPrompt(input: {
+  evidenceQuote: string;
+  weaknessType: string;
+  bossPersona: string;
+  researchMapSummary: string;
+  previousQuestions: string[];
+  contextChunks?: Array<{ section: string | null; text: string }>;
+  monsterLevel?: MonsterLevel;
+  slots: Array<{ attackType: string; targetCriteria: Array<{ id: string; label: string }> }>;
+}): string {
+  const previous = input.previousQuestions.length
+    ? input.previousQuestions.map((q) => `- ${q}`).join("\n")
+    : "(belum ada)";
+  const slots = input.slots
+    .map(
+      (slot, index) =>
+        `${index + 1}. bentuk serangan "${slot.attackType}", dinilai pada: ${slot.targetCriteria
+          .map((criterion) => criterion.label)
+          .join(" + ")}`,
+    )
+    .join("\n");
+
+  return `Persona penguji: ${input.bossPersona}
+Tipe kelemahan: ${input.weaknessType}
+Tingkat monster: ${input.monsterLevel ?? 1}
+
+${levelInstruction(input.monsterLevel ?? 1)}
+
+Ringkasan riset:
+<<<RESEARCH_MAP>>>
+${input.researchMapSummary.slice(0, 3000)}
+<<<END_RESEARCH_MAP>>>
+
+Kutipan bermasalah:
+<<<EVIDENCE>>>
+${input.evidenceQuote.slice(0, 2000)}
+<<<END_EVIDENCE>>>
+
+Potongan naskah di sekitar kutipan:
+<<<CONTEXT>>>
+${(input.contextChunks ?? []).map((chunk) => `[${chunk.section ?? "tanpa bagian"}]\n${chunk.text.slice(0, 900)}`).join("\n\n---\n\n") || "(tidak ada potongan relevan)"}
+<<<END_CONTEXT>>>
+
+Pertanyaan sebelumnya yang tidak boleh diulang:
+${previous}
+
+Tulis ${input.slots.length} pertanyaan, satu untuk tiap slot berikut, urutan sama:
+${slots}
+
+Tiap pertanyaan mengikuti semua ATURAN di atas, menyerang sudut yang berbeda, dan dibuka dengan kata tanya yang berbeda dari pertanyaan lain. Pertanyaan harus spesifik untuk naskah ini (sebut hal dari kutipan), bukan pertanyaan umum yang cocok untuk naskah apa pun.
+
+Keluarkan JSON saja: {"questions":["...","..."]}`;
 }

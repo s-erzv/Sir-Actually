@@ -371,6 +371,7 @@ export default function EncounterOverlay({
       bus.emit("boss:hit", {
         encounterId: state.encounter.encounterId,
         damage: data.evaluation.damage,
+        heartLost: data.evaluation.heartLost,
       });
       onHeartsChange(data.newHearts);
       onPointsChange(data.pointsTotal);
