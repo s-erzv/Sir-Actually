@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { PixelSprite, heroForCharacter } from "@/components/brand/PixelSprite";
 import { getCharacter, getWeapon } from "@/lib/loadout";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import type { Loadout } from "@/lib/loadout";
 
 interface PauseMenuProps {
@@ -26,6 +27,7 @@ export default function PauseMenu({
   onResume,
 }: PauseMenuProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>();
   const character = getCharacter(loadout.characterSlug);
   const weapon = getWeapon(loadout.weaponSlug);
 
@@ -56,6 +58,7 @@ export default function PauseMenu({
 
   return (
     <div
+      ref={dialogRef}
       className="game-fade fixed inset-0 z-[60] grid place-items-center bg-[#05080b]/90 px-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"

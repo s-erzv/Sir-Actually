@@ -9,6 +9,7 @@ import type { Monster } from "./Monster";
 const TWEEN_DURATION = 120; // ms per tile move
 
 type Direction = "up" | "down" | "left" | "right";
+export type { Direction };
 
 const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
   up:    { dx: 0,  dy: -1 },
@@ -96,10 +97,13 @@ export class Player {
 
   // Called from DungeonScene.update()
   update(monsters: Monster[]): void {
-    if (this.moving || this.inputLocked) return;
-
     const dir = this.readDirection();
-    if (!dir) return;
+    if (dir) this.step(dir, monsters);
+  }
+
+  /** One-tile move, used by both keyboard and the touch D-pad. */
+  step(dir: Direction, monsters: Monster[]): void {
+    if (this.moving || this.inputLocked) return;
 
     const { dx, dy } = DIR_DELTA[dir];
     const nx = this.tileX + dx;

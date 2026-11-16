@@ -23,6 +23,8 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
       const Phaser = await import("phaser");
       const { BootScene } = await import("@/game/scenes/BootScene");
       const { DungeonScene } = await import("@/game/scenes/DungeonScene");
+      const { LibraryScene } = await import("@/game/scenes/LibraryScene");
+      const { ThroneScene } = await import("@/game/scenes/ThroneScene");
 
       game = new Phaser.Game({
         type: Phaser.AUTO,
@@ -33,7 +35,7 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
         pixelArt: true,
         antialias: false,
         roundPixels: true,
-        scene: [BootScene, DungeonScene],
+        scene: [BootScene, DungeonScene, LibraryScene, ThroneScene],
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,

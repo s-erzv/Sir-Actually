@@ -59,7 +59,7 @@ function burst(c: AudioContext, start: number, dur: number, vol: number, freq: n
   src.stop(start + dur + 0.02);
 }
 
-export type Sfx = "step" | "doorOpen" | "doorLocked" | "encounter" | "win" | "lose" | "hit";
+export type Sfx = "step" | "doorOpen" | "doorLocked" | "encounter" | "win" | "lose" | "hit" | "pickup";
 
 export function playSfx(name: Sfx): void {
   if (muted) return;
@@ -93,6 +93,9 @@ export function playSfx(name: Sfx): void {
     case "hit":
       burst(c, t, 0.12, 0.2, 1800, "bandpass");
       tone(c, 140, t, 0.1, 0.07, "square");
+      break;
+    case "pickup":
+      [880, 1320].forEach((f, i) => tone(c, f, t + i * 0.06, 0.12, 0.045, "sine"));
       break;
   }
 }

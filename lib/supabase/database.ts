@@ -107,6 +107,9 @@ export interface Database {
           status: "draft" | "confirmed";
           source_text: string;
           completeness: Completeness | null;
+          dungeon_draft: Json | null;
+          dungeon_draft_version: string | null;
+          question_bank: Json;
           created_at: string;
           confirmed_at: string | null;
         };
@@ -117,12 +120,18 @@ export interface Database {
           status?: "draft" | "confirmed";
           source_text: string;
           completeness?: Completeness | null;
+          dungeon_draft?: Json | null;
+          dungeon_draft_version?: string | null;
+          question_bank?: Json;
           created_at?: string;
           confirmed_at?: string | null;
         };
         Update: {
           status?: "draft" | "confirmed";
           completeness?: Completeness | null;
+          dungeon_draft?: Json | null;
+          dungeon_draft_version?: string | null;
+          question_bank?: Json;
           confirmed_at?: string | null;
         };
       };
@@ -508,6 +517,7 @@ export interface Database {
           hp_end?: number | null;
           questions_asked?: number;
           advice?: Json | null;
+          advice_prompt_version?: string | null;
           resolved_at?: string | null;
         };
       };
@@ -606,6 +616,34 @@ export interface Database {
           flagged_at?: string;
         };
         Update: never;
+      };
+      llm_usage: {
+        Row: {
+          id: string;
+          created_at: string;
+          provider: string;
+          model: string;
+          route: string | null;
+          prompt_tokens: number | null;
+          completion_tokens: number | null;
+          total_tokens: number | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          provider: string;
+          model: string;
+          route?: string | null;
+          prompt_tokens?: number | null;
+          completion_tokens?: number | null;
+          total_tokens?: number | null;
+        };
+        Update: {
+          route?: string | null;
+          prompt_tokens?: number | null;
+          completion_tokens?: number | null;
+          total_tokens?: number | null;
+        };
       };
       reports: {
         Row: {

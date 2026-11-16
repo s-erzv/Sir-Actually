@@ -9,7 +9,17 @@ import type {
 } from "@/lib/domain/types";
 import { LOW_CONFIDENCE } from "@/lib/balance";
 
+// One finding = one room. Keeps every encounter legible and avoids cramming
+// three unrelated findings into a single arena. Raise only if map length
+// becomes a problem.
 export const MONSTERS_PER_ROOM_MAX = 1;
+
+/**
+ * Bump whenever room composition or encounter keys change. Active runs with a
+ * different version are reset once, because `progress.resolved` uses
+ * positional keys (`f2-r1:0`) that would point at the wrong monster.
+ */
+export const FLOOR_LAYOUT_VERSION = 6;
 
 export const RESEARCH_DIMENSIONS: readonly ResearchDimension[] = [
   "gap",

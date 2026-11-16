@@ -10,6 +10,7 @@ import { DEBRIEF_SYSTEM, PROMPT_VERSION, buildDebriefPrompt } from "@/lib/prompt
 import { retrieveChunks } from "@/lib/rag/retrieve";
 import type { RagRpcClient } from "@/lib/rag/types";
 import type { WeaknessType } from "@/lib/domain/types";
+import type { Json } from "@/lib/supabase/database";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -20,6 +21,9 @@ const SCORES = z
 
 const BODY = z.object({
   researchMapId: z.string().uuid(),
+  runId: z.string().uuid().optional(),
+  floorOrder: z.number().int().min(1).max(12).optional(),
+  roomOrder: z.number().int().min(0).max(40).optional(),
   findingId: z.string().uuid().optional(),
   bossSlug: z.string().min(1).max(80),
   weaknessType: z.string().min(1).max(80),
@@ -197,14 +201,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         : map.source_text.slice(0, 240).trim();
     }
 
-    return NextResponse.json({
+    const advice = {
       ...output.data,
       criterion_id: criterionId,
       answer_quote: answerQuote,
       evidence_quote: evidenceQuoteOut,
       promptVersion: PROMPT_VERSION,
       model: provider.modelName,
-    });
+    };
+
+    if (body.runId && body.floorOrder !== undefined && body.roomOrder !== undefined) {
+      const { data: runRow } = await admin
+        .from("runs")
+        .select("id, research_map_id")
+        .eq("id", body.runId)
+        .maybeSingle();
+      if (runRow?.research_map_id === map.id) {
+        const { error: adviceError } = await admin
+          .from("encounters")
+          .update({
+            advice: advice as unknown as Json,
+            advice_prompt_version: PROMPT_VERSION,
+          })
+          .eq("run_id", runRow.id)
+          .eq("floor_order", body.floorOrder)
+          .eq("room_order", body.roomOrder);
+        if (adviceError) throw new ApiError(adviceError.message, 500);
+      }
+    }
+
+    return NextResponse.json(advice);
   } catch (error) {
     return apiErrorResponse(error);
   }

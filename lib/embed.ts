@@ -1,5 +1,7 @@
 import { getEmbeddingConfig } from "@/lib/env";
 
+const EMBED_TIMEOUT_MS = 20_000;
+
 export interface EmbeddingResult {
   model: string;
   vectors: number[][];
@@ -13,6 +15,7 @@ export async function embedTexts(texts: string[]): Promise<EmbeddingResult | nul
   if (config.provider === "openai") {
     const response = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${config.apiKey}`,
@@ -37,6 +40,7 @@ export async function embedTexts(texts: string[]): Promise<EmbeddingResult | nul
     `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:batchEmbedContents?key=${config.apiKey}`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         requests: texts.map((text) => ({

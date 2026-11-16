@@ -8,11 +8,13 @@ import type {
   EvaluationResult,
   EncounterStatus,
 } from "@/lib/domain/types";
+import type { GeneratedQuestion } from "@/lib/encounter/schema";
 import { BOSS_HP, MINION_HP, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
 import { getWeapon, type Loadout } from "@/lib/loadout";
 import { MONSTER_LEVEL_LABELS, monsterLevelFor } from "@/lib/planner/difficulty";
 import { getMonsterDisplayName } from "@/lib/monsters";
 import { authJson } from "@/lib/api/client";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { PixelSprite, heroForCharacter, spriteForWeakness } from "@/components/brand/PixelSprite";
 import HeartDisplay from "./HeartDisplay";
 import HpBar from "./HpBar";
@@ -50,11 +52,14 @@ interface EncounterRuntimeState {
   showBreakdown: boolean;
   showAdvice: boolean;
   question: string | null;
+  questionId: string | null;
+  targetCriterionIds: string[];
   questionLoading: boolean;
   questionError: string | null;
   previousQuestions: string[];
   previousAttackTypes: string[];
   attackType: string | null;
+  bankRemaining: GeneratedQuestion[];
   lastAnswer: string;
   lastWeapon: string | null;
   lastPointsAwarded: number;
@@ -71,6 +76,7 @@ interface EncounterOverlayProps {
   loadout: Loadout;
   heartsMax: number;
   runId: string;
+  questionBank?: Record<string, GeneratedQuestion[]>;
   onPointsChange: (points: number) => void;
 }
 
@@ -81,6 +87,7 @@ export default function EncounterOverlay({
   loadout,
   heartsMax,
   runId,
+  questionBank,
   onPointsChange,
 }: EncounterOverlayProps) {
   const [state, setState] = useState<EncounterRuntimeState | null>(null);
@@ -90,8 +97,12 @@ export default function EncounterOverlay({
   const [hint, setHint] = useState<{ question: string; text: string } | null>(null);
   const [hintLoading, setHintLoading] = useState(false);
   const [hintError, setHintError] = useState<string | null>(null);
+  const [indexUsedFloors, setIndexUsedFloors] = useState<number[]>([]);
+  const [indexInfo, setIndexInfo] = useState<{ floor: number; section: string } | null>(null);
+  const [indexLoading, setIndexLoading] = useState(false);
   const [attackPhase, setAttackPhase] = useState<"idle" | "attack" | "waiting" | "hit">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(state));
 
   const adviceScores = useMemo(
     () =>
@@ -100,6 +111,71 @@ export default function EncounterOverlay({
         level: score.level,
       })) ?? [],
     [state?.lastEvaluation],
+  );
+
+  const syncEncounterState = useCallback(
+    async (encounter: EncounterData) => {
+      if (!runId) return;
+      const params = new URLSearchParams({
+        runId,
+        encounterKey: encounter.encounterKey,
+        floorOrder: String(encounter.floor),
+        roomOrder: String(encounter.room),
+      });
+      try {
+        const data = await authJson<{
+          encounter: null | {
+            hp: number;
+            hpMax: number;
+            questionsAsked: number;
+            status: EncounterStatus;
+            question: string | null;
+            attackType: string | null;
+            targetCriterionIds: string[] | null;
+          };
+          hearts: number;
+        }>(`/api/encounter/state?${params.toString()}`);
+        onHeartsChange(data.hearts);
+        if (!data.encounter) return;
+        const saved = data.encounter;
+        setState((prev) =>
+          prev && prev.encounter.encounterId === encounter.encounterId
+            ? {
+                ...prev,
+                hp: saved.hp,
+                hpMax: saved.hpMax,
+                questionsAsked: saved.questionsAsked,
+                status: saved.status,
+              }
+            : prev,
+        );
+
+        // Resume from the same question slot instead of replaying Q1.
+        const bank = questionBank?.[encounter.encounterKey] ?? [];
+        const next = bank[saved.questionsAsked];
+        const resumedQuestion = saved.question ?? next?.question;
+        if (saved.questionsAsked > 0 && resumedQuestion) {
+          setState((prev) =>
+            prev && prev.encounter.encounterId === encounter.encounterId
+              ? {
+                  ...prev,
+                  question: resumedQuestion,
+                  questionId: next?.questionId ?? prev.questionId,
+                  targetCriterionIds:
+                    saved.targetCriterionIds ?? next?.targetCriterionIds ?? prev.targetCriterionIds,
+                  attackType: saved.attackType ?? next?.attackType ?? prev.attackType,
+                  bankRemaining: next ? bank.slice(saved.questionsAsked + 1) : [],
+                  questionLoading: false,
+                  questionError: null,
+                }
+              : prev,
+          );
+        }
+      } catch {
+        // Fall back to fresh HP; the answer route still uses server state.
+      }
+    },
+    [runId, onHeartsChange, questionBank],
   );
 
   const requestQuestion = useCallback(
@@ -124,6 +200,7 @@ export default function EncounterOverlay({
       try {
         const payload = {
           researchMapId,
+          encounterKey: encounter.encounterKey,
           bossSlug: encounter.bossSlug,
           weaknessType: fallbackWeakness(encounter.bossSlug, encounter.weaknessType),
           evidenceQuote: encounter.evidenceQuote ?? "",
@@ -134,15 +211,22 @@ export default function EncounterOverlay({
           roomOrder: encounter.room,
           ...(encounter.findingId ? { findingId: encounter.findingId } : {}),
         };
-        const data = await authJson<{ question: string; attackType: string }>(
-          "/api/encounter/question",
-          { method: "POST", body: JSON.stringify(payload) },
-        );
+        const data = await authJson<{
+          question: string;
+          questionId: string;
+          attackType: string;
+          targetCriterionIds: string[];
+        }>("/api/encounter/question", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
         setState((prev) =>
           prev && prev.encounter.encounterId === encounter.encounterId
             ? {
                 ...prev,
                 question: data.question,
+                questionId: data.questionId,
+                targetCriterionIds: data.targetCriterionIds,
                 attackType: data.attackType,
                 questionLoading: false,
                 questionError: null,
@@ -173,6 +257,8 @@ export default function EncounterOverlay({
       const wt = fallbackWeakness(data.bossSlug, data.weaknessType);
       const isBoss = data.isBoss ?? data.bossSlug.startsWith("boss");
       const hpMax = isBoss ? BOSS_HP : MINION_HP;
+      const bank = questionBank?.[data.encounterKey] ?? [];
+      const first = bank[0] ?? null;
 
       setState({
         encounter: data,
@@ -185,12 +271,15 @@ export default function EncounterOverlay({
         lastEvaluation: null,
         showBreakdown: false,
         showAdvice: false,
-        question: null,
-        questionLoading: true,
+        question: first?.question ?? null,
+        questionId: first?.questionId ?? null,
+        targetCriterionIds: first?.targetCriterionIds ?? [],
+        questionLoading: !first,
         questionError: null,
         previousQuestions: [],
         previousAttackTypes: [],
-        attackType: null,
+        attackType: first?.attackType ?? null,
+        bankRemaining: first ? bank.slice(1) : [],
         lastAnswer: "",
         lastWeapon: null,
         lastPointsAwarded: 0,
@@ -205,13 +294,14 @@ export default function EncounterOverlay({
       setHintError(null);
       setHintLoading(false);
       setAttackPhase("idle");
-      void requestQuestion(data, [], []);
+      void syncEncounterState(data);
+      if (!first) void requestQuestion(data, [], []);
       requestAnimationFrame(() => textareaRef.current?.focus());
     };
 
     bus.on("encounter:start", onStart);
     return () => bus.off("encounter:start", onStart);
-  }, [requestQuestion]);
+  }, [requestQuestion, questionBank, syncEncounterState]);
 
   // ── Resolve encounter (close overlay, emit bus event) ────────────────────
 
@@ -254,19 +344,22 @@ export default function EncounterOverlay({
         method: "POST",
         body: JSON.stringify({
           encounterId: state.encounter.encounterId,
+          encounterKey: state.encounter.encounterKey,
           researchMapId,
+          runId,
           ...(state.encounter.findingId ? { findingId: state.encounter.findingId } : {}),
           bossSlug: state.encounter.bossSlug,
           weaknessType: state.weaknessType,
           answer,
+          question: state.question,
+          attackType: state.attackType ?? undefined,
+          targetCriterionIds: state.targetCriterionIds,
           evidenceQuote: state.evidenceQuote,
           isBoss: state.encounter.isBoss ?? state.encounter.bossSlug.startsWith("boss"),
-          hp: state.hp,
-          hearts,
-          questionsAsked: state.questionsAsked,
+          floorOrder: state.encounter.floor,
+          roomOrder: state.encounter.room,
           characterSlug: loadout.characterSlug,
           weaponSlug: loadout.weaponSlug,
-          ...(runId ? { runId } : {}),
         }),
       });
 
@@ -337,6 +430,31 @@ export default function EncounterOverlay({
       const previousAttackTypes = state.attackType
         ? [...state.previousAttackTypes, state.attackType]
         : state.previousAttackTypes;
+
+      if (state.bankRemaining.length > 0) {
+        const next = state.bankRemaining[0]!;
+        const rest = state.bankRemaining.slice(1);
+        setState((prev) =>
+          prev
+            ? {
+                ...prev,
+                showBreakdown: false,
+                lastEvaluation: null,
+                question: next.question,
+                questionId: next.questionId,
+                targetCriterionIds: next.targetCriterionIds,
+                attackType: next.attackType,
+                bankRemaining: rest,
+                previousQuestions,
+                previousAttackTypes,
+                questionLoading: false,
+                questionError: null,
+              }
+            : null,
+        );
+        return;
+      }
+
       setState((prev) =>
         prev ? { ...prev, showBreakdown: false, lastEvaluation: null } : null,
       );
@@ -368,23 +486,85 @@ export default function EncounterOverlay({
     }
   }, [state, researchMapId, hintLoading]);
 
+  const handleIndex = useCallback(async () => {
+    if (!state || indexLoading) return;
+    const floor = state.encounter.floor;
+    if (indexUsedFloors.includes(floor)) return;
+    setIndexLoading(true);
+    try {
+      const data = await authJson<{ section: string }>("/api/encounter/index", {
+        method: "POST",
+        body: JSON.stringify({
+          researchMapId,
+          evidenceQuote: state.evidenceQuote,
+        }),
+      });
+      setIndexInfo({ floor, section: data.section });
+      setIndexUsedFloors((prev) => [...prev, floor]);
+    } catch {
+      // Passive failed; keep it available so the player can retry.
+    } finally {
+      setIndexLoading(false);
+    }
+  }, [state, indexLoading, indexUsedFloors, researchMapId]);
+
   // ── Objection! ────────────────────────────────────────────────────────────
 
-  const handleObjection = useCallback(() => {
+  const handleObjection = useCallback(async () => {
     if (!state) return;
+    try {
+      await authJson("/api/encounter/dispute", {
+        method: "POST",
+        body: JSON.stringify({
+          runId,
+          floorOrder: state.encounter.floor,
+          roomOrder: state.encounter.room,
+          bossSlug: state.encounter.bossSlug,
+          weaknessType: state.weaknessType,
+          ...(state.encounter.findingId ? { findingId: state.encounter.findingId } : {}),
+          isBoss: state.encounter.isBoss ?? state.encounter.bossSlug.startsWith("boss"),
+        }),
+      });
+    } catch {
+      // Keep the local resolution; the room can be disputed again next run.
+    }
     resolveEncounter("disputed");
-  }, [state, resolveEncounter]);
+  }, [state, resolveEncounter, runId]);
 
   // ── Advice modal actions ───────────────────────────────────────────────────
 
-  const handleRetry = useCallback(() => {
+  const handleRetry = useCallback(async () => {
     if (!state) return;
+    try {
+      await authJson("/api/run/retry", {
+        method: "POST",
+        body: JSON.stringify({ runId, floorOrder: state.encounter.floor }),
+      });
+    } catch {
+      // Local reset still runs; the next answer reports any server mismatch.
+    }
     // Close the encounter overlay first, then signal Phaser to reset the floor
     resolveEncounter("fled");
     onHeartsChange(heartsMax);
     bus.emit("floor:retry", undefined);
     bus.emit("hearts:reset", undefined);
-  }, [state, resolveEncounter, onHeartsChange, heartsMax]);
+  }, [state, resolveEncounter, onHeartsChange, heartsMax, runId]);
+
+  const handleRevise = useCallback(async () => {
+    let manuscriptId: string | undefined;
+    try {
+      const data = await authJson<{ manuscriptId?: string }>("/api/run/revise", {
+        method: "POST",
+        body: JSON.stringify({ runId }),
+      });
+      manuscriptId = data.manuscriptId;
+    } catch {
+      // Still send the player to upload; the current run can be closed later.
+    }
+    window.location.assign(
+      manuscriptId ? `/upload?reviseFrom=${encodeURIComponent(manuscriptId)}` : "/upload",
+    );
+  }, [runId]);
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
 
@@ -422,6 +602,9 @@ export default function EncounterOverlay({
     return (
       <AdviceModal
         researchMapId={researchMapId}
+        runId={runId}
+        floorOrder={state.encounter.floor}
+        roomOrder={state.encounter.room}
         findingId={state.encounter.findingId || undefined}
         bossSlug={state.encounter.bossSlug}
         weaknessType={weaknessType}
@@ -438,7 +621,7 @@ export default function EncounterOverlay({
           missing: entry.evaluation.missing,
         }))}
         onRetry={handleRetry}
-        onRevise={() => {}} // disabled in M2
+        onRevise={handleRevise}
       />
     );
   }
@@ -446,6 +629,10 @@ export default function EncounterOverlay({
   return (
     <div className="game-fade fixed inset-0 z-50 flex items-center justify-center bg-[#05080b]/88 px-3 py-4 backdrop-blur-[3px]">
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Pertarungan"
         className={`game-screen-in max-h-[94vh] w-full max-w-3xl overflow-y-auto border-2 bg-[#0a0f14] shadow-[8px_8px_0_#05080b] ${
           isBoss ? "border-gold" : "border-ridge"
         }`}
@@ -583,7 +770,7 @@ export default function EncounterOverlay({
 
                 {lastEvaluation.heartLost ? (
                   <p className="mb-2 border border-blood/30 bg-blood/10 px-2 py-1 text-[0.66rem] leading-5 text-blood">
-                    Heart berkurang karena skor jawaban ≤ 1. Damage ke monster tetap 0 kalau skor 0.
+                    Heart berkurang karena jawaban tidak menjawab pertanyaan yang diajukan.
                   </p>
                 ) : null}
                 {state.lastWeapon ? (
@@ -594,7 +781,11 @@ export default function EncounterOverlay({
                     </span>
                   </p>
                 ) : null}
-                <ScoreBreakdown evaluation={lastEvaluation} weaknessType={weaknessType} />
+                <ScoreBreakdown
+                  evaluation={lastEvaluation}
+                  weaknessType={weaknessType}
+                  targetCriterionIds={lastEvaluation.targetCriterionIds ?? state.targetCriterionIds}
+                />
 
                 {state.lastPointsAwarded > 0 ? (
                   <div className="reward-burst relative mt-3 overflow-hidden border-2 border-gold/70 bg-gold/10 p-3 text-center">
@@ -705,16 +896,30 @@ export default function EncounterOverlay({
                       <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-gold">
                         {bossName.split(" — ")[0]} menyerang
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => void handleHint()}
-                        disabled={hintLoading}
-                        className="flex shrink-0 items-center gap-1.5 border border-gold/40 bg-gold/5 px-2 py-1 text-[0.56rem] font-bold uppercase tracking-[0.06em] text-gold hover:bg-gold/15 disabled:opacity-50"
-                        aria-label="Jelaskan maksud pertanyaan"
-                      >
-                        <BulbIcon />
-                        {hintLoading ? "Menerjemahkan..." : "Petunjuk"}
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {loadout.characterSlug === "mira" &&
+                        !indexUsedFloors.includes(state.encounter.floor) ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleIndex()}
+                            disabled={indexLoading}
+                            className="flex items-center gap-1.5 border border-[#9fe3d8]/50 bg-[#9fe3d8]/5 px-2 py-1 text-[0.56rem] font-bold uppercase tracking-[0.06em] text-[#9fe3d8] hover:bg-[#9fe3d8]/15 disabled:opacity-50"
+                            aria-label="Tampilkan label bagian bukti"
+                          >
+                            {indexLoading ? "Membaca..." : "Indeks"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void handleHint()}
+                          disabled={hintLoading}
+                          className="flex items-center gap-1.5 border border-gold/40 bg-gold/5 px-2 py-1 text-[0.56rem] font-bold uppercase tracking-[0.06em] text-gold hover:bg-gold/15 disabled:opacity-50"
+                          aria-label="Jelaskan maksud pertanyaan"
+                        >
+                          <BulbIcon />
+                          {hintLoading ? "Menerjemahkan..." : "Petunjuk"}
+                        </button>
+                      </div>
                     </div>
                     <p className="mt-2 text-[0.95rem] leading-7 text-bone">{state.question}</p>
 
@@ -730,6 +935,17 @@ export default function EncounterOverlay({
                           Maksud pertanyaan
                         </p>
                         <p className="mt-1 text-[0.78rem] leading-5 text-ash">{hint.text}</p>
+                      </div>
+                    ) : null}
+
+                    {indexInfo && indexInfo.floor === state.encounter.floor ? (
+                      <div className="mt-2 border-l-2 border-[#9fe3d8]/60 bg-[#9fe3d8]/5 py-1.5 pl-2">
+                        <p className="font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-[#9fe3d8]/80">
+                          Indeks Mira
+                        </p>
+                        <p className="mt-1 text-[0.78rem] leading-5 text-ash">
+                          Bukti ini ada di bagian: {indexInfo.section}
+                        </p>
                       </div>
                     ) : null}
                   </div>

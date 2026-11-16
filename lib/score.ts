@@ -1,8 +1,10 @@
 import {
   POINTS_BOSS_WON,
+  POINTS_FLAWLESS,
   POINTS_FLOOR_CLEARED,
   POINTS_MINION_WON,
   POINTS_NO_HEART_LOST,
+  POINTS_STREAK_MAX,
   RANK_RATIO,
 } from "@/lib/balance";
 import type { FloorPlan } from "@/lib/domain/types";
@@ -19,7 +21,9 @@ export function maxPointsForPlan(floors: readonly FloorPlan[]): number {
       total +
       roomPoints +
       POINTS_FLOOR_CLEARED +
-      POINTS_NO_HEART_LOST
+      POINTS_NO_HEART_LOST +
+      POINTS_FLAWLESS +
+      POINTS_STREAK_MAX
     );
   }, 0);
 }

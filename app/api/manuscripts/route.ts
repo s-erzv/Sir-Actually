@@ -6,7 +6,7 @@ import { checkCompleteness, COMPLETENESS_LABELS } from "@/lib/manuscript/complet
 import { extractResearchMap } from "@/lib/manuscript/researchMap";
 import { chunkManuscript } from "@/lib/manuscript/chunk";
 import { embedTexts } from "@/lib/embed";
-import { getLLMProvider, hasRealLLM } from "@/lib/llm";
+import { getLLMProviderForExtraction, hasRealLLM } from "@/lib/llm";
 
 export const maxDuration = 120;
 
@@ -17,6 +17,8 @@ const BODY_SCHEMA = z.object({
   stage: z.enum(["proposal", "skripsi", "jurnal"]),
   minReferences: z.number().int().min(1).max(500).nullable(),
   sourceText: z.string().min(300).max(800_000),
+  /** Present when uploading a revised version of an existing manuscript. */
+  manuscriptId: z.string().uuid().optional(),
 });
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -49,23 +51,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const provider = getLLMProvider();
-    const researchMap = await extractResearchMap(provider, body.sourceText);
+    const provider = getLLMProviderForExtraction();
     const chunks = chunkManuscript(body.sourceText);
+
+    // Extraction and embedding are independent; run them together so wall
+    // time is the slower one, not the sum.
+    const [mapResult, embedResult] = await Promise.allSettled([
+      extractResearchMap(provider, body.sourceText),
+      embedTexts(chunks.map((chunk) => chunk.text)),
+    ]);
+    if (mapResult.status === "rejected") throw mapResult.reason;
+    const researchMap = mapResult.value;
 
     let embedding: { model: string; vectors: number[][] } | null = null;
     let embeddingWarning: string | null = null;
-    try {
-      embedding = await embedTexts(chunks.map((chunk) => chunk.text));
+    if (embedResult.status === "fulfilled") {
+      embedding = embedResult.value;
       if (embedding?.vectors.some((vector) => vector.length !== 768)) {
         embedding = null;
         embeddingWarning =
           "Dimensi embedding bukan 768; chunk disimpan tanpa vektor dan retrieval memakai FTS.";
       }
-    } catch (error) {
+    } else {
       embeddingWarning =
-        error instanceof Error ? error.message : "Embedding gagal; retrieval memakai FTS.";
-      console.error("[embedding]", error);
+        embedResult.reason instanceof Error
+          ? embedResult.reason.message
+          : "Embedding gagal; retrieval memakai FTS.";
+      console.error("[embedding]", embedResult.reason);
     }
 
     const admin = getAdminSupabase();
@@ -78,28 +90,66 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { onConflict: "id" },
     );
 
-    const { data: manuscript, error: manuscriptError } = await admin
-      .from("manuscripts")
-      .insert({
-        owner_id: user.id,
-        title: body.title,
-        field: body.field ?? null,
-        language: body.language,
-        stage: body.stage,
-        min_references: body.minReferences,
-      })
-      .select("id")
-      .single();
+    let manuscriptId: string;
+    let mapVersion = 1;
 
-    if (manuscriptError || !manuscript) {
-      throw new ApiError(manuscriptError?.message ?? "Gagal menyimpan naskah.", 500);
+    if (body.manuscriptId) {
+      const { data: existing, error: existingError } = await admin
+        .from("manuscripts")
+        .select("id, owner_id, deleted_at")
+        .eq("id", body.manuscriptId)
+        .maybeSingle();
+      if (existingError) throw new ApiError(existingError.message, 500);
+      if (!existing) throw new ApiError("Naskah tidak ditemukan.", 404);
+      if (existing.owner_id !== user.id) throw new ApiError("Akses ditolak.", 403);
+      if (existing.deleted_at) throw new ApiError("Naskah sudah dihapus.", 410);
+      manuscriptId = existing.id;
+
+      const { error: updateError } = await admin
+        .from("manuscripts")
+        .update({
+          title: body.title,
+          field: body.field ?? null,
+          language: body.language,
+          stage: body.stage,
+          min_references: body.minReferences,
+        })
+        .eq("id", manuscriptId);
+      if (updateError) throw new ApiError(updateError.message, 500);
+
+      const { data: latest } = await admin
+        .from("research_maps")
+        .select("version")
+        .eq("manuscript_id", manuscriptId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      mapVersion = (latest?.version ?? 0) + 1;
+    } else {
+      const { data: manuscript, error: manuscriptError } = await admin
+        .from("manuscripts")
+        .insert({
+          owner_id: user.id,
+          title: body.title,
+          field: body.field ?? null,
+          language: body.language,
+          stage: body.stage,
+          min_references: body.minReferences,
+        })
+        .select("id")
+        .single();
+
+      if (manuscriptError || !manuscript) {
+        throw new ApiError(manuscriptError?.message ?? "Gagal menyimpan naskah.", 500);
+      }
+      manuscriptId = manuscript.id;
     }
 
     const { data: map, error: mapError } = await admin
       .from("research_maps")
       .insert({
-        manuscript_id: manuscript.id,
-        version: 1,
+        manuscript_id: manuscriptId,
+        version: mapVersion,
         status: "draft",
         source_text: body.sourceText,
         completeness,
@@ -139,8 +189,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (chunks.length > 0) {
       const { error } = await admin.from("manuscript_chunks").insert(
         chunks.map((chunk) => ({
-          manuscript_id: manuscript.id,
-          version: 1,
+          manuscript_id: manuscriptId,
+          version: mapVersion,
           chunk_index: chunk.chunkIndex,
           section_label: chunk.sectionLabel,
           char_start: chunk.charStart,
@@ -183,7 +233,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     return NextResponse.json({
-      manuscriptId: manuscript.id,
+      manuscriptId,
       researchMapId: map.id,
       reconJobId: reconJob.id,
       completeness,

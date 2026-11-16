@@ -11,6 +11,7 @@ import type { DungeonDimension, FloorMap, Room } from "@/lib/domain/types";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
 import { playSfx, startAmbience, stopAmbience, toggleMute } from "@/game/audio";
+import { lootSpotsForFloor } from "@/lib/dungeon/lootSpots";
 
 // ---------------------------------------------------------------------------
 // Frame lookup: TileCode → sprite frame index in tilemap.png
@@ -57,6 +58,7 @@ export class DungeonScene extends Phaser.Scene {
   private floorMap!: FloorMap;
   private player!: Player;
   private monsters: Monster[] = [];
+  private loot: Array<{ sprite: Phaser.GameObjects.Image; x: number; y: number; key: string }> = [];
 
   private tilemap!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
@@ -68,9 +70,11 @@ export class DungeonScene extends Phaser.Scene {
   private minZoom = 1;
   private maxZoom = 6;
   private encounterActive = false;
+  private worldPaused = false;
+  private lastPlayerTileKey = "";
 
-  constructor() {
-    super({ key: "DungeonScene" });
+  constructor(key = "DungeonScene") {
+    super({ key });
   }
 
   // FloorMap is passed via the Phaser registry (set in PhaserGame.tsx before scene starts).
@@ -86,13 +90,17 @@ export class DungeonScene extends Phaser.Scene {
     this.addLoot();
     this.decorateRooms();
     this.addAmbientLights();
+    this.addCorridorLights();
     this.addDust();
     this.spawnEntities();
+    this.emitPlayerTile();
     this.emitRoomProgress();
     this.setupCamera();
     this.listenBus();
     this.listenResize();
     this.setupAudio();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.shutdown, this);
   }
 
   // ---------------------------------------------------------------------------
@@ -208,8 +216,45 @@ export class DungeonScene extends Phaser.Scene {
     }
   }
 
-  private addDust(): void {
-    const worldW = this.floorMap.width * TILE_SIZE;
+  /** Sparse torches along corridors so halls read as lit stone, not void. */
+  private addCorridorLights(): void {
+    const { tiles, rooms, width, height, dimension } = this.floorMap;
+    const tint = DIMENSION_TINT[dimension ?? "gap"] ?? DIMENSION_TINT.gap;
+    const inRoom = (x: number, y: number) =>
+      rooms.some(
+        (room) =>
+          x >= room.rect.x &&
+          x < room.rect.x + room.rect.width &&
+          y >= room.rect.y &&
+          y < room.rect.y + room.rect.height,
+      );
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (tiles[y]?.[x] !== TileCode.FLOOR) continue;
+        if (inRoom(x, y)) continue;
+        if ((x * 13 + y * 7) % 11 !== 0) continue;
+
+        const light = this.add
+          .image(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, "glow-small")
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setTint(tint)
+          .setAlpha(0.22)
+          .setDepth(3);
+        light.setDisplaySize(TILE_SIZE * 2.6, TILE_SIZE * 2.6);
+        this.tweens.add({
+          targets: light,
+          alpha: 0.1,
+          duration: 900 + ((x * 37 + y * 17) % 800),
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+    }
+  }
+
+  private addDust(): void {    const worldW = this.floorMap.width * TILE_SIZE;
     const worldH = this.floorMap.height * TILE_SIZE;
     const tint = DIMENSION_TINT[this.floorMap.dimension ?? "gap"] ?? 0xe9b85d;
 
@@ -264,21 +309,21 @@ export class DungeonScene extends Phaser.Scene {
       for (const monster of this.monsters) {
         if (resolvedKeys.has(monster.encounterKey)) monster.markResolvedImmediate();
       }
-      for (const room of rooms) this.unlockNextDoorIfCleared(room, false);
     }
+    // Floors with no minions (Ghost/Throne) must open the boss gate immediately.
+    this.unlockBossDoorIfCleared(false);
   }
 
-  /** Clearing a room opens the door into the next one (a room's own entrance is behind the player). */
-  private unlockNextDoorIfCleared(room: Room, announce = true): void {
-    const roomMonsters = this.monsters.filter((m) => m.roomId === room.id);
-    if (roomMonsters.length === 0 || !roomMonsters.every((m) => m.resolved)) return;
-    const rooms = this.floorMap.rooms;
-    const next = rooms[rooms.findIndex((r) => r.id === room.id) + 1];
-    if (!next?.entranceDoor) return;
-    const wasLocked = this.floorMap.tiles[next.entranceDoor.y]?.[next.entranceDoor.x] === TileCode.DOOR_LOCKED;
-    this.unlockDoor(next.entranceDoor.x, next.entranceDoor.y);
-    if (wasLocked && announce) {
-      bus.emit("door:opened", { roomNumber: rooms.indexOf(next) + 1 });
+  /** The boss door stays shut until every minion on the floor is resolved. */
+  private unlockBossDoorIfCleared(announce = true): void {
+    if (this.monsters.some((monster) => !monster.isBoss && !monster.resolved)) return;
+    const bossRoom = this.floorMap.rooms.find((room) => room.isBoss);
+    if (!bossRoom?.entranceDoor) return;
+    const { x, y } = bossRoom.entranceDoor;
+    if (this.floorMap.tiles[y]?.[x] !== TileCode.DOOR_LOCKED) return;
+    this.unlockDoor(x, y);
+    if (announce) {
+      bus.emit("door:opened", { roomNumber: this.floorMap.rooms.indexOf(bossRoom) + 1 });
       playSfx("doorOpen");
       this.cameras.main.flash(180, 255, 200, 120, false);
     }
@@ -316,34 +361,60 @@ export class DungeonScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.DESTROY, stopAmbience);
   }
 
-  /** Decorative loot from the Roguelike sheet (frame = row * 57 + col). Purely visual, never blocks. */
+  /** Loot from the shared deterministic placement; server validates the same keys. */
   private addLoot(): void {
-    const LOOT_FRAMES = [669, 670, 738, 739, 608, 621, 1022];
-    const taken = new Set<string>();
-    for (const room of this.floorMap.rooms) {
-      for (const s of room.monsterSpawns?.length ? room.monsterSpawns : [room.monsterSpawn]) {
-        taken.add(`${s.x},${s.y}`);
-      }
-    }
-    let seed = this.floorMap.rooms.length * 7919 + this.floorMap.width;
-    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const spots = lootSpotsForFloor(this.floorMap);
+    spots.forEach((spot, index) => {
+      const sprite = this.add
+        .image(spot.x * TILE_SIZE + TILE_SIZE / 2, spot.y * TILE_SIZE + TILE_SIZE / 2, "rl", spot.frame)
+        .setDepth(1.5);
+      this.loot.push({ sprite, x: spot.x, y: spot.y, key: spot.key });
+      this.tweens.add({
+        targets: sprite,
+        y: sprite.y - 3,
+        duration: 900 + ((index * 137) % 700),
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    });
+  }
 
-    for (const room of this.floorMap.rooms) {
-      const { x, y, width, height } = room.rect;
-      const count = room.isBoss ? 4 : 2 + Math.floor(rand() * 3);
-      for (let n = 0, tries = 0; n < count && tries < 30; tries++) {
-        const tx = x + 1 + Math.floor(rand() * Math.max(1, width - 2));
-        const ty = y + 1 + Math.floor(rand() * Math.max(1, height - 2));
-        if (taken.has(`${tx},${ty}`)) continue;
-        if (this.floorMap.tiles[ty]?.[tx] !== TileCode.FLOOR) continue;
-        const nearDoor = room.entranceDoor && Math.abs(room.entranceDoor.x - tx) + Math.abs(room.entranceDoor.y - ty) < 3;
-        if (nearDoor) continue;
-        taken.add(`${tx},${ty}`);
-        n++;
-        const frame = LOOT_FRAMES[Math.floor(rand() * LOOT_FRAMES.length)]!;
-        this.add.image(tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2, "rl", frame).setDepth(1.5);
-      }
-    }
+  private collectLootAt(tile: { x: number; y: number }): void {
+    const index = this.loot.findIndex((item) => item.x === tile.x && item.y === tile.y);
+    if (index < 0) return;
+    const [item] = this.loot.splice(index, 1);
+    if (!item) return;
+
+    playSfx("pickup");
+    bus.emit("loot:collected", { key: item.key });
+    this.tweens.killTweensOf(item.sprite);
+    this.tweens.add({
+      targets: item.sprite,
+      y: item.sprite.y - 14,
+      alpha: 0,
+      scale: 1.5,
+      duration: 260,
+      ease: "Sine.easeOut",
+      onComplete: () => item.sprite.destroy(),
+    });
+
+    const label = this.add
+      .text(item.sprite.x, item.sprite.y - 8, "+loot", {
+        fontFamily: "monospace",
+        fontSize: "10px",
+        color: "#e9b85d",
+      })
+      .setOrigin(0.5)
+      .setDepth(20);
+    this.tweens.add({
+      targets: label,
+      y: label.y - 16,
+      alpha: 0,
+      duration: 620,
+      ease: "Sine.easeOut",
+      onComplete: () => label.destroy(),
+    });
   }
 
   /** Tell the HUD how many monsters remain in the next room that still has any. */
@@ -361,6 +432,12 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private spawnRoomMonsters(room: Room): void {
+    const hasMonster =
+      room.kind === "special" ||
+      Boolean(room.findingId) ||
+      (room.findingIds?.length ?? 0) > 0;
+    // Empty maze chambers are corridors/dead ends, not encounters.
+    if (!hasMonster) return;
     const spawns = room.monsterSpawns?.length ? room.monsterSpawns : [room.monsterSpawn];
     spawns.forEach((spawn, index) => {
       const findingId = room.findingIds?.[index] ?? room.findingId;
@@ -451,8 +528,7 @@ export class DungeonScene extends Phaser.Scene {
       playSfx(result === "won" ? "win" : "lose");
       monster.markResolved(result);
 
-      const room = this.floorMap.rooms.find((r) => r.id === monster.roomId);
-      if (room) this.unlockNextDoorIfCleared(room);
+      this.unlockBossDoorIfCleared();
       this.emitRoomProgress();
     };
 
@@ -471,11 +547,26 @@ export class DungeonScene extends Phaser.Scene {
       this.zoomBy(delta);
     };
 
+    const onGamePause = () => {
+      this.worldPaused = true;
+    };
+
+    const onGameResume = () => {
+      this.worldPaused = false;
+    };
+
+    const onPlayerStep = ({ dir }: { dir: "up" | "down" | "left" | "right" }) => {
+      this.player.step(dir, this.monsters);
+    };
+
     bus.on("encounter:start", onEncounterStart);
     bus.on("encounter:end", onEncounterEnd);
     bus.on("boss:hit", onBossHit);
     bus.on("floor:retry", onFloorRetry);
     bus.on("camera:zoom", onZoom);
+    bus.on("game:pause", onGamePause);
+    bus.on("game:resume", onGameResume);
+    bus.on("player:step", onPlayerStep);
 
     this.busOff.push(
       () => bus.off("encounter:start", onEncounterStart),
@@ -483,6 +574,9 @@ export class DungeonScene extends Phaser.Scene {
       () => bus.off("boss:hit", onBossHit),
       () => bus.off("floor:retry", onFloorRetry),
       () => bus.off("camera:zoom", onZoom),
+      () => bus.off("game:pause", onGamePause),
+      () => bus.off("game:resume", onGameResume),
+      () => bus.off("player:step", onPlayerStep),
     );
   }
 
@@ -533,53 +627,64 @@ export class DungeonScene extends Phaser.Scene {
     for (const m of this.monsters) m.destroy();
     this.monsters = [];
 
-    // Relock all doors
-    for (const room of this.floorMap.rooms) {
-      if (room.entranceDoor) {
-        const { x, y } = room.entranceDoor;
-        const tile = this.tilemap.getTileAt(x, y, false, this.decorLayer);
-        if (tile) {
-          tile.index = FRAME_DOOR_LOCKED;
-          tile.setCollision(true);
-          tile.alpha = 1;
-        }
-        this.floorMap.tiles[y]![x] = TileCode.DOOR_LOCKED;
-      }
-    }
-
-    // Keep first corridor door (room 0) open
-    const firstRoom = this.floorMap.rooms[0];
-    if (firstRoom?.entranceDoor) {
-      const { x, y } = firstRoom.entranceDoor;
+    // Relock only the boss gate; maze branches stay open.
+    const bossRoom = this.floorMap.rooms.find((room) => room.isBoss);
+    if (bossRoom?.entranceDoor) {
+      const { x, y } = bossRoom.entranceDoor;
       const tile = this.tilemap.getTileAt(x, y, false, this.decorLayer);
-      if (tile) { tile.index = FRAME_DOOR_OPEN; tile.setCollision(false); }
-      this.floorMap.tiles[y]![x] = TileCode.DOOR_OPEN;
+      if (tile) {
+        tile.index = FRAME_DOOR_LOCKED;
+        tile.setCollision(true);
+        tile.alpha = 1;
+      }
+      this.floorMap.tiles[y]![x] = TileCode.DOOR_LOCKED;
     }
 
     // Respawn monsters
     for (const room of this.floorMap.rooms) {
       this.spawnRoomMonsters(room);
     }
+    this.unlockBossDoorIfCleared(false);
     this.emitRoomProgress();
 
     // Teleport player back to spawn
     const { playerSpawn } = this.floorMap;
     this.player.teleport(playerSpawn.x, playerSpawn.y);
+    this.lastPlayerTileKey = "";
+    this.emitPlayerTile();
   }
 
   // ---------------------------------------------------------------------------
   // Update
   // ---------------------------------------------------------------------------
 
+  private emitPlayerTile(): void {
+    const tile = this.player.getTile();
+    const key = `${tile.x},${tile.y}`;
+    if (key === this.lastPlayerTileKey) return;
+    this.lastPlayerTileKey = key;
+    bus.emit("player:moved", tile);
+  }
+
   update(): void {
     this.player.update(this.monsters);
-    if (this.encounterActive) return;
+    this.emitPlayerTile();
+    if (!this.encounterActive && !this.worldPaused) {
+      this.collectLootAt(this.player.getTile());
+    }
+    if (this.encounterActive || this.worldPaused) return;
 
     const playerTile = this.player.getTile();
     const activeMonsters = this.monsters.filter((monster) => !monster.resolved);
     const occupied = new Set(activeMonsters.map((monster) => `${monster.tileX},${monster.tileY}`));
     for (const monster of activeMonsters) {
+      const previousKey = `${monster.tileX},${monster.tileY}`;
       monster.updateChase(playerTile, this.floorMap, occupied);
+      const nextKey = `${monster.tileX},${monster.tileY}`;
+      if (nextKey !== previousKey) {
+        occupied.delete(previousKey);
+        occupied.add(nextKey);
+      }
     }
 
     const caught = activeMonsters.find(

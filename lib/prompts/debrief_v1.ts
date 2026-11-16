@@ -56,7 +56,7 @@ Seluruh jawaban dalam pertarungan:
 ${(input.history ?? [])
   .map((entry, index) => {
     const total = entry.scores.reduce((sum, score) => sum + score.level, 0);
-    return `[${index + 1}] Skor ${total}\nJawaban: ${entry.answer}\nCatatan: ${entry.missing || "-"}`;
+    return `[${index + 1}] Skor ${total}\nJawaban: ${entry.answer.slice(0, 500)}\nCatatan: ${entry.missing || "-"}`;
   })
   .join("\n\n") || "(hanya satu jawaban)"}
 <<<END_HISTORY>>>
@@ -68,12 +68,12 @@ ${input.missing}
 
 Ringkasan klaim naskah:
 <<<CLAIMS>>>
-${input.claimsSummary}
+${input.claimsSummary.slice(0, 2500)}
 <<<END_CLAIMS>>>
 
 Potongan naskah hasil retrieval:
 <<<CONTEXT>>>
-${(input.contextChunks ?? []).map((chunk) => `[${chunk.section ?? "tanpa bagian"}]\n${chunk.text}`).join("\n\n---\n\n") || "(tidak ada potongan relevan)"}
+${(input.contextChunks ?? []).map((chunk) => `[${chunk.section ?? "tanpa bagian"}]\n${chunk.text.slice(0, 900)}`).join("\n\n---\n\n") || "(tidak ada potongan relevan)"}
 <<<END_CONTEXT>>>
 
 Tulis debrief JSON yang merangkum pola seluruh jawaban. Kembalikan JSON saja.`;

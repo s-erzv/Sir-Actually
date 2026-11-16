@@ -163,6 +163,18 @@ export default function DashboardPage() {
             >
               Naskah baru
             </Link>
+            <Link
+              href="/history"
+              className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-ash hover:border-gold hover:text-gold"
+            >
+              Riwayat
+            </Link>
+            <Link
+              href="/about"
+              className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-ash hover:border-gold hover:text-gold"
+            >
+              Tentang
+            </Link>
             <button
               type="button"
               onClick={() => void signOut()}

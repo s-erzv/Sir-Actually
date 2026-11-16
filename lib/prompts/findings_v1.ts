@@ -41,17 +41,17 @@ ${RECON_WEAKNESS_TYPES.map((type) => `- ${type}`).join("\n")}
 
 Klaim Research Map:
 <<<CLAIMS>>>
-${JSON.stringify(input.claims, null, 2)}
+${JSON.stringify(input.claims.slice(0, 24), null, 2)}
 <<<END_CLAIMS>>>
 
 Daftar pustaka:
 <<<CITATIONS>>>
-${input.citations.slice(0, 80).join("\n")}
+${input.citations.slice(0, 40).join("\n")}
 <<<END_CITATIONS>>>
 
 Potongan naskah relevan:
 <<<CHUNKS>>>
-${input.chunks.map((chunk) => `[${chunk.section ?? "tanpa bagian"}]\n${chunk.text}`).join("\n\n---\n\n")}
+${input.chunks.map((chunk) => `[${chunk.section ?? "tanpa bagian"}]\n${chunk.text.slice(0, 1200)}`).join("\n\n---\n\n")}
 <<<END_CHUNKS>>>
 
 Sudah terdeteksi oleh kode (jangan ulangi):

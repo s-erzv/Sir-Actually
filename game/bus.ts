@@ -28,6 +28,10 @@ export type GameEvents = {
   };
   /** Phaser → React: a cleared room opened the door to the next one. */
   "door:opened": { roomNumber: number };
+  /** Phaser → React: player picked up loot; bank the stable key on the server. */
+  "loot:collected": { key: string };
+  /** Phaser → React: player entered a new tile (fog of war). */
+  "player:moved": { x: number; y: number };
   /** Phaser → React: monsters left in the room the player must clear next. */
   "room:progress": { roomNumber: number; remaining: number; total: number } | null;
   /** Internal: a door should now be unlocked in the tilemap. */
@@ -44,6 +48,8 @@ export type GameEvents = {
   "stairs:reach": {
     floor: number;
   };
+  /** React → Phaser: one D-pad step. */
+  "player:step": { dir: "up" | "down" | "left" | "right" };
   /** React → Phaser: retry the current floor (from Kitab Nasihat). */
   "floor:retry": undefined;
   /** Phaser → React: reset hearts (used after floor:retry). */

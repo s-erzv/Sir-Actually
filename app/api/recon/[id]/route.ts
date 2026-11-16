@@ -43,9 +43,16 @@ export async function GET(
       .eq("research_map_id", map.id)
       .order("rank", { ascending: true, nullsFirst: false });
 
+    const { count: citationCount } = await admin
+      .from("citations")
+      .select("id", { count: "exact", head: true })
+      .eq("research_map_id", map.id)
+      .eq("is_injected", false);
+
     return NextResponse.json({
       job,
       map,
+      citationCount: citationCount ?? 0,
       findings: findings ?? [],
     });
   } catch (error) {

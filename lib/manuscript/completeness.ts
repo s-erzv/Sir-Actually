@@ -18,7 +18,7 @@ const SECTION_PATTERNS: Record<string, RegExp> = {
     "im",
   ),
   method: new RegExp(
-    `${SECTION_PREFIX}(?:metode(?:\\s+penelitian)?|metodologi|methodology|methods?|materials?\\s+and\\s+methods?)\\b`,
+    `${SECTION_PREFIX}(?:(?:research|study)\\s+)?(?:metode(?:\\s+penelitian)?|metodologi|methodology|methods?|research\\s+design|materials?\\s+and\\s+methods?)\\b`,
     "im",
   ),
   results: new RegExp(
@@ -66,11 +66,15 @@ export function parseBibliography(sourceText: string): BibliographyParse {
     tail = normalized.slice(match.index + match[0].length).split(/\r?\n/);
   }
 
-  // A line may contain several entries from two columns: split inline [n].
+  // A line may contain several entries from two columns: split inline [n]
+  // and inline author-year entries that the Markdown converter joined.
+  const INLINE_ENTRY = /(?<=[.!?])\s+(?=[A-ZÀ-Ý][\p{L}'’.-]+,\s+(?:[A-Z]\.|[A-Z][a-z]))/u;
   const expanded: string[] = [];
   for (const line of tail) {
-    for (const piece of line.split(/(?=\[\d+\])/)) {
-      if (piece.trim()) expanded.push(piece);
+    for (const numbered of line.split(/(?=\[\d+\])/)) {
+      for (const piece of numbered.split(INLINE_ENTRY)) {
+        if (piece.trim()) expanded.push(piece);
+      }
     }
   }
 
@@ -111,7 +115,7 @@ export interface CompletenessInput {
 }
 
 const OBJECTIVE_SENTENCE =
-  /\b(?:tujuan\s+penelitian\s+ini\s+adalah|pertanyaan\s+penelitian(?:nya)?\s+adalah|rumusan\s+masalah(?:nya)?\s+adalah)\b/i;
+  /\b(?:tujuan\s+penelitian\s+ini\s+adalah|pertanyaan\s+penelitian(?:nya)?\s+adalah|rumusan\s+masalah(?:nya)?\s+adalah|(?:this|the\s+present|the\s+current)\s+(?:study|research|paper|article|review)\b[^.!?]{0,120}\b(?:aims?|seeks?|attempts?|investigates?|examines?|explores?|maps?|bridges?|presents?|is\s+to|sets?\s+out\s+to)\b|(?:the\s+)?(?:aim|purpose|objective)s?\s+of\s+(?:this|the)\s+(?:study|research|paper|article|review)\b)/i;
 
 export function checkCompleteness(input: CompletenessInput): Completeness {
   const sections: Record<string, boolean> = {};

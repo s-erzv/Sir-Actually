@@ -6,12 +6,15 @@
  */
 
 import type { JudgeRawOutput, RubricCriterion } from "@/lib/domain/types";
+import { JudgeOutputSchema } from "@/lib/encounter/schema";
 import { getLLMConfig, type LLMConfig } from "@/lib/env";
 import { JUDGE_SYSTEM, buildJudgePrompt } from "@/lib/prompts/judge_v1";
 import { QUESTIONER_SYSTEM, buildQuestionPrompt } from "@/lib/prompts/questioner_v1";
+import { assertDailyBudget, recordLlmUsage } from "@/lib/llmUsage";
 
 export interface JudgeInput {
   playerAnswer: string;
+  question?: string;
   evidenceQuote: string;
   weaknessType: string;
   rubricCriteria: RubricCriterion[];
@@ -27,43 +30,42 @@ export interface QuestionInput {
   bossPersona: string;
   researchMapSummary: string;
   previousQuestions: string[];
+  targetCriteria?: Array<{ id: string; label: string }>;
   contextChunks?: Array<{ section: string | null; text: string }>;
 }
 
 /**
- * Kagiro model routing. Each boss floor escalates; the final sovereign
- * (Eldravos) uses Claude Sonnet. Ghost (Nyxara) is cheap on purpose: the
- * Crossref/OpenAlex verifier does the real work there, not the LLM.
- *
- * Defaults here; override per slug with `LLM_MODEL_<SLUG>` env, e.g.
- * `LLM_MODEL_BOSS_FLOOR_3=qwen3.8-max`.
- *
- * These IDs must match https://api.kagiro.net/v1/models exactly.
+ * Kagiro model routing, chosen by credit multiplier:
+ *   2.5x deepseek-v4-flash
+ *   3.5x deepseek-4-1-flash
+ *   4.5x glm-5-3-flash
+ * Expensive models (Claude 15x, glm5-3 7.5x, qwen-plus 7.3x) are opt-in via
+ * LLM_MODEL_<SLUG>, not defaults.
  */
 export const KAGIRO_BOSS_MODELS: Record<string, string> = {
   // Floor slugs
-  "boss-floor-1": "deepseek-4-1-flash",
-  "boss-floor-2": "glm5-2",
-  "boss-floor-3": "glm5-3",
-  "boss-floor-4": "qwen3.8-plus",
-  "boss-floor-5": "glm-5-3-flash",
-  "boss-floor-6": "claude-sonnet-4-6",
+  "boss-floor-1": "deepseek-v4-flash",
+  "boss-floor-2": "deepseek-v4-flash",
+  "boss-floor-3": "deepseek-4-1-flash",
+  "boss-floor-4": "deepseek-4-1-flash",
+  "boss-floor-5": "deepseek-4-1-flash",
+  "boss-floor-6": "glm-5-3-flash",
 
   // Fantasy names (Canon roster)
-  veylith: "deepseek-4-1-flash",
-  draeven: "glm5-2",
-  kryvax: "glm5-3",
-  morvane: "qwen3.8-plus",
-  nyxara: "glm-5-3-flash",
-  eldravos: "claude-sonnet-4-6",
+  veylith: "deepseek-v4-flash",
+  draeven: "deepseek-v4-flash",
+  kryvax: "deepseek-4-1-flash",
+  morvane: "deepseek-4-1-flash",
+  nyxara: "deepseek-4-1-flash",
+  eldravos: "glm-5-3-flash",
 
   // Legacy role slugs
-  gap_hunter: "deepseek-4-1-flash",
-  aligner: "glm5-2",
-  methodologist: "glm5-3",
-  auditor: "qwen3.8-plus",
-  ghost: "glm-5-3-flash",
-  sir_actually: "claude-sonnet-4-6",
+  gap_hunter: "deepseek-v4-flash",
+  aligner: "deepseek-v4-flash",
+  methodologist: "deepseek-4-1-flash",
+  auditor: "deepseek-4-1-flash",
+  ghost: "deepseek-4-1-flash",
+  sir_actually: "glm-5-3-flash",
   minion: "deepseek-v4-flash",
 };
 
@@ -112,11 +114,12 @@ class FetchLLMProvider implements LLMProvider {
   }
 
   async judgeAnswer(input: JudgeInput): Promise<JudgeRawOutput> {
-    return (await this.completeJson(
+    const raw = await this.completeJson(
       JUDGE_SYSTEM,
       buildJudgePrompt(input),
       0.1,
-    )) as JudgeRawOutput;
+    );
+    return JudgeOutputSchema.parse(raw) as JudgeRawOutput;
   }
 
   async generateQuestion(input: QuestionInput): Promise<string> {
@@ -157,7 +160,12 @@ class FetchLLMProvider implements LLMProvider {
     jsonMode: boolean,
   ): Promise<string> {
     const { provider, model, apiKey, baseUrl } = this.config;
+    await assertDailyBudget();
     const signal = AbortSignal.timeout(90_000);
+    const maxTokens = Math.max(
+      256,
+      Math.min(8192, Number(process.env.LLM_MAX_OUTPUT_TOKENS ?? 4096) || 4096),
+    );
 
     if (provider === "anthropic") {
       const response = await fetch(
@@ -172,7 +180,7 @@ class FetchLLMProvider implements LLMProvider {
           },
           body: JSON.stringify({
             model,
-            max_tokens: 8192,
+            max_tokens: maxTokens,
             temperature,
             system,
             messages: [{ role: "user", content: user }],
@@ -180,7 +188,21 @@ class FetchLLMProvider implements LLMProvider {
         },
       );
       const data = await readProviderResponse(response);
-      const content = data.content as Array<{ type: string; text?: string }>;
+      const usage = data.usage as { input_tokens?: unknown; output_tokens?: unknown } | undefined;
+      await recordLlmUsage({
+        provider,
+        model,
+        promptTokens: usage?.input_tokens,
+        completionTokens: usage?.output_tokens,
+      });
+      const content = Array.isArray(data.content)
+        ? (data.content as Array<{ type: string; text?: string }>)
+        : [];
+      if (!Array.isArray(data.content)) {
+        throw new Error(
+          `Respons LLM (${provider}/${model}) tidak punya content: ${JSON.stringify(data).slice(0, 400)}`,
+        );
+      }
       return content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("");
     }
 
@@ -197,6 +219,7 @@ class FetchLLMProvider implements LLMProvider {
           },
           body: JSON.stringify({
             model,
+            max_tokens: maxTokens,
             temperature,
             ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
             messages: [
@@ -207,6 +230,21 @@ class FetchLLMProvider implements LLMProvider {
         },
       );
       const data = await readProviderResponse(response);
+      const usage = data.usage as
+        | { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown }
+        | undefined;
+      await recordLlmUsage({
+        provider,
+        model,
+        promptTokens: usage?.prompt_tokens,
+        completionTokens: usage?.completion_tokens,
+        totalTokens: usage?.total_tokens,
+      });
+      if (!Array.isArray(data.choices)) {
+        throw new Error(
+          `Respons LLM (${provider}/${model}) tidak punya choices: ${JSON.stringify(data).slice(0, 400)}`,
+        );
+      }
       const choices = data.choices as Array<{ message?: { content?: string } }>;
       return choices[0]?.message?.content ?? "";
     }
@@ -222,12 +260,28 @@ class FetchLLMProvider implements LLMProvider {
           contents: [{ role: "user", parts: [{ text: user }] }],
           generationConfig: {
             temperature,
+            maxOutputTokens: maxTokens,
             ...(jsonMode ? { responseMimeType: "application/json" } : {}),
           },
         }),
       },
     );
     const data = await readProviderResponse(response);
+    const usage = data.usageMetadata as
+      | { promptTokenCount?: unknown; candidatesTokenCount?: unknown; totalTokenCount?: unknown }
+      | undefined;
+    await recordLlmUsage({
+      provider,
+      model,
+      promptTokens: usage?.promptTokenCount,
+      completionTokens: usage?.candidatesTokenCount,
+      totalTokens: usage?.totalTokenCount,
+    });
+    if (!Array.isArray(data.candidates)) {
+      throw new Error(
+        `Respons LLM (${provider}/${model}) tidak punya candidates: ${JSON.stringify(data).slice(0, 400)}`,
+      );
+    }
     const candidates = data.candidates as Array<{
       content?: { parts?: Array<{ text?: string }> };
     }>;
@@ -259,14 +313,81 @@ export function getLLMProvider(): LLMProvider {
 }
 
 /**
- * Judges should be fast. Boss models can be slow reasoning models, so the
- * judge uses a dedicated (overridable) model when running on Kagiro.
+ * Judges follow the monster's routed model by default. Set LLM_MODEL_JUDGE to
+ * cap every judge, or LLM_MODEL_JUDGE_<SLUG> for one monster.
  */
-export function getLLMProviderForJudge(): LLMProvider {
+export function resolveJudgeModel(bossSlug?: string | null): string {
+  const slug = bossSlug?.toLowerCase();
+  const override = slug
+    ? process.env[`LLM_MODEL_JUDGE_${slug.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`]
+    : undefined;
+  return (
+    override ??
+    process.env.LLM_MODEL_JUDGE ??
+    resolveBossModel(bossSlug) ??
+    "deepseek-v4-flash"
+  );
+}
+
+export function resolveAnalysisModel(): string {
+  return (
+    process.env.LLM_MODEL_ANALYSIS ??
+    process.env.LLM_MODEL_EXTRACT ??
+    "deepseek-v4-flash"
+  );
+}
+
+export function getLLMProviderForJudge(bossSlug?: string | null): LLMProvider {
   const base = getLLMProvider();
   if (base.providerName !== "kagiro") return base;
 
-  const model = process.env.LLM_MODEL_JUDGE ?? "deepseek-4-1-flash";
+  const model = resolveJudgeModel(bossSlug);
+  if (model === base.modelName) return base;
+
+  const cached = _bossProviders.get(model);
+  if (cached) return cached;
+
+  try {
+    const provider = new FetchLLMProvider({ ...getLLMConfig(), model });
+    _bossProviders.set(model, provider);
+    return provider;
+  } catch {
+    return base;
+  }
+}
+
+/**
+ * Recon and Cartographer are analysis, not boss dialogue. They use a cheap
+ * model by default so LLM_MODEL=deepseek-v4-pro is not spent on them.
+ */
+export function getLLMProviderForAnalysis(): LLMProvider {
+  const base = getLLMProvider();
+  if (base.providerName !== "kagiro") return base;
+
+  const model = resolveAnalysisModel();
+  if (model === base.modelName) return base;
+
+  const cached = _bossProviders.get(model);
+  if (cached) return cached;
+
+  try {
+    const provider = new FetchLLMProvider({ ...getLLMConfig(), model });
+    _bossProviders.set(model, provider);
+    return provider;
+  } catch {
+    return base;
+  }
+}
+
+/**
+ * Research-map extraction is mechanical and latency-sensitive. On Kagiro it
+ * uses a fast model by default; override with LLM_MODEL_EXTRACT.
+ */
+export function getLLMProviderForExtraction(): LLMProvider {
+  const base = getLLMProvider();
+  if (base.providerName !== "kagiro") return base;
+
+  const model = resolveAnalysisModel();
   if (model === base.modelName) return base;
 
   const cached = _bossProviders.get(model);
@@ -285,8 +406,8 @@ export function getLLMProviderForBoss(bossSlug?: string | null): LLMProvider {
   const base = getLLMProvider();
   if (base.providerName !== "kagiro") return base;
 
-  const model = resolveBossModel(bossSlug);
-  if (!model || model === base.modelName) return base;
+  const model = resolveBossModel(bossSlug) ?? resolveAnalysisModel();
+  if (model === base.modelName) return base;
 
   const cached = _bossProviders.get(model);
   if (cached) return cached;

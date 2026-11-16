@@ -15,8 +15,15 @@ ATURAN:
 Keluarkan JSON saja dengan bentuk:
 {"claims":[{"kind":"problem","text":"...","source_quote":"..."}]}`;
 
-export function buildResearchMapPrompt(sourceText: string): string {
-  return `Petakan naskah berikut.
+export function buildResearchMapPrompt(
+  sourceText: string,
+  part?: { index: number; total: number },
+): string {
+  const scope =
+    part && part.total > 1
+      ? `Ini bagian ${part.index + 1} dari ${part.total}. Ambil maksimal 12 klaim paling penting dari bagian ini saja. Jangan mengulang klaim dari bagian lain.\n\n`
+      : "";
+  return `${scope}Petakan naskah berikut.
 
 <<<MANUSCRIPT>>>
 ${sourceText}

@@ -8,7 +8,8 @@
  * Invariants:
  * - damage is always non-negative
  * - damage is always ≤ floor(HIT_CAP[kind] × hpMax) — one answer cannot one-shot
- * - heartLost iff scoreTotal ≤ HEART_LOSS_MAX_SCORE (1)
+ * - heartLost iff the answer did not address the question, or (legacy output)
+ *   scoreTotal ≤ HEART_LOSS_MAX_SCORE
  */
 
 import { HIT_CAP, HIT_CAP_CEILING, HEART_LOSS_MAX_SCORE, BOSS_HP, MINION_HP } from "@/lib/balance";
@@ -38,9 +39,15 @@ export function computeDamage(
 
 /**
  * Returns true if the player should lose a Heart.
- * BRIEF §7: scoreTotal ≤ HEART_LOSS_MAX_SCORE (currently 1).
+ *
+ * Primary signal is `addressed` from the Judge: a Heart is lost only when the
+ * answer does not engage the question that was actually asked. A weak answer
+ * that still answers the question costs HP, not a Heart.
+ *
+ * `addressed` undefined = legacy Judge output → keep the old score threshold.
  */
-export function computeHeartLoss(scoreTotal: number): boolean {
+export function computeHeartLoss(scoreTotal: number, addressed?: boolean): boolean {
+  if (typeof addressed === "boolean") return !addressed;
   return scoreTotal <= HEART_LOSS_MAX_SCORE;
 }
 

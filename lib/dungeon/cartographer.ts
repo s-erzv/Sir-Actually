@@ -30,6 +30,26 @@ export interface DungeonDraft {
   model: string;
 }
 
+const CACHED_DRAFT_SCHEMA = z.object({
+  dungeonTitle: z.string().trim().min(1).max(80),
+  floors: z.array(
+    z.object({
+      dimension: z.enum(["gap", "align", "method", "audit"]),
+      theme: z.string(),
+      lore: z.string(),
+      bossSlug: z.string(),
+    }),
+  ),
+  promptVersion: z.string().min(1),
+  model: z.string().min(1),
+});
+
+/** Validate a draft read back from DB; bad cache falls back to regeneration. */
+export function parseCachedDraft(value: unknown): DungeonDraft | null {
+  const parsed = CACHED_DRAFT_SCHEMA.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 const DIMENSION_BOSS: Record<ResearchDimension, string> = {
   gap: BOSS_BY_DIMENSION.gap,
   align: BOSS_BY_DIMENSION.align,

@@ -35,6 +35,32 @@ export default function UploadPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
+  const [reviseFrom, setReviseFrom] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("reviseFrom");
+    if (!id) return;
+    setReviseFrom(id);
+    void authJson<{
+      manuscript: {
+        title: string;
+        field: string | null;
+        language: "id" | "en";
+        stage: "proposal" | "skripsi" | "jurnal";
+        minReferences: number | null;
+      };
+    }>(`/api/manuscripts/${id}`)
+      .then(({ manuscript }) => {
+        setTitle(manuscript.title);
+        setField(manuscript.field ?? "");
+        setLanguage(manuscript.language);
+        setStage(manuscript.stage);
+        setMinReferences(manuscript.minReferences ? String(manuscript.minReferences) : "");
+      })
+      .catch(() => {
+        // Revision metadata is optional; upload still works as a new manuscript.
+      });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +122,7 @@ export default function UploadPage() {
           stage,
           minReferences: minReferences.trim() ? Number(minReferences) : null,
           sourceText,
+          ...(reviseFrom ? { manuscriptId: reviseFrom } : {}),
         }),
       });
       router.push(`/map/${payload.researchMapId}`);
@@ -150,6 +177,12 @@ export default function UploadPage() {
             <br />
             <span className="text-gold">jadi dungeon.</span>
           </h1>
+          {reviseFrom ? (
+            <p className="mt-3 border-l-4 border-gold bg-gold/10 px-3 py-2 text-sm leading-6 text-ash">
+              Mode revisi: unggah versi baru. Versi lama tetap tersimpan dan run baru
+              memakai Research Map versi berikutnya.
+            </p>
+          ) : null}
           <p className="mt-4 max-w-xl text-[0.95rem] leading-7 text-ash">
             Naskah dibaca di browser. Teks dikirim ke server dan penyedia LLM untuk
             ekstraksi Research Map. Jangan unggah naskah yang tidak boleh diproses

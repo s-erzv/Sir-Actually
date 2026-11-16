@@ -21,7 +21,7 @@ function finding(weaknessType: WeaknessType, rank: number): FindingStub {
 }
 
 describe("generateFloorFromPlan", () => {
-  it("renders one map room per planned room and one spawn per monster", () => {
+  it("keeps every planned room, adds maze chambers, and spawns one monster per finding", () => {
     const findings = Array.from({ length: 7 }, (_, index) =>
       finding("sample_unreported", index + 1),
     );
@@ -30,10 +30,25 @@ describe("generateFloorFromPlan", () => {
     )!;
     const map = generateFloorFromPlan(plan, 42);
 
-    expect(map.rooms).toHaveLength(7);
-    expect(map.rooms.map((room) => room.monsterSpawns?.length)).toEqual([
-      1, 1, 1, 1, 1, 1, 1,
-    ]);
+    const populated = map.rooms.filter((room) => (room.findingIds?.length ?? 0) > 0);
+    expect(populated).toHaveLength(plan.rooms.length);
+    expect(map.rooms.length).toBe(plan.rooms.length); // filler cells are corridors
+
+    const plannedSpawns = plan.rooms.reduce((sum, room) => sum + room.monsterIds.length, 0);
+    const actualSpawns = map.rooms.reduce(
+      (sum, room) => sum + (room.monsterSpawns?.length ?? 0),
+      0,
+    );
+    expect(actualSpawns).toBe(plannedSpawns);
+    for (const room of populated) {
+      expect(room.monsterSpawns?.length).toBe(room.findingIds!.length);
+    }
+
+    for (const room of map.rooms) {
+      for (const spawn of room.monsterSpawns ?? []) {
+        expect(isSolid(map.tiles[spawn.y]?.[spawn.x] as TileCode)).toBe(false);
+      }
+    }
     expect(map.rooms.at(-1)!.isBoss).toBe(true);
     expect(map.rooms.at(-1)!.findingIds).toEqual([findings[0]!.id]);
     expect(map.tiles.some((row) => row.includes(TileCode.STAIRS))).toBe(true);
@@ -55,7 +70,7 @@ describe("generateFloorFromPlan", () => {
     expect(throne.rooms[0]!.kind).toBe("special");
   });
 
-  it("keeps the first door open and locks later doors", () => {
+  it("locks only the boss gate; maze branches stay open", () => {
     const findings = [
       finding("gap_unsupported", 1),
       finding("gap_answered_by_own_refs", 2),
@@ -66,17 +81,23 @@ describe("generateFloorFromPlan", () => {
       (floor) => floor.dimension === "gap",
     )!;
     const map = generateFloorFromPlan(plan, 11);
-    const doors = map.rooms.map((room) =>
-      room.entranceDoor
-        ? map.tiles[room.entranceDoor.y]?.[room.entranceDoor.x]
-        : null,
+
+    const boss = map.rooms.find((room) => room.isBoss)!;
+    expect(boss.entranceDoor).not.toBeNull();
+    expect(map.tiles[boss.entranceDoor!.y]![boss.entranceDoor!.x]).toBe(
+      TileCode.DOOR_LOCKED,
     );
 
-    expect(doors[0]).toBe(TileCode.DOOR_OPEN);
-    expect(doors.slice(1).every((code) => code === TileCode.DOOR_LOCKED)).toBe(true);
+    const otherDoors = map.rooms.filter((room) => !room.isBoss && room.entranceDoor);
+    expect(otherDoors.length).toBeGreaterThan(0);
+    for (const room of otherDoors) {
+      expect(map.tiles[room.entranceDoor!.y]![room.entranceDoor!.x]).toBe(
+        TileCode.DOOR_OPEN,
+      );
+    }
   });
 
-  it("builds a connected serpentine layout, not one straight corridor", () => {
+  it("builds a branching, connected maze instead of one hallway", () => {
     const findings = Array.from({ length: 7 }, (_, index) =>
       finding("sample_unreported", index + 1),
     );
@@ -85,8 +106,10 @@ describe("generateFloorFromPlan", () => {
     )!;
     const map = generateFloorFromPlan(plan, 42);
 
-    const roomYs = map.rooms.map((room) => room.rect.y);
-    expect(new Set(roomYs).size).toBeGreaterThan(1);
+    const cols = new Set(map.rooms.map((room) => room.rect.x));
+    const rows = new Set(map.rooms.map((room) => room.rect.y));
+    expect(cols.size).toBeGreaterThan(1);
+    expect(rows.size).toBeGreaterThan(1);
 
     const seen = new Set<string>();
     const queue = [map.playerSpawn];
@@ -106,9 +129,42 @@ describe("generateFloorFromPlan", () => {
     }
 
     for (const room of map.rooms) {
-      expect(seen.has(`${room.monsterSpawn.x},${room.monsterSpawn.y}`)).toBe(true);
+      for (const spawn of room.monsterSpawns ?? []) {
+        expect(seen.has(`${spawn.x},${spawn.y}`)).toBe(true);
+      }
     }
     expect(seen.has(`${map.stairs.x},${map.stairs.y}`)).toBe(true);
+
+    const passable = (x: number, y: number) => {
+      const code = map.tiles[y]?.[x];
+      return (
+        code === TileCode.FLOOR ||
+        code === TileCode.FLOOR_ALT ||
+        code === TileCode.DOOR_OPEN ||
+        code === TileCode.DOOR_LOCKED
+      );
+    };
+    const openings = map.rooms.map((room) => {
+      const { x, y, width, height } = room.rect;
+      const sideOpen = (
+        fromX: number,
+        fromY: number,
+        dx: number,
+        dy: number,
+        length: number,
+      ) =>
+        Array.from({ length }, (_, index) =>
+          passable(fromX + dx * index, fromY + dy * index),
+        ).some(Boolean);
+
+      return [
+        sideOpen(x - 1, y, 0, 1, height),
+        sideOpen(x + width, y, 0, 1, height),
+        sideOpen(x, y - 1, 1, 0, width),
+        sideOpen(x, y + height, 1, 0, width),
+      ].filter(Boolean).length;
+    });
+    expect(Math.max(...openings)).toBeGreaterThanOrEqual(3);
   });
 
   it("is deterministic for the same seed", () => {

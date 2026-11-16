@@ -89,7 +89,7 @@ const REWARDS: Array<{ title: string; body: string; sprite: SpriteKind }> = [
   },
   {
     title: "Rank & poin",
-    body: "Poin dari monster, lantai, dan streak. Rank S sampai B dihitung dari performa run-mu.",
+    body: "Poin dari monster, lantai, streak, dan bonus flawless. Rank S sampai B dihitung dari performa run-mu.",
     sprite: "chest",
   },
   {

@@ -55,4 +55,33 @@ describe("extractResearchMap", () => {
     expect(result.claims.map((claim) => claim.position)).toEqual([0, 1]);
     expect(result.citations).toHaveLength(2);
   });
+
+  it("splits long manuscripts into multiple LLM calls", async () => {
+    let calls = 0;
+    const provider = {
+      providerName: "test",
+      modelName: "test",
+      completeJson: async () => {
+        calls += 1;
+        return {
+          claims: [
+            {
+              kind: "problem",
+              text: "Tata kelola TI belum tertata.",
+              source_quote: "Penelitian ini membahas tata kelola TI.",
+            },
+          ],
+        };
+      },
+      completeText: async () => "",
+      judgeAnswer: async () => ({ criteria: [], missing: "" }),
+      generateQuestion: async () => "",
+    } as unknown as LLMProvider;
+
+    const longSource = `Penelitian ini membahas tata kelola TI.\n\n${"Paragraf panjang tanpa klaim. ".repeat(900)}`;
+    const result = await extractResearchMap(provider, longSource);
+
+    expect(calls).toBeGreaterThan(1);
+    expect(result.claims).toHaveLength(1);
+  });
 });

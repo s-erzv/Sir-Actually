@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -9,17 +9,21 @@ import { PixelSprite } from "@/components/brand/PixelSprite";
 import EncounterOverlay from "@/components/encounter/EncounterOverlay";
 import GameHud from "@/components/hud/GameHud";
 import Minimap from "@/components/hud/Minimap";
-import { HEARTS_START } from "@/lib/balance";
+import TouchControls from "@/components/game/TouchControls";
+import GhostLibrary from "@/components/game/GhostLibrary";
+import { HEARTS_START, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
 import LoadoutScreen from "@/components/loadout/LoadoutScreen";
 import FloorIntro from "@/components/game/FloorIntro";
 import PauseMenu from "@/components/game/PauseMenu";
 import DungeonEntry from "@/components/game/DungeonEntry";
 import { heartsForLoadout, isValidLoadout, type Loadout } from "@/lib/loadout";
-import { getMonsterDisplayName } from "@/lib/monsters";
+import { getMinionForRoom, getMonsterDisplayName } from "@/lib/monsters";
+import type { GeneratedQuestion } from "@/lib/encounter/schema";
 import type { SpriteKind } from "@/components/brand/PixelSprite";
 import { bus } from "@/game/bus";
 import { authJson } from "@/lib/api/client";
 import { generateFloorFromPlan } from "@/game/map/generateFloor";
+import { buildFloorPlan, getDungeonTier } from "@/game/map/buildFloorPlan";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type {
   FindingStub,
@@ -31,9 +35,22 @@ import type {
 
 const PhaserGame = dynamic(() => import("@/game/PhaserGame"), { ssr: false });
 
+interface QuestionBankEncounter {
+  encounterKey: string;
+  findingId?: string;
+  bossSlug: string;
+  weaknessType: string;
+  evidenceQuote?: string;
+  isBoss: boolean;
+  floorOrder: number;
+  roomOrder: number;
+  count: number;
+}
+
 interface ReconPayload {
   job: { id: string; research_map_id: string; status: string; error: string | null };
   map: { id: string; manuscript_id: string; status: string };
+  citationCount?: number;
   findings: Array<{
     id: string;
     weakness_type: string;
@@ -108,7 +125,18 @@ export default function PlayPage() {
   const [floorIndex, setFloorIndex] = useState(0);
   const [findingMeta, setFindingMeta] = useState<Record<string, FindingMeta>>({});
   const [runComplete, setRunComplete] = useState(false);
-  const [runResult, setRunResult] = useState<{ pointsTotal: number; maxPoints: number; rank: string } | null>(null);
+  const [runResult, setRunResult] = useState<{
+    pointsTotal: number;
+    maxPoints: number;
+    rank: string;
+    comparison?: {
+      previousVersion: number;
+      currentVersion: number;
+      stillPresent: number;
+      changed: number;
+      newFindings: number;
+    } | null;
+  } | null>(null);
   const [researchMapId, setResearchMapId] = useState("");
   const [dungeonTitle, setDungeonTitle] = useState("");
   const [dungeonTier, setDungeonTier] = useState("");
@@ -121,14 +149,81 @@ export default function PlayPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showFloorIntro, setShowFloorIntro] = useState(false);
+  const [showGhostLibrary, setShowGhostLibrary] = useState(false);
+  const ghostShownRef = useRef(false);
   const [paused, setPaused] = useState(false);
   const [inEncounter, setInEncounter] = useState(false);
   const [entryPhase, setEntryPhase] = useState<"idle" | "loading" | "enter">("idle");
   const [pendingCharacter, setPendingCharacter] = useState<Loadout["characterSlug"]>("arka");
   const [resolvedKeys, setResolvedKeys] = useState<string[]>([]);
+  const [questionBank, setQuestionBank] = useState<Record<string, GeneratedQuestion[]>>({});
   const [doorNotice, setDoorNotice] = useState(false);
   const [doorOpened, setDoorOpened] = useState<number | null>(null);
   const [roomProgress, setRoomProgress] = useState<{ roomNumber: number; remaining: number; total: number } | null>(null);
+
+  const prefetchFloorQuestions = useCallback(async (map: FloorMap, mapId: string, force = false) => {
+    // Ghost questions must wait until Nyxara has injected the fake citation.
+    if (map.dimension === "ghost" && !force) return;
+    const encounters = map.rooms.flatMap((room): QuestionBankEncounter[] => {
+      const roomIndex = parseInt(room.id.split("-r")[1] ?? "0", 10);
+      const findingIds = room.findingIds?.length
+        ? room.findingIds
+        : room.findingId
+          ? [room.findingId]
+          : [];
+      const count = room.isBoss ? MAX_QUESTIONS_BOSS : MAX_QUESTIONS_MINION;
+
+      if (findingIds.length === 0) {
+        if (room.kind !== "special") return [];
+        const weaknessType: WeaknessType =
+          room.bossSlug === "nyxara" ? "citation_claim_mismatch" : "conclusion_overclaim";
+        return [
+          {
+            encounterKey: `${room.id}:0`,
+            bossSlug: room.bossSlug ?? "boss",
+            weaknessType,
+            isBoss: room.isBoss,
+            floorOrder: map.floorOrder,
+            roomOrder: roomIndex,
+            count,
+          },
+        ];
+      }
+
+      return findingIds.map((findingId, index) => {
+        const meta = map.findingMeta?.[findingId];
+        const bossSlug =
+          room.kind === "minions"
+            ? `minion-${getMinionForRoom(map.floorOrder, roomIndex).slug}`
+            : (room.bossSlug ?? "boss");
+        return {
+          encounterKey: `${room.id}:${index}`,
+          findingId,
+          bossSlug,
+          weaknessType: meta?.weaknessType ?? "gap_unsupported",
+          evidenceQuote: meta?.evidenceQuote,
+          isBoss: room.isBoss,
+          floorOrder: map.floorOrder,
+          roomOrder: roomIndex,
+          count,
+        };
+      });
+    });
+    if (encounters.length === 0) return;
+
+    try {
+      const data = await authJson<{ questions: Record<string, GeneratedQuestion[]> }>(
+        "/api/encounter/questions",
+        {
+          method: "POST",
+          body: JSON.stringify({ researchMapId: mapId, encounters }),
+        },
+      );
+      setQuestionBank((prev) => ({ ...prev, ...data.questions }));
+    } catch {
+      // Prefetch is best-effort; the single-question route still works.
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,14 +254,12 @@ export default function PlayPage() {
             rank: finding.rank ?? index + 1,
           }));
 
-        const dungeon = await authJson<DungeonPlanPayload>("/api/dungeon/plan", {
-          method: "POST",
-          body: JSON.stringify({ researchMapId: recon.map.id }),
-        });
-        if (dungeon.floors.length === 0) {
+        // Build the deterministic plan immediately; AI theme/title loads in
+        // the background and must never block entering the dungeon.
+        const plans = buildFloorPlan(findings, (recon.citationCount ?? 0) > 0);
+        if (plans.length === 0) {
           throw new Error("Cartographer tidak menghasilkan lantai.");
         }
-        const plans = dungeon.floors;
         const firstPlan = plans[0]!;
         const generated = generateFloorFromPlan(firstPlan, 20261101);
         const findingMeta: Record<string, FindingMeta> = {};
@@ -177,13 +270,27 @@ export default function PlayPage() {
           };
         }
 
+        void authJson<DungeonPlanPayload>("/api/dungeon/plan", {
+          method: "POST",
+          body: JSON.stringify({ researchMapId: recon.map.id }),
+        })
+          .then((dungeon) => {
+            if (cancelled) return;
+            if (dungeon.floors.length > 0) setPlans(dungeon.floors);
+            setDungeonTitle(dungeon.title);
+            setDungeonTier(dungeon.tier);
+          })
+          .catch(() => {
+            // Deterministic plan is already playable.
+          });
+
         const active = await authJson<ActiveRunPayload>(
           `/api/run/active?researchMapId=${recon.map.id}`,
         );
 
         setResearchMapId(recon.map.id);
-        setDungeonTitle(dungeon.title);
-        setDungeonTier(dungeon.tier);
+        setDungeonTitle("Dungeon Naskah");
+        setDungeonTier(getDungeonTier(findings));
         setPlans(plans);
         setFindingMeta(findingMeta);
 
@@ -213,6 +320,7 @@ export default function PlayPage() {
           setFloorIndex(resumeIndex);
           setResolvedKeys(keys);
           setFloorMap({ ...resumedFloor, findingMeta });
+          void prefetchFloorQuestions({ ...resumedFloor, findingMeta }, recon.map.id);
           setShowFloorIntro(false);
           setEntryPhase("enter");
           setLoading(false);
@@ -221,6 +329,7 @@ export default function PlayPage() {
 
         setFloorIndex(0);
         setFloorMap({ ...generated, findingMeta });
+        void prefetchFloorQuestions({ ...generated, findingMeta }, recon.map.id);
         setShowFloorIntro(true);
         setLoading(false);
       } catch (err) {
@@ -235,7 +344,7 @@ export default function PlayPage() {
     return () => {
       cancelled = true;
     };
-  }, [params.reconId, router]);
+  }, [params.reconId, router, prefetchFloorQuestions]);
 
   const startRun = useCallback(
     async (selected: Loadout) => {
@@ -310,10 +419,18 @@ export default function PlayPage() {
     const next = floorIndex + 1;
     if (next >= plans.length) {
       try {
-        const result = await authJson<{ pointsTotal: number; maxPoints: number; rank: string }>(
-          "/api/run/finish",
-          { method: "POST", body: JSON.stringify({ runId }) },
-        );
+        const result = await authJson<{
+          pointsTotal: number;
+          maxPoints: number;
+          rank: string;
+          comparison?: {
+            previousVersion: number;
+            currentVersion: number;
+            stillPresent: number;
+            changed: number;
+            newFindings: number;
+          } | null;
+        }>("/api/run/finish", { method: "POST", body: JSON.stringify({ runId }) });
         setRunResult(result);
         setPoints(result.pointsTotal);
       } catch {
@@ -326,10 +443,11 @@ export default function PlayPage() {
     const generated = generateFloorFromPlan(plans[next]!, 20261101 + next);
     setFloorIndex(next);
     setFloorMap({ ...generated, findingMeta });
+    void prefetchFloorQuestions({ ...generated, findingMeta }, researchMapId);
     setFloorStartHearts(hearts);
     setShowFloorIntro(true);
     void persistProgress(plans[next]!.floorOrder, resolvedKeys);
-  }, [plans, findingMeta, floorIndex, runId, hearts, floorStartHearts, persistProgress, resolvedKeys]);
+  }, [plans, findingMeta, floorIndex, runId, hearts, floorStartHearts, persistProgress, resolvedKeys, researchMapId, prefetchFloorQuestions]);
 
   useEffect(() => {
     const onEncounterEnd = (event: {
@@ -346,6 +464,9 @@ export default function PlayPage() {
 
     const onFloorRetry = () => {
       const floorOrder = plans[floorIndex]?.floorOrder ?? floorIndex + 1;
+      // A retry after a KO needs fresh questions, so drop this floor's bank.
+      // Encounters fall back to the single-question route until prefetch runs again.
+      setQuestionBank({});
       setResolvedKeys((current) => {
         const next = current.filter((key) => !key.startsWith(`f${floorOrder}-`));
         void persistProgress(floorOrder, next);
@@ -360,6 +481,41 @@ export default function PlayPage() {
       bus.off("floor:retry", onFloorRetry);
     };
   }, [persistProgress, floorIndex, plans]);
+
+  useEffect(() => {
+    const onLoot = (event: { key: string }) => {
+      if (!runId) return;
+      void authJson<{ amount: number; pointsTotal: number }>("/api/run/loot", {
+        method: "POST",
+        body: JSON.stringify({ runId, lootKey: event.key }),
+      })
+        .then((data) => setPoints(data.pointsTotal))
+        .catch(() => {
+          // Loot still disappears locally; points can sync on the next action.
+        });
+    };
+    bus.on("loot:collected", onLoot);
+    return () => bus.off("loot:collected", onLoot);
+  }, [runId]);
+
+  useEffect(() => {
+    if (!runId || floorMap?.dimension !== "ghost") {
+      ghostShownRef.current = false;
+      setShowGhostLibrary(false);
+      return;
+    }
+    if (ghostShownRef.current) return;
+    ghostShownRef.current = true;
+    setShowGhostLibrary(true);
+  }, [runId, floorMap?.dimension]);
+
+  useEffect(() => {
+    // Give the freshly-created Phaser scene a beat to attach its bus listeners.
+    const timer = window.setTimeout(() => {
+      bus.emit(showGhostLibrary ? "game:pause" : "game:resume");
+    }, showGhostLibrary ? 120 : 0);
+    return () => window.clearTimeout(timer);
+  }, [showGhostLibrary]);
 
   useEffect(() => {
     bus.on("stairs:reach", advanceFloor);
@@ -562,19 +718,59 @@ export default function PlayPage() {
               Poin run ini belum tersimpan. Laporan tetap bisa dibuka.
             </p>
           )}
+          {runResult?.comparison ? (
+            <div className="mt-3 border-2 border-ridge/60 bg-void/45 p-3 text-left">
+              <p className="font-pixel text-[0.52rem] uppercase tracking-[0.08em] text-gold">
+                Perbandingan versi {runResult.comparison.previousVersion} →{" "}
+                {runResult.comparison.currentVersion}
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
+                <span className="border border-moss/40 bg-moss/10 px-2 py-1.5">
+                  <span className="block text-[0.5rem] uppercase tracking-[0.08em] text-ash">
+                    Masih ada
+                  </span>
+                  <span className="mt-0.5 block font-pixel text-sm text-moss">
+                    {runResult.comparison.stillPresent}
+                  </span>
+                </span>
+                <span className="border border-gold/40 bg-gold/10 px-2 py-1.5">
+                  <span className="block text-[0.5rem] uppercase tracking-[0.08em] text-ash">
+                    Berubah
+                  </span>
+                  <span className="mt-0.5 block font-pixel text-sm text-gold">
+                    {runResult.comparison.changed}
+                  </span>
+                </span>
+                <span className="border border-blood/40 bg-blood/10 px-2 py-1.5">
+                  <span className="block text-[0.5rem] uppercase tracking-[0.08em] text-ash">
+                    Baru
+                  </span>
+                  <span className="mt-0.5 block font-pixel text-sm text-blood">
+                    {runResult.comparison.newFindings}
+                  </span>
+                </span>
+              </div>
+            </div>
+          ) : null}
           <p className="mt-4 text-sm leading-6 text-ash">
             Semua lantai sudah ditelusuri. Buka laporan untuk melihat peta kelemahan naskah.
           </p>
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <Link
-              href={`/findings/${params.reconId}`}
+              href={runId ? `/report/${runId}` : `/findings/${params.reconId}`}
               className="pixel-button border-gold bg-gold text-void hover:bg-bone"
             >
-              Lihat laporan
+              Lihat laporan run
+            </Link>
+            <Link
+              href={`/findings/${params.reconId}`}
+              className="pixel-button border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
+            >
+              Peta kelemahan
             </Link>
             <Link
               href="/dashboard"
-              className="pixel-button border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
+              className="pixel-button border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold sm:col-span-2"
             >
               Kembali ke kamp
             </Link>
@@ -619,7 +815,21 @@ export default function PlayPage() {
         </p>
       </div>
 
-      <Minimap floorMap={floorMap} />
+      <Minimap
+        floorMap={floorMap}
+        storageKey={`fog:${researchMapId || "map"}:${floorMap.floorOrder}`}
+        resolvedKeys={resolvedKeys}
+      />
+      <TouchControls />
+      {showGhostLibrary ? (
+        <GhostLibrary
+          runId={runId}
+          onClose={() => {
+            setShowGhostLibrary(false);
+            void prefetchFloorQuestions(floorMap, researchMapId, true);
+          }}
+        />
+      ) : null}
       <EncounterOverlay
         hearts={hearts}
         onHeartsChange={setHearts}
@@ -627,6 +837,7 @@ export default function PlayPage() {
         loadout={loadout}
         heartsMax={heartsForLoadout(loadout.characterSlug)}
         runId={runId}
+        questionBank={questionBank}
         onPointsChange={setPoints}
       />
       <div className="absolute right-2 top-2 z-10 flex flex-wrap items-center justify-end gap-1 text-right text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash">

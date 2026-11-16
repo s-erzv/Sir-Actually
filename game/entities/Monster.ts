@@ -6,6 +6,13 @@ import {
 } from "@/game/map/tileFrames";
 import { getMinionForRoom } from "@/lib/monsters";
 import type { FindingMeta, FloorMap, Room, WeaknessType } from "@/lib/domain/types";
+import {
+  MONSTER_BEHAVIORS,
+  behaviorForSpawn,
+  shouldChase,
+} from "./monsterBehavior";
+import type { MonsterBehavior } from "./monsterBehavior";
+import { patrolCandidates } from "@/lib/dungeon/patrol";
 
 let encounterCounter = 0;
 
@@ -31,6 +38,11 @@ export class Monster {
   resolved = false;
   private moving = false;
   private readonly room: Room;
+  private readonly behavior: MonsterBehavior;
+  private alerted = false;
+  private readonly homeX: number;
+  private readonly homeY: number;
+  private nextPatrolAt = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -57,6 +69,8 @@ export class Monster {
     this.roomIndex = parseInt(room.id.split("-r")[1] ?? "0", 10);
     this.roomId = room.id;
     this.room = room;
+    this.behavior = behaviorForSpawn(isBoss, monsterIndex);
+    const behavior = MONSTER_BEHAVIORS[this.behavior];
     const minion = getMinionForRoom(floorOrder, this.roomIndex);
     this.bossSlug = spawn?.bossSlug ?? (isBoss ? `boss-floor-${floorOrder}` : `minion-${minion.slug}`);
     this.weaknessType = spawn?.weaknessType ?? meta?.weaknessType ?? "gap_unsupported";
@@ -64,6 +78,8 @@ export class Monster {
 
     this.tileX = Math.floor(worldX / TILE_SIZE);
     this.tileY = Math.floor(worldY / TILE_SIZE);
+    this.homeX = this.tileX;
+    this.homeY = this.tileY;
 
     const frame = isBoss
       ? bossFrame(spawn?.bossSlug, floorOrder)
@@ -99,13 +115,18 @@ export class Monster {
     }
 
     // "!" marker above sprite so player knows they can interact
-    this.exclamation = scene.add.text(worldX, worldY - TILE_SIZE * (isBoss ? 1.5 : 1), "!", {
-      fontSize: "10px",
-      color: "#ffdd44",
-      fontFamily: "Arial, sans-serif",
-      stroke: "#000000",
-      strokeThickness: 2,
-    }).setOrigin(0.5, 1);
+    this.exclamation = scene.add.text(
+      worldX,
+      worldY - TILE_SIZE * (isBoss ? 1.5 : 1),
+      behavior.dormantMarker,
+      {
+        fontSize: "10px",
+        color: behavior.dormantColor,
+        fontFamily: "Arial, sans-serif",
+        stroke: "#000000",
+        strokeThickness: 2,
+      },
+    ).setOrigin(0.5, 1);
   }
 
   /**
@@ -190,6 +211,14 @@ export class Monster {
     });
   }
 
+  private setAlerted(alerted: boolean): void {
+    if (this.alerted === alerted) return;
+    this.alerted = alerted;
+    const behavior = MONSTER_BEHAVIORS[this.behavior];
+    this.exclamation?.setText(alerted ? behavior.activeMarker : behavior.dormantMarker);
+    this.exclamation?.setColor(alerted ? behavior.activeColor : behavior.dormantColor);
+  }
+
   /**
    * Chase the player while they are inside this monster's room.
    * Movement is one tile at a time, bounded by the room and blocking tiles.
@@ -210,8 +239,23 @@ export class Monster {
       playerTile.x <= maxX &&
       playerTile.y >= minY &&
       playerTile.y <= maxY;
-    if (!insideRoom) return;
-    if (playerTile.x === this.tileX && playerTile.y === this.tileY) return;
+    if (!insideRoom) {
+      this.setAlerted(false);
+      this.tryPatrol(playerTile, floorMap, occupied);
+      return;
+    }
+
+    const chasing = shouldChase(
+      this.behavior,
+      { x: this.tileX, y: this.tileY },
+      playerTile,
+      insideRoom,
+    );
+    this.setAlerted(chasing);
+    if (!chasing || (playerTile.x === this.tileX && playerTile.y === this.tileY)) {
+      this.tryPatrol(playerTile, floorMap, occupied);
+      return;
+    }
 
     const startKey = `${this.tileX},${this.tileY}`;
     const goalKey = `${playerTile.x},${playerTile.y}`;
@@ -254,6 +298,11 @@ export class Monster {
     const [stepX, stepY] = stepKey.split(",").map(Number) as [number, number];
     if (stepX === this.tileX && stepY === this.tileY) return;
 
+    this.moveToTile(stepX, stepY);
+  }
+
+  /** One-tile hop with tween + marker sync. */
+  private moveToTile(stepX: number, stepY: number): void {
     this.tileX = stepX;
     this.tileY = stepY;
     this.moving = true;
@@ -267,12 +316,37 @@ export class Monster {
       targets: this.sprite,
       x: stepX * TILE_SIZE + TILE_SIZE / 2,
       y: stepY * TILE_SIZE + TILE_SIZE / 2,
-      duration: 170,
+      duration: MONSTER_BEHAVIORS[this.behavior].moveDuration,
       ease: "Linear",
       onComplete: () => {
         this.moving = false;
       },
     });
+  }
+
+  /** Idle wander for non-bosses, kept near their spawn and inside the room. */
+  private tryPatrol(
+    playerTile: { x: number; y: number },
+    floorMap: FloorMap,
+    occupied: ReadonlySet<string>,
+  ): void {
+    if (this.resolved || this.moving || this.isBoss || this.behavior === "hunter") return;
+    const now = this.sprite.scene.time.now;
+    if (now < this.nextPatrolAt) return;
+    this.nextPatrolAt = now + 1400 + Math.floor(Math.random() * 1800);
+
+    const options = patrolCandidates({
+      current: { x: this.tileX, y: this.tileY },
+      home: { x: this.homeX, y: this.homeY },
+      roomRect: this.room.rect,
+      playerTile,
+      occupied,
+      tiles: floorMap.tiles,
+    });
+
+    if (options.length === 0) return;
+    const step = options[Math.floor(Math.random() * options.length)]!;
+    this.moveToTile(step.x, step.y);
   }
 
   /** Remove immediately (used when resuming a saved run). */

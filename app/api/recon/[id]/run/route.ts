@@ -5,7 +5,7 @@ import { verifyCitations } from "@/lib/verify/citations";
 import { detectCodeFindings } from "@/lib/recon/codeDetectors";
 import { detectLlmFindings } from "@/lib/recon/llmDetector";
 import { rankFindings } from "@/lib/recon/ranking";
-import { getLLMProvider, hasRealLLM } from "@/lib/llm";
+import { getLLMProviderForAnalysis, hasRealLLM } from "@/lib/llm";
 import { mergeChunks, retrieveChunks } from "@/lib/rag/retrieve";
 import type { RagRpcClient } from "@/lib/rag/types";
 import type { Database, Json } from "@/lib/supabase/database";
@@ -177,13 +177,13 @@ export async function POST(
             }),
           ),
         );
-        const chunks = mergeChunks(retrieved, 24);
+        const chunks = mergeChunks(retrieved, 12);
         timings.retrieval = Date.now() - retrievalStarted;
 
         const detected =
           chunks.length === 0
             ? { findings: [], promptVersion: "rag_r0", discarded: 0 }
-            : await detectLlmFindings(getLLMProvider(), {
+            : await detectLlmFindings(getLLMProviderForAnalysis(), {
                 claims: (claims ?? []).map((claim) => ({
                   id: claim.id,
                   kind: claim.kind,

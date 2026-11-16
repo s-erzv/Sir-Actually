@@ -7,6 +7,7 @@ import { RUBRICS } from "@/lib/rubrics";
 interface ScoreBreakdownProps {
   evaluation: EvaluationResult;
   weaknessType: WeaknessType;
+  targetCriterionIds?: string[];
 }
 
 const LEVEL_LABEL: Record<0 | 1 | 2, string> = {
@@ -21,8 +22,16 @@ const LEVEL_COLOR: Record<0 | 1 | 2, string> = {
   2: "#8fbd72",
 };
 
-export default function ScoreBreakdown({ evaluation, weaknessType }: ScoreBreakdownProps) {
-  const criteria = RUBRICS[weaknessType] ?? [];
+export default function ScoreBreakdown({
+  evaluation,
+  weaknessType,
+  targetCriterionIds,
+}: ScoreBreakdownProps) {
+  const allCriteria = RUBRICS[weaknessType] ?? [];
+  const criteria =
+    targetCriterionIds && targetCriterionIds.length > 0
+      ? allCriteria.filter((criterion) => targetCriterionIds.includes(criterion.id))
+      : allCriteria;
   const { scores, scoreTotal, scoreMax, missing, ruleCaps } = evaluation;
 
   return (

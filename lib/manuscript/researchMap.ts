@@ -68,6 +68,9 @@ function dedupeCitations(citations: readonly string[]): string[] {
 
 const MAX_PROMPT_CHARS = 120_000;
 const TAIL_CHARS = 40_000;
+const PART_CHARS = 12_000;
+const MAX_PARTS = 8;
+const PART_CONCURRENCY = 4;
 
 function manuscriptExcerpt(sourceText: string): string {
   if (sourceText.length <= MAX_PROMPT_CHARS) return sourceText;
@@ -76,19 +79,73 @@ function manuscriptExcerpt(sourceText: string): string {
   return `${head}\n\n[... BAGIAN TENGAH NASKAH DIPOTONG UNTUK BATAS KONTEKS ...]\n\n${tail}`;
 }
 
+/** Split on a paragraph/sentence boundary near the target size. */
+function splitParts(text: string): string[] {
+  if (text.length <= PART_CHARS) return [text];
+  const target = Math.min(MAX_PARTS, Math.max(2, Math.ceil(text.length / PART_CHARS)));
+  const size = Math.ceil(text.length / target);
+  const parts: string[] = [];
+  let cursor = 0;
+
+  while (cursor < text.length && parts.length < target) {
+    const end = Math.min(text.length, cursor + size);
+    if (end < text.length) {
+      const slice = text.slice(cursor, end);
+      const boundary = Math.max(
+        slice.lastIndexOf("\n\n"),
+        slice.lastIndexOf("\n"),
+        slice.lastIndexOf(". "),
+      );
+      if (boundary > size * 0.5) {
+        parts.push(text.slice(cursor, cursor + boundary + 1));
+        cursor += boundary + 1;
+        continue;
+      }
+    }
+    parts.push(text.slice(cursor, end));
+    cursor = end;
+  }
+
+  if (cursor < text.length) parts[parts.length - 1] += text.slice(cursor);
+  return parts.filter((part) => part.trim().length > 0);
+}
+
 export async function extractResearchMap(
   provider: LLMProvider,
   sourceText: string,
 ): Promise<ResearchMapExtraction> {
-  const raw = await provider.completeJson(
-    RESEARCH_MAP_SYSTEM,
-    buildResearchMapPrompt(manuscriptExcerpt(sourceText)),
-    0.1,
-  );
-  const parsed = CLAIM_SCHEMA.safeParse(raw);
-  if (!parsed.success) {
+  const parts = splitParts(manuscriptExcerpt(sourceText));
+  const settled: PromiseSettledResult<unknown>[] = [];
+
+  // Bounded parallelism keeps each LLM call small enough to beat the timeout.
+  for (let index = 0; index < parts.length; index += PART_CONCURRENCY) {
+    const batch = parts.slice(index, index + PART_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((part, offset) =>
+        provider.completeJson(
+          RESEARCH_MAP_SYSTEM,
+          buildResearchMapPrompt(part, {
+            index: index + offset,
+            total: parts.length,
+          }),
+          0.1,
+        ),
+      ),
+    );
+    settled.push(...results);
+  }
+
+  const rawClaims: Array<z.infer<typeof CLAIM_SCHEMA>["claims"][number]> = [];
+  for (const result of settled) {
+    if (result.status === "rejected") continue;
+    const parsed = CLAIM_SCHEMA.safeParse(result.value);
+    if (!parsed.success) continue;
+    rawClaims.push(...parsed.data.claims);
+  }
+
+  if (rawClaims.length === 0) {
     throw new Error(
-      `Output Research Map tidak valid: ${parsed.error.issues[0]?.message ?? "skema salah"}`,
+      "AI tidak menghasilkan klaim yang bisa diverifikasi terhadap naskah. Coba lagi atau periksa kualitas teks.",
     );
   }
 
@@ -98,7 +155,8 @@ export async function extractResearchMap(
   const seenText = new Set<string>();
   const seenQuotes = new Set<string>();
 
-  for (const claim of parsed.data.claims) {
+  for (const claim of rawClaims) {
+    if (claims.length >= 40) break;
     const quote = normalize(claim.source_quote);
     const text = normalize(claim.text);
     if (!source.includes(quote)) {

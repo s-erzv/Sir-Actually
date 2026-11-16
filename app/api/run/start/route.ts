@@ -4,6 +4,7 @@ import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getCharacter, heartsForLoadout, isCharacterUnlocked, isValidLoadout } from "@/lib/loadout";
+import { currentProgress, isStaleRunProgress } from "@/lib/dungeon/runProgress";
 import type { Database } from "@/lib/supabase/database";
 
 export const runtime = "nodejs";
@@ -49,13 +50,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const hearts = heartsForLoadout(body.characterSlug);
-    const { data: active, error: activeError } = await admin
+    let { data: active, error: activeError } = await admin
       .from("runs")
       .select("id, points_total, hearts_left, current_floor, progress")
       .eq("research_map_id", map.id)
       .eq("status", "active")
       .maybeSingle();
     if (activeError) throw new ApiError(activeError.message, 500);
+
+    // A run from an older floor layout cannot be resumed safely.
+    if (active && isStaleRunProgress(active.progress)) {
+      const { error: closeError } = await admin
+        .from("runs")
+        .update({ status: "finished", finished_at: new Date().toISOString() })
+        .eq("id", active.id);
+      if (closeError) throw new ApiError(closeError.message, 500);
+      active = null;
+    }
 
     if (active) {
       const { error } = await admin
@@ -93,10 +104,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       dungeon_tier: body.dungeonTier ?? null,
       floor_count: body.floorCount ?? null,
       current_floor: 1,
-      progress: {},
+      progress: currentProgress([]),
     };
     const { data: run, error } = await admin.from("runs").insert(insert).select("id").single();
+    if (error?.code === "23505") {
+      // Another request created the active run first.
+      const { data: raced } = await admin
+        .from("runs")
+        .select("id, points_total, hearts_left, current_floor")
+        .eq("research_map_id", map.id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (raced) {
+        return NextResponse.json({
+          runId: raced.id,
+          pointsTotal: raced.points_total ?? 0,
+          hearts: raced.hearts_left,
+          currentFloor: raced.current_floor ?? 1,
+          resumed: true,
+        });
+      }
+    }
     if (error) throw new ApiError(error.message, 500);
+    if (!run) throw new ApiError("Gagal membuat run.", 500);
 
     return NextResponse.json({ runId: run.id, pointsTotal: 0, hearts, resumed: false });
   } catch (error) {

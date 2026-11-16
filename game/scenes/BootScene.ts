@@ -34,7 +34,14 @@ export class BootScene extends Phaser.Scene {
     this.createGlowTexture("glow-small");
     this.createDustTexture("dust");
     this.createCharacterTextures();
-    this.scene.start("DungeonScene");
+    const map = this.game.registry.get("floorMap") as { dimension?: string } | undefined;
+    const sceneKey =
+      map?.dimension === "ghost"
+        ? "LibraryScene"
+        : map?.dimension === "throne"
+          ? "ThroneScene"
+          : "DungeonScene";
+    this.scene.start(sceneKey);
   }
 
   /** Soft radial light used for room ambience and torches. */

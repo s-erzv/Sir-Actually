@@ -42,7 +42,7 @@ Prinsip yang tidak boleh dilanggar:
 | Status encounter | active / won / retried | pending / active / won / conceded / disputed / lost / retried | Kebutuhan alur baru; sudah di migration |
 | Research Map | tanpa kesimpulan | `claims.kind` termasuk `conclusion` | Build prompt menyebut kesimpulan |
 | Jumlah lantai | 4 lantai tetap | **2–6 lantai dinamis** dari dimensi kelemahan yang ada + Ghost + ruang takhta | Permintaan Maou: lantai mengikuti kualitas naskah |
-| Isi lantai | ruang temuan lalu boss | **semua temuan jadi monster**; semua non-boss jadi antek, boss terakhir; maks 3 monster per ruang | Permintaan Maou: jumlah monster = jumlah kelemahan |
+| Isi lantai | ruang temuan lalu boss | **semua temuan jadi monster**; semua non-boss jadi antek, boss terakhir; **1 monster per ruang** | Permintaan Maou: jumlah monster = jumlah kelemahan |
 | Loadout | tidak ada | **3 karakter × 2 senjata**; hanya damage/Heart/petunjuk, bukan rubrik | Permintaan Maou: rasa game dungeon |
 | Gamifikasi | tidak ada | **poin + rank berbasis rasio** (bukan ambang absolut) | Jumlah lantai berubah, ambang absolut jadi tidak adil |
 | Feedback kalah | Kitab Nasihat generik | **Catatan Penjaga / Epitaf** yang menyebut kutipan + kriteria | Permintaan Maou: feedback AI tiap kalah/mati |
@@ -211,7 +211,7 @@ Lantai **bukan** urutan tetap 1–4. `buildFloorPlan(findings, hasReferences)` (
    - **Boss** = finding dengan **rank terkecil** (rank 1 = paling berat) di dimensi itu.
    - **Antek** = **semua** finding lain di dimensi itu, diurut rank besar → kecil (ringan → berat). Antek memakai rubrik penuh dan bisa memotong Heart. Tidak ada batas jumlah antek.
    - **Monster = finding.** Kalau satu dimensi cuma punya 1 finding, monster itu langsung boss; tidak ada antek karena tidak boleh mengarang temuan atau menduplikasi finding.
-   - **Pemadatan ruang:** maksimal **3 monster per ruang**. Jumlah ruang antek = `ceil(jumlahAntek / 3)`; boss tetap 1 ruang terakhir. Contoh: 14 antek = 5 ruang antek (3+3+3+3+2) + 1 ruang boss.
+   - **Satu ruang satu monster:** tiap temuan punya ruangnya sendiri; boss tetap 1 ruang terakhir. Jumlah ruang antek = jumlah antek. Contoh: 14 antek = 14 ruang antek + 1 ruang boss.
    - **Tidak ada overflow.** Semua finding masuk dungeon dan laporan; tidak ada temuan yang dibuang karena cap.
 6. Urutan boss mengikuti **dimensi**, bukan nomor lantai. Jangan memakai `bosses.floor_order` sebagai kunci tunggal; simpan `dimension` dan tampilkan nomor lantai sesuai run. AI hanya boleh **mengusulkan** urutan; kode yang menghitung dan mengunci.
 7. Confidence < `LOW_CONFIDENCE`: ruang antek bersifat opsional; melewatinya tidak memblokir pintu boss, tetapi tercatat "belum diuji".
@@ -239,7 +239,7 @@ Bentuk serangan yang boleh per tipe ada di `weakness_types.attack_types`.
 - Rank = urut severity desc, centrality desc, confidence desc. Tanpa skor desimal; **rank 1 = paling berat**.
 - Ruang di satu lantai = antek dulu (rank besar → kecil), **boss terakhir** (rank 1).
 - Boss takhta memakai finding rank 1 se-naskah sebagai **fokus konteks**, bukan monster duplikat. Kalau Recon kosong: sidang akhir memakai klaim sentral Research Map, tidak mengarang temuan.
-- Tidak ada cap jumlah monster/ruang. Jumlah ruang dihitung dari pemadatan 3 monster per ruang.
+- Tidak ada cap jumlah monster/ruang. Jumlah ruang = jumlah temuan (1 ruang per monster).
 - Confidence rendah = ruang opsional, bukan tuduhan.
 - Batas kode: kelemahan pada klaim yang bukan RQ, temuan utama, atau kesimpulan dibatasi severity maks 2.
 
@@ -255,7 +255,7 @@ export const HIT_CAP_CEILING = { boss: 0.49, minion: 0.66 } as const; // batas k
 export const HEART_LOSS_MAX_SCORE = 1;    // skor <= 1 kehilangan 1 Heart
 export const MAX_QUESTIONS_BOSS = 4;
 export const MAX_QUESTIONS_MINION = 2;
-export const MONSTERS_PER_ROOM_MAX = 3;   // pemadatan ruang, bukan cap jumlah monster
+export const MONSTERS_PER_ROOM_MAX = 1;   // satu temuan = satu ruang
 export const MAX_FLOORS = 6;              // 4 dimensi penelitian + Ghost + ruang takhta
 export const LOW_CONFIDENCE = 0.5;        // di bawah ini ruang jadi opsional
 export const WEAPON_DAMAGE_BONUS_MIN = 0.95;
@@ -406,7 +406,7 @@ Harus denah sungguhan, bukan layar form.
 
 - `buildFloorPlan(findings, hasReferences): FloorPlan[]` dan `generateFloor(roomPlan, floorOrder, seed): FloorMap` adalah **fungsi murni**, deterministik untuk seed yang sama, dengan tes unit.
 - Output: `tiles: number[][]` (kode tile dari enum: WALL, FLOOR, DOOR_LOCKED, DOOR_OPEN, STAIRS, TORCH, TORCH_RED, DECOR), plus daftar `rooms` (`{ id, findingId, rect, isBoss, monsterSpawn }`), `playerSpawn`, `stairs`. Bentuk datanya dibuat mirip layer Tiled supaya nanti bisa diganti peta Tiled.
-- Layout: lorong horizontal dengan N ruang berurutan (`N = ceil(jumlahAntek / 3) + 1 boss`), ruang terakhir = ruang boss lebih besar, tangga di ujung ruang boss. Satu ruang bisa berisi maksimal 3 monster; pintu ruang terbuka setelah semua monster di ruang itu selesai. Kalau dimensi hanya punya 1 finding, monster itu langsung boss (§7).
+- Layout: **labirin** deterministik dari grid sel. Setiap sel adalah ruang (start, temuan, boss, atau ruang kosong sebagai cabang/buntu). Koridor mengikuti spanning tree hasil randomized DFS, jadi ada cabang dan jalan buntu, bukan satu lorong. Boss ditempatkan di daun terjauh; pintu boss terkunci sampai semua antek selesai. Tangga di ruang boss. Satu ruang berisi satu monster. Kalau dimensi hanya punya 1 finding, monster itu langsung boss (§7).
 - Pintu antar ruang terkunci sampai temuan di ruang sebelumnya selesai (defended / conceded / disputed).
 - Lantai tanpa temuan penelitian tidak digenerate; Ghost dan ruang takhta tetap ada. Jumlah lantai 2–6, mengikuti §7 dan §13.3.
 - Ruang awal (camp/loadout) menampilkan **rak senjata** dan **pilihan karakter** sebelum pintu pertama. Pilihan dikirim ke server; server memvalidasi dan menyimpan di `runs`, bukan di state browser.
@@ -487,7 +487,7 @@ Tiap milestone: tes unit lolos (`vitest`), `tsc --noEmit` bersih, `next build` s
 **M1: Peta jalan**
 - Next.js + Tailwind + Phaser terpasang; Phaser hanya di client.
 - Aset Kenney di `public/assets/tiny-dungeon/`, ukuran tile dicatat dari file asli, `CREDITS.md` ada.
-- `buildFloorPlan` + `generateFloor` dari **fixture tes** (bukan data runtime) + tes unit (jumlah monster = jumlah temuan, pemadatan 3 monster/ruang, antek sebelum boss, 1 temuan langsung boss, ruang boss terakhir dan lebih besar, tangga ada, deterministik per seed, dimensi kosong dilewati, jumlah lantai 2–6).
+- `buildFloorPlan` + `generateFloor` dari **fixture tes** (bukan data runtime) + tes unit (jumlah monster = jumlah temuan, 1 monster/ruang, antek sebelum boss, 1 temuan langsung boss, ruang boss terakhir dan lebih besar, tangga ada, deterministik per seed, dimensi kosong dilewati, jumlah lantai 2–6).
 - Pemain bisa berjalan (keyboard), menabrak dinding, masuk ruang, memicu overlay encounter React. Pintu terkunci/terbuka berfungsi. Pertanyaan memakai route nyata; tidak ada pertanyaan dummy.
 
 **M2: Loop pertarungan**
@@ -582,7 +582,7 @@ Aturan lengkap ada di §7. Yang harus terlihat di layar:
 
 - Pratinjau denah menampilkan **jumlah lantai**, nama dimensi, dan siluet antek. Boss hanya tampil sebagai bayangan ("???").
 - Di dalam lantai: antek berada di ruang lebih kecil, boss di ruang terbesar dengan obor merah. Pintu boss tetap terkunci sampai antek yang wajib selesai.
-- Jumlah monster di pratinjau = jumlah temuan, bukan jumlah ruang. Ruang dengan 3 monster menampilkan tiga siluet. Kalau dimensi hanya punya 1 temuan, monster itu tampil sebagai boss (tidak ada antek).
+- Jumlah monster di pratinjau = jumlah temuan, bukan jumlah ruang. Ruang berisi satu monster. Kalau dimensi hanya punya 1 temuan, monster itu tampil sebagai boss (tidak ada antek).
 - Lantai kosong tidak dibuat. Kalau tidak ada temuan penelitian sama sekali, pemain tetap melewati Ghost + Ruang Takhta ("Koridor Sunyi").
 - `buildFloorPlan` mengembalikan urutan room yang deterministik; `generateFloor` hanya menggambar. Jangan menaruh logika kualitas naskah di Phaser.
 
@@ -591,7 +591,7 @@ Bentuk data yang disarankan:
 ```ts
 type RoomPlan = {
   kind: "minions" | "boss" | "special";
-  monsterIds: string[]; // 1–3; boss tepat 1
+  monsterIds: string[]; // tepat 1 (boss maupun antek)
 };
 
 type FloorPlan = {
@@ -709,7 +709,7 @@ Naskah Markdown kanonik
 ```
 
 **Yang diusulkan AI:** tema, lore, pasangan monster, pengelompokan.
-**Yang dihitung kode:** jumlah lantai, urutan severity, jumlah monster (= jumlah finding), pemadatan maks 3 monster/ruang, boss = rank 1. Kalau output AI melanggar, kode membuang usulan itu dan memakai `buildFloorPlan` deterministik. AI tidak boleh menambah atau mengurangi finding.
+**Yang dihitung kode:** jumlah lantai, urutan severity, jumlah monster (= jumlah finding), 1 monster/ruang, boss = rank 1. Kalau output AI melanggar, kode membuang usulan itu dan memakai `buildFloorPlan` deterministik. AI tidak boleh menambah atau mengurangi finding.
 
 #### Lapis 2 — Warden
 

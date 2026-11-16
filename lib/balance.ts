@@ -19,7 +19,11 @@ export const MINION_HP = 100;
 export const HIT_CAP = { boss: 0.45, minion: 0.6 } as const;
 export const HIT_CAP_CEILING = { boss: 0.49, minion: 0.66 } as const;
 
-/** Score (sum of criterion levels) at or below which a Heart is lost. */
+/**
+ * Legacy threshold, used only when the Judge does not return `addressed`.
+ * With the encounter schema, a Heart is lost only when the answer does not
+ * address the question that was asked.
+ */
 export const HEART_LOSS_MAX_SCORE = 1;
 
 export const WEAPON_DAMAGE_BONUS_MIN = 0.95;

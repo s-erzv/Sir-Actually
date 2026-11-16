@@ -17,7 +17,7 @@ const floor: FloorPlan = {
 describe("score", () => {
   it("computes max points from the actual floor plan", () => {
     const max = maxPointsForPlan([floor]);
-    expect(max).toBe(20 + 40 + 100 + 30);
+    expect(max).toBe(20 + 40 + 100 + 30 + 50 + 20);
   });
 
   it("maps ratio to rank", () => {

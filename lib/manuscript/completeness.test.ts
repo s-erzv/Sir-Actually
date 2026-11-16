@@ -93,6 +93,34 @@ Daftar Pustaka
     expect(result.referenceCount).toBe(1);
   });
 
+  it("menerima heading English RESEARCH METHODS dan tujuan berbentuk kalimat", () => {
+    const text = `
+INTRODUCTION
+Studi ini membahas adopsi dompet Web3.
+This study bridges this gap by systematically mapping the landscape of wallet identity methods.
+
+RESEARCH METHODS
+This study uses a Systematic Literature Review approach.
+
+RESULTS AND DISCUSSION
+Empat metode ditemukan.
+
+CONCLUSION
+Tidak ada metode yang menang mutlak.
+
+REFERENCES
+[1] Anwar, S. (2021). Riset Pendidikan. Bandung: Alfabeta.
+`;
+    const result = checkCompleteness({
+      sourceText: text,
+      stage: "jurnal",
+      minReferences: null,
+    });
+    expect(result.sections.method).toBe(true);
+    expect(result.sections.objectives).toBe(true);
+    expect(result.missing).toEqual([]);
+  });
+
   it("memberi peringatan default tanpa memblokir skripsi 12 referensi", () => {
     const text = `${PROPOSAL}\nHasil\nTemuan utama.\n\nKesimpulan\nLiterasi cukup baik.`;
     const result = checkCompleteness({

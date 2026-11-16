@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { PixelSprite, type SpriteKind } from "@/components/brand/PixelSprite";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 interface FloorIntroProps {
   floorOrder: number;
@@ -29,6 +30,7 @@ export default function FloorIntro({
   onEnter,
 }: FloorIntroProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>();
 
   useEffect(() => {
     buttonRef.current?.focus();
@@ -44,6 +46,7 @@ export default function FloorIntro({
 
   return (
     <div
+      ref={dialogRef}
       className="game-fade fixed inset-0 z-[60] grid place-items-center bg-[#05080b]/92 px-4 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"

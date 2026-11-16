@@ -149,11 +149,15 @@ export interface JudgeCriterionOutput {
   quote: string;
 }
 
-/** Full output of the LLM Judge. Only JSON, validated by zod in M4. */
+/** Full output of the LLM Judge. Validated by `JudgeOutputSchema`. */
 export interface JudgeRawOutput {
   criteria: JudgeCriterionOutput[];
   /** One sentence describing what is still missing, quoting the player's answer. */
   missing: string;
+  /** Did the answer engage the question that was asked? Drives Heart loss. */
+  addressed?: boolean;
+  /** Judge confidence in this evaluation (0–1). */
+  confidence?: number;
 }
 
 /** A validated + possibly capped criterion score. */
@@ -182,6 +186,10 @@ export interface EvaluationResult {
   heartLost: boolean;
   missing: string;
   ruleCaps: RuleCap[];
+  /** Echo of the Judge's fairness signal; undefined for legacy output. */
+  addressed?: boolean;
+  /** The criteria this question actually targeted. */
+  targetCriterionIds?: string[];
 }
 
 // ---------------------------------------------------------------------------

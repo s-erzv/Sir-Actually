@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import type { WeaknessType } from "@/lib/domain/types";
 import { authJson } from "@/lib/api/client";
 import { RUBRICS } from "@/lib/rubrics";
@@ -23,6 +24,9 @@ export interface AdviceHistoryEntry {
 
 interface AdviceModalProps {
   researchMapId: string;
+  runId?: string;
+  floorOrder?: number;
+  roomOrder?: number;
   findingId?: string;
   bossSlug: string;
   weaknessType: WeaknessType;
@@ -40,6 +44,9 @@ const LEVEL_LABEL = ["Tidak ada", "Disebut", "Didukung"];
 
 export default function AdviceModal({
   researchMapId,
+  runId,
+  floorOrder,
+  roomOrder,
   findingId,
   bossSlug,
   weaknessType,
@@ -54,6 +61,7 @@ export default function AdviceModal({
   const [debrief, setDebrief] = useState<Debrief | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,6 +76,9 @@ export default function AdviceModal({
         missing,
         scores,
         history,
+        ...(runId ? { runId } : {}),
+        ...(floorOrder !== undefined ? { floorOrder } : {}),
+        ...(roomOrder !== undefined ? { roomOrder } : {}),
         ...(findingId ? { findingId } : {}),
       };
       const data = await authJson<Debrief>("/api/encounter/debrief", {
@@ -82,6 +93,9 @@ export default function AdviceModal({
     }
   }, [
     researchMapId,
+    runId,
+    floorOrder,
+    roomOrder,
     findingId,
     bossSlug,
     weaknessType,
@@ -129,7 +143,13 @@ export default function AdviceModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#05080b]/92 px-3 py-4 backdrop-blur-sm">
-      <div className="debrief-paper max-h-[94vh] w-full max-w-2xl overflow-y-auto border-2 border-[#2c2114] shadow-[8px_8px_0_#05080b]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Catatan Penjaga"
+        className="debrief-paper max-h-[94vh] w-full max-w-2xl overflow-y-auto border-2 border-[#2c2114] shadow-[8px_8px_0_#05080b]"
+      >
         <header className="flex items-start justify-between gap-4 border-b-2 border-[#2c2114]/70 bg-[#2b2318] px-5 py-4 text-[#f4e7c7]">
           <div>
             <p className="font-pixel text-[0.56rem] text-[#e9b85d]">Catatan Penjaga</p>
@@ -263,9 +283,7 @@ export default function AdviceModal({
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
               onClick={onRevise}
-              disabled
-              title="Tersedia di M3"
-              className="pixel-button pixel-button-sm cursor-not-allowed border-[#2c2114] bg-[#d9c18b] text-[#6d5c3f] opacity-55"
+              className="pixel-button pixel-button-sm border-[#2c2114] bg-[#d9c18b] text-[#4a3a25] hover:bg-[#f4e7c7]"
             >
               Perbaiki naskah
             </button>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
+import { currentProgress } from "@/lib/dungeon/runProgress";
 import type { Json } from "@/lib/supabase/database";
 
 const BODY = z.object({
@@ -30,14 +31,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!run || run.status !== "active") throw new ApiError("Run aktif tidak ditemukan.", 404);
     await loadOwnedResearchMap(run.research_map_id, user.id);
 
-    const progress = {
-      resolved: [...new Set(body.resolvedKeys)].sort(),
-    } satisfies Record<string, string[]>;
+    const progress = currentProgress(body.resolvedKeys);
 
     const { error: updateError } = await admin
       .from("runs")
       .update({
-        current_floor: body.currentFloor,
         progress: progress as unknown as Json,
       })
       .eq("id", run.id);

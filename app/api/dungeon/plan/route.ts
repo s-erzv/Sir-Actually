@@ -3,20 +3,22 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { getLLMProvider } from "@/lib/llm";
+import { getLLMProviderForAnalysis } from "@/lib/llm";
 import {
   WEAKNESS_DIMENSION,
   buildFloorPlan,
   getDungeonTier,
 } from "@/game/map/buildFloorPlan";
-import { applyDungeonDraft, generateDungeonDraft } from "@/lib/dungeon/cartographer";
+import { applyDungeonDraft, generateDungeonDraft, parseCachedDraft } from "@/lib/dungeon/cartographer";
 import type { FindingStub, WeaknessType } from "@/lib/domain/types";
+import type { Json } from "@/lib/supabase/database";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const BODY = z.object({
   researchMapId: z.string().uuid(),
+  refresh: z.boolean().optional(),
 });
 
 const KNOWN_TYPES = new Set(Object.keys(WEAKNESS_DIMENSION));
@@ -75,17 +77,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .map((claim) => `- ${claim.kind}: ${claim.text}`)
         .join("\n") || map.source_text.slice(0, 4000);
 
-    const provider = getLLMProvider();
+    const provider = getLLMProviderForAnalysis();
+    const cached = parsed.data.refresh ? null : parseCachedDraft(map.dungeon_draft);
     const draft =
-      provider.providerName === "dummy" || stubs.length === 0
+      cached ??
+      (provider.providerName === "dummy" || stubs.length === 0
         ? null
-        : await generateDungeonDraft(provider, stubs, claimsSummary);
+        : await generateDungeonDraft(provider, stubs, claimsSummary));
+
+    if (!cached && draft) {
+      const { error: cacheError } = await admin
+        .from("research_maps")
+        .update({
+          dungeon_draft: draft as unknown as Json,
+          dungeon_draft_version: draft.promptVersion,
+        })
+        .eq("id", map.id);
+      if (cacheError) throw new ApiError(cacheError.message, 500);
+    }
 
     return NextResponse.json({
       title: draft?.dungeonTitle ?? "Dungeon Naskah",
       tier: getDungeonTier(stubs),
       floors: draft ? applyDungeonDraft(plans, draft) : plans,
-      source: draft ? "ai" : "deterministic",
+      source: cached ? "cache" : draft ? "ai" : "deterministic",
       model: draft?.model ?? null,
       promptVersion: draft?.promptVersion ?? null,
     });

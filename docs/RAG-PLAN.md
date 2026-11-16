@@ -340,7 +340,7 @@ Validasi kode:
 - setiap `finding_id` ada dan hanya dipakai sekali; semua finding wajib kebagian monster;
 - `dimension` cocok dengan `weakness_type`;
 - boss = rank 1 (paling berat);
-- maksimal 3 monster per ruang (pemadatan ruang);
+- satu monster per ruang (satu temuan = satu ruang);
 - urutan lantai = severity rata-rata naik, Ghost dan Takhta terakhir.
 
 Usulan yang melanggar dibuang; `buildFloorPlan` deterministik tetap menghasilkan dungeon. Cartographer tidak boleh menambah finding, sitasi, atau angka.
