@@ -1,6 +1,6 @@
 "use client";
 
-import { PixelSprite, heroForCharacter } from "@/components/brand/PixelSprite";
+import { CharacterPortrait } from "@/components/brand/Portrait";
 import type { CharacterSlug } from "@/lib/loadout";
 
 interface DungeonEntryProps {
@@ -61,9 +61,9 @@ export default function DungeonEntry({
           </div>
 
           <div className={`entry-hero absolute bottom-2 ${entering ? "entry-hero-dive" : ""}`}>
-            <PixelSprite
-              kind={heroForCharacter(characterSlug)}
-              size={96}
+            <CharacterPortrait
+              slug={characterSlug}
+              size={104}
               className="drop-shadow-[0_8px_0_rgba(0,0,0,0.55)]"
             />
           </div>

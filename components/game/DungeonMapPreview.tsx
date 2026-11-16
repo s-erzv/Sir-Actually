@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PixelSprite } from "@/components/brand/PixelSprite";
+import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
 import { generateFloorFromPlan } from "@/game/map/generateFloor";
 import { TileCode } from "@/game/map/tiles";
 import { getMonsterDisplayName } from "@/lib/monsters";
@@ -182,7 +182,7 @@ export default function DungeonMapPreview({
                       top: `${((selectedMap.playerSpawn.y + 0.5) / selectedMap.height) * 100}%`,
                     }}
                   >
-                    <PixelSprite kind="hero" size={26} className="drop-shadow-[0_3px_0_#000]" />
+                    <CharacterPortrait slug="arka" size={26} className="drop-shadow-[0_3px_0_#000]" />
                   </span>
                 ) : null}
 
@@ -194,9 +194,10 @@ export default function DungeonMapPreview({
 
             <div className="mt-3 flex items-center justify-between gap-3 border border-ridge/50 bg-[#0a0f14]/75 p-3">
               <div className="flex items-center gap-3">
-                <PixelSprite
-                  kind={bossResolved ? "sir" : "scroll"}
-                  size={34}
+                <MonsterPortrait
+                  slug={selectedFloor.bossSlug}
+                  isBoss
+                  size={44}
                   className={bossResolved ? "" : "opacity-40 grayscale"}
                 />
                 <div>

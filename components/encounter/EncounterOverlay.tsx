@@ -15,7 +15,8 @@ import { MONSTER_LEVEL_LABELS, monsterLevelFor } from "@/lib/planner/difficulty"
 import { getMonsterDisplayName } from "@/lib/monsters";
 import { authJson } from "@/lib/api/client";
 import { useFocusTrap } from "@/lib/useFocusTrap";
-import { PixelSprite, heroForCharacter, spriteForWeakness } from "@/components/brand/PixelSprite";
+import { PixelSprite } from "@/components/brand/PixelSprite";
+import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
 import HeartDisplay from "./HeartDisplay";
 import HpBar from "./HpBar";
 import ScoreBreakdown from "./ScoreBreakdown";
@@ -660,17 +661,18 @@ export default function EncounterOverlay({
               </span>
 
               <div className={`battle-player absolute bottom-3 left-[13%] ${attackPhase === "attack" ? "battle-player-attack" : ""}`}>
-                <PixelSprite
-                  kind={heroForCharacter(loadout.characterSlug)}
-                  size={64}
+                <CharacterPortrait
+                  slug={loadout.characterSlug}
+                  size={72}
                   className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
                 />
               </div>
 
               <div className={`battle-monster absolute bottom-3 right-[10%] ${attackPhase === "hit" ? "battle-monster-hit" : ""} ${attackPhase === "hit" && lastEvaluation?.damage === 0 ? "battle-monster-miss" : ""} ${status === "won" ? "battle-monster-dead" : ""}`}>
-                <PixelSprite
-                  kind={spriteForWeakness(weaknessType)}
-                  size={isBoss ? 92 : 74}
+                <MonsterPortrait
+                  slug={encounter.bossSlug}
+                  isBoss={isBoss}
+                  size={isBoss ? 108 : 88}
                   className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
                 />
               </div>

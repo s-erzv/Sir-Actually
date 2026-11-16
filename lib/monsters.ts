@@ -122,14 +122,14 @@ export const BOSS_ROSTER: Record<string, BossInfo> = {
 };
 
 export const MINION_ROSTER: readonly MinionInfo[] = [
-  { slug: "varkul", name: "Varkul", character: "Brutish beast", lore: "Makhluk buas perkasa berotot kekar." },
+  { slug: "varkul", name: "Varkul", character: "Goblin brute", lore: "Goblin berotot yang menjaga lorong dengan golok berkarat." },
   { slug: "nethrix", name: "Nethrix", character: "Shadow crawler", lore: "Perayap bayangan yang mengintai dalam gelap." },
-  { slug: "zorveth", name: "Zorveth", character: "Armored creature", lore: "Monster berkulit baja tebal dan keras." },
+  { slug: "zorveth", name: "Zorveth", character: "Skeleton knight", lore: "Ksatria tulang berzirah yang bangkit dari kubur naskah." },
   { slug: "thalgrim", name: "Thalgrim", character: "Stone guardian", lore: "Penjaga batu kuno yang tak kenal ampun." },
   { slug: "xyrath", name: "Xyrath", character: "Winged predator", lore: "Predator bersayap penyergap dari ketinggian." },
   { slug: "othrak", name: "Othrak", character: "Undead warrior", lore: "Prajurit mayat hidup penjaga lorong bawah tanah." },
   { slug: "velmora", name: "Velmora", character: "Cursed spirit", lore: "Roh terkutuk yang meratapi kelemahan naskah." },
-  { slug: "grivak", name: "Grivak", character: "Small dungeon beast", lore: "Binatang buas kecil lincah yang suka mengacau." },
+  { slug: "grivak", name: "Grivak", character: "Goblin runt", lore: "Goblin kecil lincah yang suka mengacau di sudut ruangan." },
 ];
 
 export const BOSS_BY_FLOOR: Record<number, BossInfo> = {

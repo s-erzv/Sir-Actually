@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, after } from "next/server";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { verifyCitations } from "@/lib/verify/citations";
@@ -210,7 +210,8 @@ export async function POST(
         ),
       );
 
-      await citationsTask;
+      // Reference verification is a network-bound side quest. It must not
+      // delay the player seeing their dungeon; finish it after the response.
       timings.total = Date.now() - started;
 
       const { data: doneJob } = await admin
@@ -234,6 +235,25 @@ export async function POST(
         .select("*")
         .single();
       nextJob = doneJob ?? nextJob;
+
+      after(async () => {
+        try {
+          await citationsTask;
+          await admin
+            .from("recon_jobs")
+            .update({
+              cursor: {
+                ...cursor,
+                findings: ranked.length,
+                retrieval_chunks: sliceCount,
+              } as Json,
+              timings: { ...timings } as Json,
+            })
+            .eq("id", id);
+        } catch (error) {
+          console.error("[recon citations]", error);
+        }
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Recon gagal.";
       await admin

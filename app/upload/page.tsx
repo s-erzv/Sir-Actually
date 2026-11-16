@@ -29,6 +29,7 @@ export default function UploadPage() {
   const [language, setLanguage] = useState<"id" | "en">("id");
   const [minReferences, setMinReferences] = useState("");
   const [sourceText, setSourceText] = useState("");
+  const [showFullMarkdown, setShowFullMarkdown] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -82,6 +83,7 @@ export default function UploadPage() {
     if (!file) return;
     setError(null);
     setExtracting(true);
+    setShowFullMarkdown(false);
     setFileName(file.name);
     try {
       if (file.size > 15 * 1024 * 1024) {
@@ -299,10 +301,23 @@ export default function UploadPage() {
                     <summary className="cursor-pointer text-[0.72rem] uppercase tracking-[0.14em] text-ash hover:text-gold">
                       Lihat Markdown kanonik
                     </summary>
+                    <p className="mt-2 text-[0.62rem] leading-4 text-ash/60">
+                      {showFullMarkdown
+                        ? `Menampilkan seluruh ${sourceText.length.toLocaleString("id-ID")} karakter.`
+                        : `Pratinjau ${Math.min(4000, sourceText.length).toLocaleString("id-ID")} karakter pertama dari ${sourceText.length.toLocaleString("id-ID")}. Naskah lengkap tetap tersimpan dan dikirim ke analisis.`}
+                    </p>
                     <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[0.8rem] leading-5 text-ash/80">
-                      {sourceText.slice(0, 4000)}
-                      {sourceText.length > 4000 ? "\n\n[...]" : ""}
+                      {showFullMarkdown ? sourceText : sourceText.slice(0, 4000)}
                     </pre>
+                    {sourceText.length > 4000 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowFullMarkdown((value) => !value)}
+                        className="mt-2 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-gold hover:text-bone"
+                      >
+                        {showFullMarkdown ? "Ringkas pratinjau" : "Tampilkan seluruh markdown"}
+                      </button>
+                    ) : null}
                   </details>
                 ) : null}
               </div>

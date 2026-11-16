@@ -18,7 +18,19 @@
 // Terrain
 // ---------------------------------------------------------------------------
 
-/** Stone floor — primary walkable surface. Dark grey cobblestone. */
+/**
+ * Dedicated dungeon floor sheet (Ninja Adventure interior floors, CC0).
+ * 16x16 tiles, 22 columns, no spacing. Kept separate from the Kenney atlas so
+ * walls/props can stay on the sheet they were mapped for.
+ */
+export const FLOOR_SHEET_KEY = "floor-tiles";
+export const FLOOR_SHEET_COLS = 22;
+/** Large dark stone slabs. */
+export const FLOOR_SHEET_FRAME = 301;
+/** Cracked / patterned variants. */
+export const FLOOR_SHEET_ALT: readonly number[] = [297, 320];
+
+/** Kenney atlas floor (kept for the landing diorama). */
 export const FRAME_FLOOR = 0;
 
 /** Cracked/alternate floor tiles (~6% of floor area). */
@@ -28,12 +40,12 @@ export const FRAME_FLOOR_ALT: readonly number[] = [12, 24];
 export const FRAME_FLOOR_SAND: readonly number[] = [48, 49, 51];
 
 /**
- * Wall face tile — the wall row immediately above a floor row (shows "front" of wall).
- * Also used as WALL_TOP (same tile; no separate top exists in this sheet).
+ * Wall face tile — the row immediately above a floor row, with a lit top lip.
+ * `WALL_TOP` uses the plain brick fill behind it.
  */
-export const FRAME_WALL_FACE = 40;
+export const FRAME_WALL_FACE = 39;
 
-/** Same as WALL_FACE — no separate top tile in this sheet. */
+/** Interior wall fill (rows above the face). */
 export const FRAME_WALL_TOP = 40;
 
 // ---------------------------------------------------------------------------
@@ -52,7 +64,7 @@ export const FRAME_DOOR_OPEN = FRAME_FLOOR;
 
 /**
  * Stairs tile — drawn on top of floor in decor layer.
- * Frame 56. Alt considered: 10.
+ * Frame 56 is the spiral descent in the Kenney atlas.
  */
 export const FRAME_STAIRS = 56;
 
@@ -65,7 +77,7 @@ export const FRAME_STAIRS = 56;
  * Replaces torches (no torch tile in this sheet).
  * Frames 28, 7, 19.
  */
-export const FRAME_WALL_DECOR: readonly number[] = [28, 7, 19];
+export const FRAME_WALL_DECOR: readonly number[] = [41, 29];
 
 /**
  * Red banner/flag — used in boss room north wall instead of WALL_DECOR.
@@ -74,13 +86,13 @@ export const FRAME_WALL_DECOR: readonly number[] = [28, 7, 19];
 export const FRAME_BANNER_RED = 29;
 
 /**
- * Prop tiles — barrels/crates/chests placed in room corners.
- * Frames 82, 89, 63.
+ * Prop tiles — chests, graves and crates placed in room corners.
+ * Frames 89, 90, 91, 66.
  */
-export const FRAME_PROP: readonly number[] = [82, 89, 63];
+export const FRAME_PROP: readonly number[] = [89, 90, 91, 66];
 
-/** Grave/tombstone decoration. Frame 65. */
-export const FRAME_GRAVE = 65;
+/** Wooden crate / grave marker prop. Frame 66. */
+export const FRAME_GRAVE = 66;
 
 // ---------------------------------------------------------------------------
 // Characters
@@ -197,6 +209,12 @@ export function minionFrameForSlug(slug?: string | null, floorOrder = 1): number
 /** Pick a random floor-alt frame seeded by position (deterministic). */
 export function floorAltFrame(seed: number): number {
   return FRAME_FLOOR_ALT[seed % FRAME_FLOOR_ALT.length] ?? FRAME_FLOOR_ALT[0];
+}
+
+/** Dungeon floor frame from the dedicated interior sheet. */
+export function dungeonFloorFrame(seed: number, alt = false): number {
+  if (!alt) return FLOOR_SHEET_FRAME;
+  return FLOOR_SHEET_ALT[Math.abs(seed) % FLOOR_SHEET_ALT.length] ?? FLOOR_SHEET_ALT[0]!;
 }
 
 /** Pick a wall decor frame deterministically by x position. */

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { PixelSprite, type SpriteKind } from "@/components/brand/PixelSprite";
+import { CharacterPortrait } from "@/components/brand/Portrait";
 import { LandingDiorama } from "@/components/game/LandingDiorama";
 
 const STEPS: Array<{
@@ -60,7 +61,7 @@ const GATES: Array<{ label: string; question: string; tone: string }> = [
   },
 ];
 
-const GUARDIANS: Array<{ slug: SpriteKind; name: string; role: string; line: string }> = [
+const GUARDIANS: Array<{ slug: string; name: string; role: string; line: string }> = [
   {
     slug: "arka",
     name: "Arka",
@@ -78,6 +79,18 @@ const GUARDIANS: Array<{ slug: SpriteKind; name: string; role: string; line: str
     name: "Sena",
     role: "Penjaga",
     line: "Nyawa awal lebih banyak. Bertahan lebih lama.",
+  },
+  {
+    slug: "kiran",
+    name: "Kiran",
+    role: "Penelusur",
+    line: "Mengutip naskah menambah kekuatan serangan.",
+  },
+  {
+    slug: "vara",
+    name: "Vara",
+    role: "Eksekutor",
+    line: "Musuh sekarat menerima hantaman terakhir yang lebih besar.",
   },
 ];
 
@@ -309,20 +322,20 @@ export default function Home() {
             Pilih <span className="text-mana">penjagamu.</span>
           </h2>
           <p className="mt-4 text-[0.95rem] leading-7 text-ash">
-            Tiga penjaga, dua senjata masing-masing. Gaya bertahanmu menentukan
+            Lima penjaga, dua senjata masing-masing. Gaya bertahanmu menentukan
             Nyawa dan damage — bukan penilaian jawaban.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {GUARDIANS.map((guardian) => (
             <article key={guardian.name} className="payoff-card pixel-panel-soft overflow-hidden">
               <div className="tile-floor relative flex h-40 items-end justify-center border-b-2 border-void">
                 <div className="pointer-events-none absolute bottom-8 h-16 w-24 rounded-full bg-gold/10 blur-xl" aria-hidden="true" />
                 <div className="absolute bottom-6 h-3 w-16 bg-black/50 blur-[1px]" aria-hidden="true" />
-                <PixelSprite
-                  kind={guardian.slug}
-                  size={96}
+                <CharacterPortrait
+                  slug={guardian.slug}
+                  size={112}
                   className="relative -mb-1 drop-shadow-[0_6px_0_rgba(0,0,0,0.45)]"
                 />
               </div>

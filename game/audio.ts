@@ -1,7 +1,7 @@
 /**
- * Procedural dungeon audio (WebAudio) — no sound files, so nothing to license or load.
- * The AudioContext is created lazily and resumed on the first call, which always
- * happens after a key press, satisfying browser autoplay rules.
+ * Dungeon audio. Music and impact SFX come from the CC0 Ninja Adventure pack;
+ * footsteps, doors, and other small cues stay procedural so there is no load
+ * cost. HTMLAudio playback that browsers block is retried on the first gesture.
  */
 
 let ctx: AudioContext | null = null;
@@ -10,9 +10,80 @@ let ambience: { stop: () => void } | null = null;
 let stepFlip = false;
 let muted = false;
 
+export type MusicTrack = "dungeon" | "fight" | "crypt";
+
+const MUSIC_FILES: Record<MusicTrack, string> = {
+  dungeon: "/assets/ninja-adventure/audio/music/dungeon.m4a",
+  fight: "/assets/ninja-adventure/audio/music/fight.m4a",
+  crypt: "/assets/ninja-adventure/audio/music/crypt.m4a",
+};
+
+const SFX_FILES: Partial<Record<Sfx, { src: string; volume: number }>> = {
+  hit: { src: "/assets/ninja-adventure/audio/sfx/slash.wav", volume: 0.5 },
+  miss: { src: "/assets/ninja-adventure/audio/sfx/whoosh.wav", volume: 0.35 },
+  hurt: { src: "/assets/ninja-adventure/audio/sfx/hurt.wav", volume: 0.55 },
+  win: { src: "/assets/ninja-adventure/audio/sfx/win.wav", volume: 0.45 },
+  lose: { src: "/assets/ninja-adventure/audio/sfx/lose.wav", volume: 0.45 },
+  pickup: { src: "/assets/ninja-adventure/audio/sfx/pickup.wav", volume: 0.4 },
+};
+
+let music: HTMLAudioElement | null = null;
+let musicTrack: MusicTrack | null = null;
+let musicUnlockBound = false;
+
 try {
   muted = typeof localStorage !== "undefined" && localStorage.getItem("sa-muted") === "1";
 } catch { /* storage blocked */ }
+
+function playAudioFile(src: string, volume: number, loop = false): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const element = new Audio(src);
+    element.volume = volume;
+    element.loop = loop;
+    void element.play().catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Dungeon score. A blocked play() is retried on the first user gesture. */
+export function startMusic(track: MusicTrack): void {
+  if (typeof window === "undefined") return;
+  if (muted) return;
+  if (musicTrack === track && music && !music.paused) return;
+  stopMusic();
+  const element = new Audio(MUSIC_FILES[track]);
+  element.loop = true;
+  element.volume = 0.28;
+  music = element;
+  musicTrack = track;
+  void element.play().catch(() => {
+    if (musicUnlockBound) return;
+    musicUnlockBound = true;
+    const unlock = () => {
+      musicUnlockBound = false;
+      if (music && !muted) void music.play().catch(() => undefined);
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+  });
+}
+
+export function stopMusic(): void {
+  if (!music) return;
+  music.pause();
+  music.currentTime = 0;
+  music = null;
+  musicTrack = null;
+}
+
+export function currentMusic(): MusicTrack | null {
+  return musicTrack;
+}
 
 function audio(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -65,6 +136,8 @@ export type Sfx =
 
 export function playSfx(name: Sfx): void {
   if (muted) return;
+  const file = SFX_FILES[name];
+  if (file && playAudioFile(file.src, file.volume)) return;
   const c = audio();
   if (!c) return;
   const t = c.currentTime;
@@ -162,7 +235,11 @@ export function isMuted(): boolean {
 export function toggleMute(): boolean {
   muted = !muted;
   try { localStorage.setItem("sa-muted", muted ? "1" : "0"); } catch { /* ignore */ }
-  if (muted) stopAmbience();
-  else startAmbience();
+  if (muted) {
+    stopAmbience();
+    stopMusic();
+  } else {
+    startAmbience();
+  }
   return muted;
 }

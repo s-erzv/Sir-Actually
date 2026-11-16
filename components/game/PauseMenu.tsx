@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { PixelSprite, heroForCharacter } from "@/components/brand/PixelSprite";
+import { CharacterPortrait } from "@/components/brand/Portrait";
 import { getCharacter, getWeapon } from "@/lib/loadout";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import type { Loadout } from "@/lib/loadout";
@@ -75,7 +75,7 @@ export default function PauseMenu({
         <div className="p-5">
           <div className="flex items-center gap-3 border-b-2 border-void pb-4">
             <div className="tile-floor grid h-16 w-16 shrink-0 place-items-end justify-items-center border-2 border-void pb-1.5">
-              <PixelSprite kind={heroForCharacter(loadout.characterSlug)} size={50} />
+              <CharacterPortrait slug={loadout.characterSlug} size={52} />
             </div>
             <div className="min-w-0">
               <p className="font-pixel text-[0.5rem] text-gold">Rakitan aktif</p>

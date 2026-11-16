@@ -44,10 +44,12 @@ const CACHED_DRAFT_SCHEMA = z.object({
   model: z.string().min(1),
 });
 
-/** Validate a draft read back from DB; bad cache falls back to regeneration. */
+/** Validate a draft read back from DB; bad or stale cache falls back to regeneration. */
 export function parseCachedDraft(value: unknown): DungeonDraft | null {
   const parsed = CACHED_DRAFT_SCHEMA.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  if (parsed.data.promptVersion !== PROMPT_VERSION) return null;
+  return parsed.data;
 }
 
 const DIMENSION_BOSS: Record<ResearchDimension, string> = {

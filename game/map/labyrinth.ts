@@ -24,7 +24,6 @@ const DEN_SIZES = [
   { w: 7, h: 5 },
   { w: 5, h: 7 },
   { w: 7, h: 7 },
-  { w: 9, h: 5 },
 ] as const;
 
 /** Share of dead-end branches removed; the rest stay as loot nooks. */
@@ -213,7 +212,7 @@ export function generateLabyrinthFloor(plan: FloorPlan, seed: number): FloorMap 
   tiles[origin.y]![origin.x] = TileCode.FLOOR;
   const active: Vec2[] = [origin];
   while (active.length > 0) {
-    const pick = rand() < 0.78 ? active.length - 1 : Math.floor(rand() * active.length);
+    const pick = rand() < 0.84 ? active.length - 1 : Math.floor(rand() * active.length);
     const cell = active[pick]!;
     const options = DIRS.filter(([dx, dy]) => {
       const nx = cell.x + dx * 2;

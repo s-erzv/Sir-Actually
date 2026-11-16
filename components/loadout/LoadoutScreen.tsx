@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PixelSprite, heroForCharacter } from "@/components/brand/PixelSprite";
+import { CharacterPortrait } from "@/components/brand/Portrait";
 import QuestPath from "@/components/game/QuestPath";
 import { authJson } from "@/lib/api/client";
 import {
@@ -164,10 +164,10 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
                 <div className="tile-floor relative flex h-32 items-end justify-center border-b-2 border-void">
                   <span className="pointer-events-none absolute inset-x-0 top-0 h-5 wall-stone" />
                   <span className="absolute bottom-7 h-3 w-16 bg-black/50 blur-[1px]" aria-hidden="true" />
-                  <PixelSprite
-                    kind={heroForCharacter(item.slug)}
-                    size={92}
-                    className={`relative -mb-1 transition-transform duration-200 ${
+                  <CharacterPortrait
+                    slug={item.slug}
+                    size={96}
+                    className={`relative -mb-1 drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] transition-transform duration-200 ${
                       locked ? "grayscale opacity-35" : active ? "-translate-y-1" : "group-hover:-translate-y-1"
                     }`}
                   />
@@ -212,7 +212,7 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
           <section className="pixel-panel p-4 sm:p-5">
             <div className="flex items-start gap-4 border-b-2 border-void pb-4">
               <div className="tile-floor grid h-20 w-20 shrink-0 place-items-end justify-items-center border-2 border-void pb-2">
-                <PixelSprite kind={heroForCharacter(character.slug)} size={62} />
+                <CharacterPortrait slug={character.slug} size={62} />
               </div>
               <div className="min-w-0">
                 <p className="font-pixel text-[0.52rem] text-gold">{character.title}</p>
@@ -311,7 +311,7 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
             <p className="font-pixel text-[0.56rem] text-gold">KARAKTER TERKUNCI</p>
             <div className="mt-3 flex items-center gap-3">
               <div className="tile-floor grid h-16 w-16 shrink-0 place-items-end justify-items-center border-2 border-void pb-1.5">
-                <PixelSprite kind={heroForCharacter(targetInfo.slug)} size={50} />
+                <CharacterPortrait slug={targetInfo.slug} size={50} />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-bone">{targetInfo.name}</h2>

@@ -6,11 +6,19 @@ import {
   FRAME_WALL_TOP, FRAME_WALL_FACE,
   FRAME_BANNER_RED, FRAME_DOOR_LOCKED, FRAME_DOOR_OPEN,
   FRAME_STAIRS, FRAME_PROP, FRAME_FLOOR, floorAltFrame, wallDecorFrame,
+  FLOOR_SHEET_KEY, dungeonFloorFrame,
 } from "@/game/map/tileFrames";
 import type { DungeonDimension, FloorMap, Room } from "@/lib/domain/types";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
-import { playSfx, startAmbience, stopAmbience, toggleMute } from "@/game/audio";
+import {
+  playSfx,
+  startAmbience,
+  startMusic,
+  stopAmbience,
+  stopMusic,
+  toggleMute,
+} from "@/game/audio";
 import { lootSpotsForFloor } from "@/lib/dungeon/lootSpots";
 
 // ---------------------------------------------------------------------------
@@ -101,6 +109,7 @@ export class DungeonScene extends Phaser.Scene {
     this.listenBus();
     this.listenResize();
     this.setupAudio();
+    this.cameras.main.fadeIn(420, 3, 5, 8);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
     this.events.once(Phaser.Scenes.Events.DESTROY, this.shutdown, this);
   }
@@ -123,8 +132,20 @@ export class DungeonScene extends Phaser.Scene {
     const tileset = this.tilemap.addTilesetImage("tiles", "tiles", TILE_SIZE, TILE_SIZE, 0, TILE_SPACING);
     if (!tileset) throw new Error("DungeonScene: tileset 'tiles' failed to load");
 
+    // Floors live on their own seamless interior sheet; walls and props stay
+    // on the Kenney atlas. Two tilesets keep both mappings honest.
+    const floorTileset = this.tilemap.addTilesetImage(
+      FLOOR_SHEET_KEY,
+      FLOOR_SHEET_KEY,
+      TILE_SIZE,
+      TILE_SIZE,
+      0,
+      0,
+    );
+    if (!floorTileset) throw new Error("DungeonScene: floor tileset failed to load");
+
     // Create three blank layers
-    const groundLayer = this.tilemap.createBlankLayer("ground", tileset, 0, 0);
+    const groundLayer = this.tilemap.createBlankLayer("ground", floorTileset, 0, 0);
     const wallLayer   = this.tilemap.createBlankLayer("walls",  tileset, 0, 0);
     const decorLayer  = this.tilemap.createBlankLayer("decor",  tileset, 0, 0);
     if (!groundLayer || !wallLayer || !decorLayer) {
@@ -143,10 +164,13 @@ export class DungeonScene extends Phaser.Scene {
         const code = (tiles[row]?.[col] ?? TileCode.VOID) as TileCode;
         if (code === TileCode.VOID) continue;
 
-        const frame = tileCodeToFrame(code, col, row);
+        const onGround = GROUND_LAYER_TILES.has(code);
+        const frame = onGround
+          ? dungeonFloorFrame(col, code === TileCode.FLOOR_ALT)
+          : tileCodeToFrame(code, col, row);
         if (frame < 0) continue;
 
-        if (GROUND_LAYER_TILES.has(code)) {
+        if (onGround) {
           this.tilemap.putTileAt(frame, col, row, false, groundLayer);
         } else if (WALL_LAYER_TILES.has(code)) {
           const t = this.tilemap.putTileAt(frame, col, row, false, wallLayer);
@@ -214,6 +238,28 @@ export class DungeonScene extends Phaser.Scene {
           repeat: -1,
           ease: "Sine.easeInOut",
         });
+
+        if (this.textures.exists("fx-flame")) {
+          const flame = this.add
+            .sprite(
+              tileX * TILE_SIZE + TILE_SIZE * 0.5,
+              (room.rect.y + 0.72) * TILE_SIZE,
+              "fx-flame",
+            )
+            .setOrigin(0.5, 1)
+            .setScale(1.05)
+            .setTint(room.isBoss ? 0xff8a6a : 0xffc06a)
+            .setDepth(3.4);
+          flame.play("fx-flame-loop");
+          this.tweens.add({
+            targets: flame,
+            alpha: { from: 1, to: 0.72 },
+            duration: 120 + Math.random() * 90,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+        }
       }
     }
   }
@@ -333,11 +379,11 @@ export class DungeonScene extends Phaser.Scene {
 
   /** Give every room its own palette (floor tint + rug) so the dungeon stops looking uniform. */
   private decorateRooms(): void {
-    const PALETTES = [0xb7c9ff, 0xc9ffb7, 0xffd9a8, 0xe0b7ff, 0xa8f0e0, 0xffb7c9];
-    const RUGS = [0x6b2430, 0x24506b, 0x3d6b24, 0x5a2d6b, 0x6b5a24, 0x246b5f];
+    const PALETTES = [0xf2f6ff, 0xf2fff2, 0xfff6e6, 0xf6f2ff, 0xeefffc, 0xfff2f5];
+    const RUGS = [0x5a1f28, 0x1f3d55, 0x32551f, 0x4a2455, 0x554a1f, 0x1f554c];
     this.floorMap.rooms.forEach((room, index) => {
       const { x, y, width, height } = room.rect;
-      const tint = room.isBoss ? 0xff9a9a : PALETTES[index % PALETTES.length]!;
+      const tint = room.isBoss ? 0xffd8d8 : PALETTES[index % PALETTES.length]!;
       for (let ty = y; ty < y + height; ty++) {
         for (let tx = x; tx < x + width; tx++) {
           const tile = this.tilemap.getTileAt(tx, ty, false, this.groundLayer);
@@ -355,12 +401,24 @@ export class DungeonScene extends Phaser.Scene {
     });
   }
 
+  private floorMusic() {
+    const dimension = this.floorMap.dimension;
+    return dimension === "ghost" || dimension === "throne" ? "crypt" as const : "dungeon" as const;
+  }
+
   private setupAudio(): void {
     startAmbience();
+    startMusic(this.floorMusic());
     const mute = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.M);
     mute?.on("down", () => toggleMute());
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, stopAmbience);
-    this.events.once(Phaser.Scenes.Events.DESTROY, stopAmbience);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      stopAmbience();
+      stopMusic();
+    });
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => {
+      stopAmbience();
+      stopMusic();
+    });
   }
 
   /** Loot from the shared deterministic placement; server validates the same keys. */
@@ -541,6 +599,7 @@ export class DungeonScene extends Phaser.Scene {
     const onEncounterStart = () => {
       this.encounterActive = true;
       playSfx("encounter");
+      startMusic("fight");
     };
 
     const onEncounterEnd = ({ encounterId, result }: { encounterId: string; result: "won" | "conceded" | "disputed" | "fled" }) => {
@@ -554,6 +613,7 @@ export class DungeonScene extends Phaser.Scene {
         this.cameras.main.flash(monster.isBoss ? 260 : 140, 255, 220, 150, false);
       }
 
+      startMusic(this.floorMusic());
       this.unlockBossDoorIfCleared();
       this.emitRoomProgress();
     };

@@ -19,6 +19,8 @@ LANGKAH 2 - level tiap kriteria sasaran:
 
 PENTING soal keadilan:
 - ALASAN LOGIS SUDAH CUKUP untuk level 2. Jangan menuntut angka, statistik, atau sitasi, kecuali label kriterianya sendiri menyebut angka, statistik, sampel, sitasi, atau referensi.
+- Jawaban yang relevan dan beralasan tetap "answers" walau TIDAK menyebut angka, data, atau sitasi. Ketiadaan angka bukan alasan untuk off_topic atau Heart berkurang.
+- Jangan beri "nonsense" untuk kalimat yang membahas topik penelitian ini dengan kata-kata biasa; nilai isinya, bukan gaya bahasanya.
 - Jangan menurunkan level hanya karena jawaban pendek jika alasannya lengkap, dan jangan menaikkan level hanya karena jawaban panjang atau memakai istilah teknis.
 - Menyebut istilah tanpa menjelaskan hubungannya dengan pertanyaan bukan alasan.
 - Nilai dukungan alasan dan konsistensi dengan naskah, bukan kebenaran fakta bidang ilmunya.

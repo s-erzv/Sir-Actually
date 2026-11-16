@@ -15,7 +15,7 @@ export function extractDoi(rawText: string): string | null {
 
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(5_000),
     headers: { "user-agent": "SirActually/0.1" },
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -132,7 +132,7 @@ export async function verifyCitation(rawText: string): Promise<CitationVerificat
 
 export async function verifyCitations(
   rawTexts: string[],
-  concurrency = 6,
+  concurrency = 8,
 ): Promise<CitationVerification[]> {
   const results: CitationVerification[] = new Array(rawTexts.length);
   let cursor = 0;

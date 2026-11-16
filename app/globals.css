@@ -57,6 +57,12 @@ body::after {
   background: radial-gradient(115% 78% at 50% 42%, transparent 42%, rgba(3, 6, 9, 0.62) 100%);
 }
 
+/* Phaser already draws its own torchlight vignette; a second page-level
+   vignette makes the dungeon unreadably dark. */
+body:has(.game-immersive)::after {
+  display: none;
+}
+
 ::selection {
   background: var(--bone);
   color: var(--ink);

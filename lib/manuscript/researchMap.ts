@@ -7,6 +7,7 @@ import {
   buildResearchMapPrompt,
 } from "@/lib/prompts/researchMap_v1";
 import { parseBibliography } from "./completeness";
+import { quoteInText } from "@/lib/rag/validate";
 
 const CLAIM_SCHEMA = z.object({
   claims: z
@@ -149,7 +150,6 @@ export async function extractResearchMap(
     );
   }
 
-  const source = normalize(sourceText);
   let discardedQuotes = 0;
   const claims: ExtractedClaim[] = [];
   const seenText = new Set<string>();
@@ -159,7 +159,7 @@ export async function extractResearchMap(
     if (claims.length >= 40) break;
     const quote = normalize(claim.source_quote);
     const text = normalize(claim.text);
-    if (!source.includes(quote)) {
+    if (!quoteInText(claim.source_quote, sourceText)) {
       discardedQuotes++;
       continue;
     }

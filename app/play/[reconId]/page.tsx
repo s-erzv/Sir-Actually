@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { LogoMark } from "@/components/brand/Logo";
 import { PixelSprite } from "@/components/brand/PixelSprite";
+import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
 import EncounterOverlay from "@/components/encounter/EncounterOverlay";
 import GameHud from "@/components/hud/GameHud";
 import Minimap from "@/components/hud/Minimap";
@@ -647,8 +648,8 @@ export default function PlayPage() {
             <div className="wall-stone absolute inset-x-0 bottom-0 h-7 border-t-2 border-void" />
             <span className="torch-flame absolute left-5 top-11" />
             <span className="torch-flame absolute right-5 top-11" />
-            <PixelSprite kind="hero" size={70} className="absolute bottom-4 left-[25%] animate-walk-in" />
-            <PixelSprite kind="sir" size={76} className="absolute bottom-4 right-[22%]" />
+            <CharacterPortrait slug={pendingCharacter} size={76} className="absolute bottom-4 left-[25%] animate-walk-in" />
+            <MonsterPortrait slug="veylith" isBoss size={86} className="absolute bottom-4 right-[22%]" />
           </div>
           <div className="mt-4">
             <p className="font-pixel text-[0.58rem] text-gold">Menyiapkan dungeon</p>
@@ -783,7 +784,7 @@ export default function PlayPage() {
   return (
     <div
       id="game-root"
-      className="relative overflow-hidden bg-[#0D0F15]"
+      className="game-immersive relative overflow-hidden bg-[#0D0F15]"
       style={{ width: "100vw", height: "100dvh" }}
     >
       <PhaserGame
@@ -922,6 +923,7 @@ export default function PlayPage() {
           floorName={floorName}
           bossName={getMonsterDisplayName(activePlan.bossSlug)}
           bossSprite={FLOOR_SPRITE[activePlan.dimension] ?? "sir"}
+          bossSlug={activePlan.bossSlug}
           theme={activePlan.theme}
           lore={activePlan.lore}
           roomCount={roomCount}

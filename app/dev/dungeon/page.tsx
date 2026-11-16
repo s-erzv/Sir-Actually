@@ -66,14 +66,14 @@ export default function DevDungeonPage() {
   };
 
   return (
-    <main className="fixed inset-0 bg-[#0D0F15]">
+    <main className="game-immersive fixed inset-0 bg-[#0D0F15]">
       <div id="game-root" className="absolute inset-0" />
       <PhaserGame key={`${seed}-${character}`} floorMap={floorMap} characterSlug={character} />
       <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2 text-xs text-white">
         <button className="border border-white/40 bg-black/70 px-2 py-1" onClick={() => setSeed((s) => s + 1)}>
           peta baru ({seed})
         </button>
-        {["arka", "mira", "sena"].map((slug) => (
+        {["arka", "mira", "sena", "kiran", "vara"].map((slug) => (
           <button key={slug} className="border border-white/40 bg-black/70 px-2 py-1" onClick={() => setCharacter(slug)}>
             {slug}
           </button>

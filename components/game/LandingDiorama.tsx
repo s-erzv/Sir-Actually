@@ -3,13 +3,12 @@ import {
   FRAME_BANNER_RED,
   FRAME_DOOR_LOCKED,
   FRAME_FLOOR,
-  FRAME_MINION,
-  FRAME_PLAYER,
   FRAME_PROP,
   FRAME_STAIRS,
   FRAME_WALL_DECOR,
   FRAME_WALL_FACE,
 } from "@/game/map/tileFrames";
+import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
 
 const COLS = 21;
 const ROWS = 9;
@@ -24,10 +23,10 @@ const SHEET_H = 186;
 const WALL_DECOR_COLS = [3, 7, 11, 15];
 const BANNER_COLS = [17, 18, 19];
 const PROPS: Array<[number, number, number]> = [
-  [1, 2, 82],
-  [19, 2, 89],
-  [1, 8, 63],
-  [19, 8, 82],
+  [1, 2, 89],
+  [19, 2, 90],
+  [1, 8, 66],
+  [19, 8, 91],
 ];
 
 function frameStyle(frame: number, size = TILE): CSSProperties {
@@ -58,7 +57,7 @@ function frameFor(x: number, y: number): number {
   }
   if (x === 0 || x === COLS - 1) return FRAME_WALL_FACE;
   if (x === 18 && y === 3) return FRAME_STAIRS;
-  if ((x * 7 + y * 3) % 19 === 0) return 12;
+  if ((x * 7 + y * 3) % 19 === 0) return 37;
   return FRAME_FLOOR;
 }
 
@@ -126,14 +125,22 @@ export function LandingDiorama({ className = "" }: { className?: string }) {
         />
       ))}
 
-      {/* entity: hero */}
-      <Sprite frame={FRAME_PLAYER} size={44} x={4} y={6} className="animate-bob drop-shadow-[0_4px_0_rgba(0,0,0,0.65)]" />
-      {/* entities: minions */}
-      <Sprite frame={FRAME_MINION[0]!} size={34} x={8} y={5} className="animate-floaty drop-shadow-[0_4px_0_rgba(0,0,0,0.6)]" />
-      <Sprite frame={FRAME_MINION[1]!} size={34} x={12} y={7} className="animate-floaty drop-shadow-[0_4px_0_rgba(0,0,0,0.6)]" flip />
-      <Sprite frame={FRAME_MINION[2]!} size={34} x={14} y={4} className="animate-floaty drop-shadow-[0_4px_0_rgba(0,0,0,0.6)]" />
-      {/* entity: floor boss */}
-      <Sprite frame={112} size={62} x={18} y={6} className="animate-floaty drop-shadow-[0_6px_0_rgba(0,0,0,0.7)]" />
+      {/* entities: real character and monster art */}
+      <div className="absolute animate-bob drop-shadow-[0_4px_0_rgba(0,0,0,0.65)]" style={{ left: 4 * TILE + 6, top: 6 * TILE - 12 }}>
+        <CharacterPortrait slug="arka" size={48} />
+      </div>
+      <div className="absolute animate-floaty drop-shadow-[0_4px_0_rgba(0,0,0,0.6)]" style={{ left: 8 * TILE + 10, top: 5 * TILE - 2 }}>
+        <MonsterPortrait slug="minion-nethrix" isBoss={false} size={38} />
+      </div>
+      <div className="absolute animate-floaty drop-shadow-[0_4px_0_rgba(0,0,0,0.6)]" style={{ left: 12 * TILE + 12, top: 7 * TILE - 4 }}>
+        <MonsterPortrait slug="minion-grivak" isBoss={false} size={38} />
+      </div>
+      <div className="absolute animate-floaty drop-shadow-[0_4px_0_rgba(0,0,0,0.6)]" style={{ left: 14 * TILE + 8, top: 4 * TILE - 8 }}>
+        <MonsterPortrait slug="minion-varkul" isBoss={false} size={38} />
+      </div>
+      <div className="absolute animate-floaty drop-shadow-[0_6px_0_rgba(0,0,0,0.7)]" style={{ left: 18 * TILE - 6, top: 6 * TILE - 34 }}>
+        <MonsterPortrait slug="veylith" isBoss size={78} />
+      </div>
 
       {/* damage number */}
       <span className="damage-pop pointer-events-none absolute font-pixel text-base font-bold text-blood drop-shadow-[0_2px_0_#05080b]" style={{ left: 18 * TILE + 34, top: 6 * TILE - 14 }}>

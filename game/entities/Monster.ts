@@ -5,6 +5,17 @@ import {
   minionFrameForSlug,
 } from "@/game/map/tileFrames";
 import { getMinionForRoom } from "@/lib/monsters";
+import {
+  BOSS_SHEETS,
+  MINION_SHEETS,
+  bossHitAnim,
+  bossIdleAnim,
+  bossIdleKey,
+  bossWalkKey,
+  minionArtKey,
+  minionWalkAnim,
+} from "@/lib/sprites/monsters";
+import { FACING_COLUMN, attackFrame, type Facing } from "@/lib/sprites/sheets";
 import type { FindingMeta, FloorMap, Room, WeaknessType } from "@/lib/domain/types";
 import {
   MONSTER_BEHAVIORS,
@@ -17,9 +28,12 @@ import { patrolCandidates } from "@/lib/dungeon/patrol";
 let encounterCounter = 0;
 
 export class Monster {
-  readonly sprite: Phaser.GameObjects.Image;
+  readonly sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
   private exclamation: Phaser.GameObjects.Text | null = null;
   private breathTween: Phaser.Tweens.Tween | null = null;
+  private animSlug: string | null = null;
+  private bossAnimSlug: string | null = null;
+  private facing: Facing = "down";
 
   readonly encounterId: string;
   readonly encounterKey: string;
@@ -81,21 +95,38 @@ export class Monster {
     this.homeX = this.tileX;
     this.homeY = this.tileY;
 
-    const frame = isBoss
-      ? bossFrame(spawn?.bossSlug, floorOrder)
-      : minionFrameForSlug(minion.slug, floorOrder);
+    const bossSlug = spawn?.bossSlug && BOSS_SHEETS[spawn.bossSlug] ? spawn.bossSlug : undefined;
+    const bossSheet = bossSlug ? BOSS_SHEETS[bossSlug] : undefined;
+    const minionSheet = MINION_SHEETS[minion.slug];
 
-    this.sprite = scene.add.image(worldX, worldY, "tiles", frame);
-    this.sprite.setOrigin(0.5, 0.5);
+    if (isBoss && bossSheet && scene.textures.exists(bossIdleKey(bossSlug!))) {
+      this.bossAnimSlug = bossSlug!;
+      this.sprite = scene.add.sprite(worldX, worldY, bossIdleKey(bossSlug!), 0);
+      this.sprite.setScale(1);
+    } else if (!isBoss && minionSheet && scene.textures.exists(minionArtKey(minion.slug))) {
+      this.animSlug = minion.slug;
+      this.sprite = scene.add.sprite(worldX, worldY, minionArtKey(minion.slug), 0);
+      this.sprite.setScale(1.25);
+    } else {
+      const frame = isBoss
+        ? bossFrame(spawn?.bossSlug, floorOrder)
+        : minionFrameForSlug(minion.slug, floorOrder);
+      this.sprite = scene.add.image(worldX, worldY, "tiles", frame);
+      this.sprite.setScale(isBoss ? 2 : 1);
+    }
+    this.sprite.setOrigin(0.5, 0.5).setDepth(9);
 
+    if (this.bossAnimSlug && this.sprite instanceof Phaser.GameObjects.Sprite) {
+      this.sprite.play(bossIdleAnim(this.bossAnimSlug));
+    }
+
+    const baseScale = this.sprite.scaleX;
     if (isBoss) {
-      // Boss is drawn at 2x scale
-      this.sprite.setScale(2);
-      // Breathing tween: subtle pulse
+      // Breathing tween: subtle pulse.
       this.breathTween = scene.tweens.add({
         targets: this.sprite,
-        scaleX: 2.08,
-        scaleY: 2.08,
+        scaleX: baseScale * 1.04,
+        scaleY: baseScale * 1.04,
         duration: 900,
         ease: "Sine.easeInOut",
         yoyo: true,
@@ -105,8 +136,8 @@ export class Monster {
       // Scale pulse instead of moving y: chase movement also tweens x/y.
       this.breathTween = scene.tweens.add({
         targets: this.sprite,
-        scaleX: 1.06,
-        scaleY: 1.06,
+        scaleX: baseScale * 1.06,
+        scaleY: baseScale * 1.06,
         duration: 1100 + Math.random() * 500,
         ease: "Sine.easeInOut",
         yoyo: true,
@@ -126,7 +157,7 @@ export class Monster {
         stroke: "#000000",
         strokeThickness: 2,
       },
-    ).setOrigin(0.5, 1);
+    ).setOrigin(0.5, 1).setDepth(11);
   }
 
   /**
@@ -159,6 +190,7 @@ export class Monster {
     const push = heavy ? 7 : 4;
 
     this.sprite.setTintFill(0xffffff);
+    this.playHurtFrame(scene);
     scene.time.delayedCall(90, () => {
       if (this.resolved) return;
       this.sprite.setTint(0xff5a5a);
@@ -177,22 +209,65 @@ export class Monster {
       onComplete: () => this.sprite.setPosition(homeX, homeY),
     });
 
-    // Slash: a bright streak that sweeps across the monster.
-    const slash = scene.add
-      .rectangle(homeX, homeY, heavy ? 30 : 22, 3, 0xfff3c4)
-      .setDepth(60)
-      .setRotation(-0.9)
-      .setScale(0.2, 1);
-    scene.tweens.add({
-      targets: slash,
-      scaleX: 1,
-      alpha: 0,
-      duration: 160,
-      ease: "Cubic.easeOut",
-      onComplete: () => slash.destroy(),
-    });
+    this.playSlashFx(scene, homeX, homeY, heavy, dx >= 0);
     this.burst(scene, 0xfff3c4, heavy ? 10 : 6, heavy ? 16 : 11, 260);
+    this.burst(scene, 0xc02020, heavy ? 8 : 5, heavy ? 18 : 12, 360);
     this.floatText(scene, `-${damage}`, heavy ? "#ffd166" : "#ff6b6b", heavy ? 14 : 11);
+  }
+
+  /** Bosses have a dedicated hit sheet; minions flash in place. */
+  private playHurtFrame(scene: Phaser.Scene): void {
+    if (!(this.sprite instanceof Phaser.GameObjects.Sprite)) return;
+    if (this.bossAnimSlug) {
+      this.sprite.play(bossHitAnim(this.bossAnimSlug), true);
+      this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+        if (this.resolved || !(this.sprite instanceof Phaser.GameObjects.Sprite)) return;
+        this.sprite.play(bossIdleAnim(this.bossAnimSlug!));
+      });
+      return;
+    }
+    if (this.animSlug) {
+      this.sprite.setFrame(5 * 4 + FACING_COLUMN[this.facing]);
+      scene.time.delayedCall(180, () => {
+        if (this.resolved || !(this.sprite instanceof Phaser.GameObjects.Sprite)) return;
+        this.sprite.setFrame(FACING_COLUMN[this.facing]);
+      });
+    }
+  }
+
+  /** Real slash sprite instead of a hand-drawn line. */
+  private playSlashFx(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    heavy: boolean,
+    faceRight: boolean,
+  ): void {
+    const key = heavy ? "fx-cut-double" : "fx-cut";
+    if (!scene.textures.exists(key)) {
+      const streak = scene.add
+        .rectangle(x, y, heavy ? 34 : 24, 3, 0xfff3c4)
+        .setDepth(60)
+        .setRotation(-0.9)
+        .setScale(0.2, 1);
+      scene.tweens.add({
+        targets: streak,
+        scaleX: 1,
+        alpha: 0,
+        duration: 160,
+        ease: "Cubic.easeOut",
+        onComplete: () => streak.destroy(),
+      });
+      return;
+    }
+    const effect = scene.add
+      .sprite(x, y, key)
+      .setDepth(60)
+      .setScale(heavy ? 1.9 : 1.4)
+      .setFlipX(!faceRight)
+      .setAlpha(0.95);
+    effect.play({ key: `${key}-play`, startFrame: 0 });
+    scene.time.delayedCall(260, () => effect.destroy());
   }
 
   /** The answer cost a Heart: the monster lunges at the player. */
@@ -203,6 +278,15 @@ export class Monster {
     const dx = target.x - homeX;
     const dy = target.y - homeY;
     const length = Math.hypot(dx, dy) || 1;
+    this.facing = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "right" : "left") : dy >= 0 ? "down" : "up";
+    if (this.sprite instanceof Phaser.GameObjects.Sprite && this.animSlug) {
+      this.sprite.anims.stop();
+      this.sprite.setFrame(attackFrame(this.facing));
+      scene.time.delayedCall(220, () => {
+        if (this.resolved || !(this.sprite instanceof Phaser.GameObjects.Sprite)) return;
+        this.sprite.setFrame(FACING_COLUMN[this.facing]);
+      });
+    }
     scene.tweens.add({
       targets: this.sprite,
       x: homeX + (dx / length) * 8,
@@ -284,6 +368,7 @@ export class Monster {
 
     // Slain: stagger, flash, then burst apart.
     const baseScale = this.sprite.scaleX;
+    if (this.sprite instanceof Phaser.GameObjects.Sprite) this.sprite.anims.stop();
     this.sprite.setTintFill(0xffffff);
     scene.tweens.add({
       targets: this.sprite,
@@ -408,6 +493,14 @@ export class Monster {
 
   /** One-tile hop with tween + marker sync. */
   private moveToTile(stepX: number, stepY: number): void {
+    const dx = stepX - this.tileX;
+    const dy = stepY - this.tileY;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      if (dx !== 0) this.facing = dx > 0 ? "right" : "left";
+    } else if (dy !== 0) {
+      this.facing = dy > 0 ? "down" : "up";
+    }
+
     this.tileX = stepX;
     this.tileY = stepY;
     this.moving = true;
@@ -417,6 +510,7 @@ export class Monster {
         stepY * TILE_SIZE + TILE_SIZE / 2 - TILE_SIZE * (this.isBoss ? 1.5 : 1),
       );
     }
+    this.playWalk();
     this.sprite.scene.tweens.add({
       targets: this.sprite,
       x: stepX * TILE_SIZE + TILE_SIZE / 2,
@@ -425,8 +519,29 @@ export class Monster {
       ease: "Linear",
       onComplete: () => {
         this.moving = false;
+        this.stopWalk();
       },
     });
+  }
+
+  private playWalk(): void {
+    if (!(this.sprite instanceof Phaser.GameObjects.Sprite)) return;
+    if (this.animSlug) {
+      this.sprite.play(minionWalkAnim(this.animSlug, this.facing), true);
+    } else if (this.bossAnimSlug && this.sprite.scene.textures.exists(bossWalkKey(this.bossAnimSlug))) {
+      const animKey = `${this.bossAnimSlug}-boss-walk`;
+      if (this.sprite.scene.anims.exists(animKey)) this.sprite.play(animKey, true);
+    }
+  }
+
+  private stopWalk(): void {
+    if (!(this.sprite instanceof Phaser.GameObjects.Sprite)) return;
+    if (this.animSlug) {
+      this.sprite.anims.stop();
+      this.sprite.setFrame(FACING_COLUMN[this.facing]);
+    } else if (this.bossAnimSlug) {
+      this.sprite.play(bossIdleAnim(this.bossAnimSlug), true);
+    }
   }
 
   /** Idle wander for non-bosses, kept near their spawn and inside the room. */

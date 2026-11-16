@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { PixelSprite, type SpriteKind } from "@/components/brand/PixelSprite";
+import { MonsterPortrait } from "@/components/brand/Portrait";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
 interface FloorIntroProps {
@@ -10,6 +11,7 @@ interface FloorIntroProps {
   floorName: string;
   bossName: string;
   bossSprite: SpriteKind;
+  bossSlug?: string;
   theme?: string;
   lore?: string;
   roomCount: number;
@@ -23,6 +25,7 @@ export default function FloorIntro({
   floorName,
   bossName,
   bossSprite,
+  bossSlug,
   theme,
   lore,
   roomCount,
@@ -70,11 +73,20 @@ export default function FloorIntro({
           <span className="torch-flame absolute right-6 top-10" />
           <div className="pointer-events-none absolute bottom-9 h-20 w-40 rounded-full bg-gold/15 blur-2xl" aria-hidden="true" />
           <div className="absolute bottom-8 h-3 w-28 bg-black/50 blur-[1px]" aria-hidden="true" />
-          <PixelSprite
-            kind={bossSprite}
-            size={bossSprite === "sir" ? 118 : 96}
-            className="relative -mb-1 animate-floaty drop-shadow-[0_6px_0_rgba(0,0,0,0.5)]"
-          />
+          {bossSlug ? (
+            <MonsterPortrait
+              slug={bossSlug}
+              isBoss
+              size={128}
+              className="relative -mb-1 animate-floaty drop-shadow-[0_6px_0_rgba(0,0,0,0.5)]"
+            />
+          ) : (
+            <PixelSprite
+              kind={bossSprite}
+              size={bossSprite === "sir" ? 118 : 96}
+              className="relative -mb-1 animate-floaty drop-shadow-[0_6px_0_rgba(0,0,0,0.5)]"
+            />
+          )}
         </div>
 
         <div className="p-5">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeForMatch, quoteInChunks } from "./validate";
+import { normalizeForMatch, quoteInChunks, quoteInText } from "./validate";
 
 describe("normalizeForMatch", () => {
   it("normalizes whitespace, quotes, and case", () => {
@@ -15,5 +15,10 @@ describe("quoteInChunks", () => {
   it("rejects quotes outside the retrieved chunks", () => {
     expect(quoteInChunks("Sampel besar", [{ text: "Data dari sampel kecil." }])).toBe(false);
     expect(quoteInChunks("", [{ text: "apa saja" }])).toBe(false);
+  });
+
+  it("tolerates punctuation drift but not different words", () => {
+    expect(quoteInText("sampel kecil, jenuh.", "Data dari sampel kecil jenuh.")).toBe(true);
+    expect(quoteInText("sampel besar", "Data dari sampel kecil.")).toBe(false);
   });
 });

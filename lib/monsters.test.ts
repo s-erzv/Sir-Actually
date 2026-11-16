@@ -70,7 +70,7 @@ describe("Monster Roster & Naming Hierarchy", () => {
     expect(getMonsterDisplayName("boss-floor-1")).toBe("Veylith — The Void Stalker");
     expect(getMonsterDisplayName("boss-floor-4")).toBe("Morvane — The Gravebound");
     expect(getMonsterDisplayName("boss-floor-6")).toBe("Eldravos — The Ancient Sovereign");
-    expect(getMonsterDisplayName("minion-varkul")).toBe("Varkul (Brutish beast)");
+    expect(getMonsterDisplayName("minion-varkul")).toBe("Varkul (Goblin brute)");
     expect(getMonsterDisplayName("gap_hunter")).toBe("Veylith — The Void Stalker");
     expect(getMonsterDisplayName("sir_actually")).toBe("Eldravos — The Ancient Sovereign");
   });

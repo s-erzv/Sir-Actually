@@ -47,6 +47,9 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
       game.registry.set("characterSlug", characterSlug);
       game.registry.set("resolvedKeys", resolvedKeysRef.current);
       gameRef.current = game;
+      if (process.env.NODE_ENV !== "production") {
+        (window as Window & { __game?: import("phaser").Game }).__game = game;
+      }
     })();
 
     return () => {

@@ -1,26 +1,16 @@
 /**
  * careless.ts — deterministic guard for answers that are not an attempt at all
- * (keyboard mashing, filler, a pile of keywords with no sentence).
+ * (keyboard mashing, filler, repeated noise).
  *
- * It is deliberately conservative: it only fires on text no examiner would
- * read as an answer. Everything else goes to the LLM Judge. Returns the
- * player-facing reason, or null when the answer deserves a real reading.
+ * It is deliberately conservative: a relevant list of terms is still a valid
+ * (thin) answer and is judged by the LLM, never auto-penalised here. Only text
+ * no examiner would read as an attempt returns a reason; otherwise null.
  */
 
 const FILLER = new Set([
   "asdf", "qwer", "qwerty", "zxcv", "lorem", "ipsum", "dolor", "bla", "blabla",
   "hehe", "hehehe", "haha", "hahaha", "wkwk", "wkwkwk", "xixi", "test", "tes",
   "coba", "aaa", "zzz", "hmm", "gatau", "gtw", "entah", "dll", "dsb",
-]);
-
-/** Words that make a string of terms into a sentence (ID + EN). */
-const CONNECTORS = new Set([
-  "karena", "sebab", "sehingga", "jadi", "maka", "agar", "supaya", "untuk",
-  "yang", "dan", "atau", "tetapi", "tapi", "namun", "bahwa", "dengan", "dari",
-  "pada", "di", "ke", "dalam", "adalah", "ialah", "yaitu", "itu", "ini",
-  "saya", "kami", "aku", "tidak", "bukan", "belum", "sudah", "akan", "bisa",
-  "because", "so", "that", "the", "and", "but", "with", "from", "is", "are",
-  "was", "were", "not", "we", "i", "to", "of", "in", "for",
 ]);
 
 function words(text: string): string[] {
@@ -45,11 +35,6 @@ export function detectCarelessAnswer(answer: string): string | null {
 
   if (new Set(tokens).size <= 2 && tokens.length >= 4) {
     return "Jawabanmu hanya mengulang kata yang sama.";
-  }
-
-  // A run of terms with no connecting word is a keyword list, not an answer.
-  if (tokens.length >= 6 && !tokens.some((token) => CONNECTORS.has(token))) {
-    return "Jawabanmu hanya deretan istilah; rangkai menjadi kalimat yang menjawab pertanyaan.";
   }
 
   return null;

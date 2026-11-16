@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { CHARACTER_PATHS } from "@/lib/sprites/characters";
+import { FLOOR_SHEET_KEY } from "@/game/map/tileFrames";
 import {
   CHARACTER_SHEETS,
   SHEET_FRAME,
@@ -8,6 +9,17 @@ import {
   walkFrames,
   type Facing,
 } from "@/lib/sprites/sheets";
+import {
+  BOSS_SHEETS,
+  MINION_SHEETS,
+  bossHitAnim,
+  bossHitKey,
+  bossIdleAnim,
+  bossIdleKey,
+  bossWalkKey,
+  minionArtKey,
+  minionWalkAnim,
+} from "@/lib/sprites/monsters";
 
 /**
  * BootScene: loads all assets, then starts DungeonScene.
@@ -32,6 +44,11 @@ export class BootScene extends Phaser.Scene {
       frameHeight: 16,
       spacing: 1,
     });
+    // Dedicated dungeon floor sheet (Ninja Adventure interior floors).
+    this.load.spritesheet(FLOOR_SHEET_KEY, "/assets/ninja-adventure/tiles/interior-floor.png", {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
     // Animated character sheets (walk cycle in four directions + attack).
     for (const [slug, path] of Object.entries(CHARACTER_SHEETS)) {
       this.load.spritesheet(sheetKey(slug), path, {
@@ -39,12 +56,52 @@ export class BootScene extends Phaser.Scene {
         frameHeight: SHEET_FRAME,
       });
     }
+
+    // Humanoid minions share the character sheet layout.
+    for (const [slug, sheet] of Object.entries(MINION_SHEETS)) {
+      this.load.spritesheet(minionArtKey(slug), sheet.path, {
+        frameWidth: SHEET_FRAME,
+        frameHeight: SHEET_FRAME,
+      });
+    }
+
+    // Bosses have their own frame size and idle/hit/walk sheets.
+    for (const [slug, sheet] of Object.entries(BOSS_SHEETS)) {
+      this.load.spritesheet(bossIdleKey(slug), sheet.idle, {
+        frameWidth: sheet.frameWidth,
+        frameHeight: sheet.frameHeight,
+      });
+      this.load.spritesheet(bossHitKey(slug), sheet.hit, {
+        frameWidth: sheet.frameWidth,
+        frameHeight: sheet.frameHeight,
+      });
+      if (sheet.walk) {
+        this.load.spritesheet(bossWalkKey(slug), sheet.walk, {
+          frameWidth: sheet.frameWidth,
+          frameHeight: sheet.frameHeight,
+        });
+      }
+    }
+
+    this.load.spritesheet("fx-cut", "/assets/ninja-adventure/fx/cut.png", {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
+    this.load.spritesheet("fx-cut-double", "/assets/ninja-adventure/fx/cut-double.png", {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
+    this.load.spritesheet("fx-flame", "/assets/ninja-adventure/fx/flame.png", {
+      frameWidth: 20,
+      frameHeight: 30,
+    });
   }
 
   create(): void {
     // Apply NEAREST filter so pixel art stays crisp at integer zooms.
     this.textures.get("tiles").setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.textures.get("rl").setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.textures.get(FLOOR_SHEET_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.createGlowTexture("glow");
     this.createGlowTexture("glow-small");
     this.createDustTexture("dust");
@@ -119,11 +176,11 @@ export class BootScene extends Phaser.Scene {
     const half = size / 2;
     const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
     gradient.addColorStop(0, "rgba(5,6,10,0)");
-    gradient.addColorStop(0.04, "rgba(5,6,10,0.04)");
-    gradient.addColorStop(0.07, "rgba(5,6,10,0.5)");
-    gradient.addColorStop(0.105, "rgba(5,6,10,0.84)");
-    gradient.addColorStop(0.16, "rgba(5,6,10,0.93)");
-    gradient.addColorStop(1, "rgba(5,6,10,0.95)");
+    gradient.addColorStop(0.05, "rgba(5,6,10,0.02)");
+    gradient.addColorStop(0.1, "rgba(5,6,10,0.28)");
+    gradient.addColorStop(0.16, "rgba(5,6,10,0.62)");
+    gradient.addColorStop(0.26, "rgba(5,6,10,0.84)");
+    gradient.addColorStop(1, "rgba(5,6,10,0.9)");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
     texture.refresh();
@@ -145,6 +202,99 @@ export class BootScene extends Phaser.Scene {
           repeat: -1,
         });
       }
+    }
+
+    for (const slug of Object.keys(MINION_SHEETS)) {
+      const key = minionArtKey(slug);
+      if (!this.textures.exists(key)) continue;
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      for (const facing of ["down", "up", "left", "right"] as Facing[]) {
+        const animKey = minionWalkAnim(slug, facing);
+        if (this.anims.exists(animKey)) continue;
+        this.anims.create({
+          key: animKey,
+          frames: this.anims.generateFrameNumbers(key, { frames: walkFrames(facing) }),
+          frameRate: 10,
+          repeat: -1,
+        });
+      }
+    }
+
+    for (const [slug, sheet] of Object.entries(BOSS_SHEETS)) {
+      const idleKey = bossIdleKey(slug);
+      if (this.textures.exists(idleKey)) {
+        this.textures.get(idleKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
+        if (!this.anims.exists(bossIdleAnim(slug))) {
+          this.anims.create({
+            key: bossIdleAnim(slug),
+            frames: this.anims.generateFrameNumbers(idleKey, {
+              start: 0,
+              end: Math.max(0, sheet.idleFrames - 1),
+            }),
+            frameRate: 7,
+            repeat: -1,
+          });
+        }
+      }
+      if (sheet.walk && sheet.walkFrames > 0) {
+        const walkKey = bossWalkKey(slug);
+        if (this.textures.exists(walkKey)) {
+          this.textures.get(walkKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
+          const walkAnim = `${slug}-boss-walk`;
+          if (!this.anims.exists(walkAnim)) {
+            this.anims.create({
+              key: walkAnim,
+              frames: this.anims.generateFrameNumbers(walkKey, {
+                start: 0,
+                end: Math.max(0, sheet.walkFrames - 1),
+              }),
+              frameRate: 8,
+              repeat: -1,
+            });
+          }
+        }
+      }
+      const hitKey = bossHitKey(slug);
+      if (this.textures.exists(hitKey)) {
+        this.textures.get(hitKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
+        if (!this.anims.exists(bossHitAnim(slug))) {
+          this.anims.create({
+            key: bossHitAnim(slug),
+            frames: this.anims.generateFrameNumbers(hitKey, {
+              start: 0,
+              end: Math.max(0, sheet.hitFrames - 1),
+            }),
+            frameRate: 12,
+            repeat: 0,
+          });
+        }
+      }
+    }
+
+    if (this.textures.exists("fx-flame")) {
+      this.textures.get("fx-flame").setFilter(Phaser.Textures.FilterMode.NEAREST);
+      if (!this.anims.exists("fx-flame-loop")) {
+        this.anims.create({
+          key: "fx-flame-loop",
+          frames: this.anims.generateFrameNumbers("fx-flame", { start: 0, end: 9 }),
+          frameRate: 12,
+          repeat: -1,
+        });
+      }
+    }
+
+    const fxFrames: Record<string, number> = { "fx-cut": 4, "fx-cut-double": 5 };
+    for (const [key, count] of Object.entries(fxFrames)) {
+      if (!this.textures.exists(key)) continue;
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      const animKey = `${key}-play`;
+      if (this.anims.exists(animKey)) continue;
+      this.anims.create({
+        key: animKey,
+        frames: this.anims.generateFrameNumbers(key, { start: 0, end: count - 1 }),
+        frameRate: 18,
+        repeat: 0,
+      });
     }
   }
 
