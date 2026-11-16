@@ -3,10 +3,11 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { getCharacter, heartsForLoadout, isCharacterUnlocked, isValidLoadout } from "@/lib/loadout";
+import { getCharacter, isCharacterUnlocked, isValidLoadout } from "@/lib/loadout";
 import { currentProgress, isStaleRunProgress } from "@/lib/dungeon/runProgress";
 import type { Database } from "@/lib/supabase/database";
 
+import { playerHpMax, playerVitals } from "@/lib/combat/playerHp";
 export const runtime = "nodejs";
 
 const BODY = z.object({
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const hearts = heartsForLoadout(body.characterSlug);
+    const hpMax = playerHpMax(body.characterSlug);
     let { data: active, error: activeError } = await admin
       .from("runs")
       .select("id, points_total, hearts_left, current_floor, progress")
@@ -74,7 +75,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .update({
           character_slug: body.characterSlug,
           weapon_slug: body.weaponSlug,
-          hearts_left: active.hearts_left,
+          // A resumed run keeps its HP, capped to the chosen character's maximum.
+          hearts_left: Math.min(active.hearts_left, hpMax),
           dungeon_title: body.dungeonTitle ?? null,
           dungeon_tier: body.dungeonTier ?? null,
           floor_count: body.floorCount ?? null,
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         runId: active.id,
         pointsTotal: active.points_total ?? 0,
-        hearts: active.hearts_left,
+        ...playerVitals(active.hearts_left, body.characterSlug),
         currentFloor: active.current_floor ?? 1,
         progress: active.progress ?? {},
         resumed: true,
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       research_map_id: map.id,
       examiner_style: "detail",
       status: "active",
-      hearts_left: hearts,
+      hearts_left: hpMax,
       rubric_version: "rubrics_v1",
       model_version: process.env.LLM_MODEL ?? "kagiro",
       character_slug: body.characterSlug,
@@ -119,7 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({
           runId: raced.id,
           pointsTotal: raced.points_total ?? 0,
-          hearts: raced.hearts_left,
+          ...playerVitals(raced.hearts_left, body.characterSlug),
           currentFloor: raced.current_floor ?? 1,
           resumed: true,
         });
@@ -128,7 +130,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) throw new ApiError(error.message, 500);
     if (!run) throw new ApiError("Gagal membuat run.", 500);
 
-    return NextResponse.json({ runId: run.id, pointsTotal: 0, hearts, resumed: false });
+    return NextResponse.json({
+      runId: run.id,
+      pointsTotal: 0,
+      ...playerVitals(hpMax, body.characterSlug),
+      resumed: false,
+    });
   } catch (error) {
     return apiErrorResponse(error);
   }

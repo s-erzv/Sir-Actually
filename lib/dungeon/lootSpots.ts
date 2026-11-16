@@ -56,7 +56,7 @@ export function lootSpotsForFloor(map: FloorMap): LootSpot[] {
     if (code !== TileCode.FLOOR && code !== TileCode.FLOOR_ALT) continue;
     taken.add(`${tip.x},${tip.y}`);
     spots.push({
-      key: `nook:${tip.x},${tip.y}`,
+      key: `f${map.floorOrder}-nook:${tip.x},${tip.y}`,
       x: tip.x,
       y: tip.y,
       frame: LOOT_FRAMES[Math.floor(rand() * LOOT_FRAMES.length)]!,

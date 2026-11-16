@@ -169,7 +169,7 @@ function normalize(text: string): string {
   return text.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function hasSixWordQuote(answer: string, sourceText: string): boolean {
+export function hasSixWordQuote(answer: string, sourceText: string): boolean {
   const a = normalize(answer);
   const words = normalize(sourceText).split(" ").filter(Boolean).slice(0, 15_000);
   if (words.length < 6) return false;
@@ -180,7 +180,7 @@ function hasSixWordQuote(answer: string, sourceText: string): boolean {
   return false;
 }
 
-function mentionsCitation(answer: string, citations: readonly string[]): boolean {
+export function mentionsCitation(answer: string, citations: readonly string[]): boolean {
   const a = normalize(answer);
   const tokens = new Set<string>();
   for (const citation of citations) {
@@ -192,17 +192,17 @@ function mentionsCitation(answer: string, citations: readonly string[]): boolean
   return [...tokens].some((token) => a.includes(token));
 }
 
-function mentionsSourceNumber(answer: string, sourceText: string): boolean {
+export function mentionsSourceNumber(answer: string, sourceText: string): boolean {
   const sourceNumbers = new Set(sourceText.match(/\d+(?:[.,]\d+)?/g) ?? []);
   const answerNumbers = answer.match(/\d+(?:[.,]\d+)?/g) ?? [];
   return answerNumbers.some((number) => sourceNumbers.has(number));
 }
 
-function mentionsSection(answer: string): boolean {
+export function mentionsSection(answer: string): boolean {
   return /\b(metode|metodologi|hasil|pembahasan|kesimpulan|pendahuluan|daftar pustaka|abstrak)\b/i.test(answer);
 }
 
-function mentionsLimitation(answer: string): boolean {
+export function mentionsLimitation(answer: string): boolean {
   return /\b(hanya|terbatas|batas|keterbatasan|tidak berlaku|generalisasi)\b/i.test(answer);
 }
 

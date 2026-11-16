@@ -11,7 +11,7 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { heartsForLoadout } from "@/lib/loadout";
+import { playerHpMax, playerVitals } from "@/lib/combat/playerHp";
 
 export const runtime = "nodejs";
 
@@ -39,10 +39,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!run || run.status !== "active") throw new ApiError("Run aktif tidak ditemukan.", 404);
     await loadOwnedResearchMap(run.research_map_id, user.id);
 
-    const hearts = heartsForLoadout(run.character_slug ?? "arka");
+    const hpMax = playerHpMax(run.character_slug);
     const { error: runError } = await admin
       .from("runs")
-      .update({ hearts_left: hearts, current_floor: body.floorOrder })
+      .update({ hearts_left: hpMax, current_floor: body.floorOrder })
       .eq("id", run.id);
     if (runError) throw new ApiError(runError.message, 500);
 
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (findingError) throw new ApiError(findingError.message, 500);
     }
 
-    return NextResponse.json({ ok: true, hearts });
+    return NextResponse.json({ ok: true, ...playerVitals(hpMax, run.character_slug) });
   } catch (error) {
     return apiErrorResponse(error);
   }

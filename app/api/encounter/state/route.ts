@@ -7,9 +7,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { BOSS_HP, MINION_HP } from "@/lib/balance";
 import { findBankQuestion } from "@/lib/encounter/questionBank";
 
+import { playerVitals } from "@/lib/combat/playerHp";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const admin = getAdminSupabase();
     const { data: run, error: runError } = await admin
       .from("runs")
-      .select("id, research_map_id, status, hearts_left")
+      .select("id, research_map_id, status, hearts_left, character_slug")
       .eq("id", runId)
       .maybeSingle();
     if (runError) throw new ApiError(runError.message, 500);
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (error) throw new ApiError(error.message, 500);
 
     if (!encounter) {
-      return NextResponse.json({ encounter: null, hearts: run.hearts_left });
+      return NextResponse.json({ encounter: null, ...playerVitals(run.hearts_left, run.character_slug) });
     }
 
     const { data: lastBossTurn } = await admin
@@ -60,7 +60,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       lastBossTurn?.text,
     );
 
-    const hpMax = encounter.is_boss ? BOSS_HP : MINION_HP;
+    // hp_start is the monster's level-scaled maximum, fixed when the fight began.
+    const hpMax = encounter.hp_start ?? encounter.hp_end ?? 0;
     return NextResponse.json({
       encounter: {
         hp: encounter.hp_end ?? encounter.hp_start ?? hpMax,
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         attackType: bankQuestion?.attackType ?? lastBossTurn?.attack_type ?? null,
         targetCriterionIds: bankQuestion?.targetCriterionIds ?? null,
       },
-      hearts: run.hearts_left,
+      ...playerVitals(run.hearts_left, run.character_slug),
     });
   } catch (error) {
     return apiErrorResponse(error);

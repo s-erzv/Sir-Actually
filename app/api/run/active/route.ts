@@ -6,6 +6,7 @@ import { isStaleRunProgress } from "@/lib/dungeon/runProgress";
 import { currentFloorFromCleared } from "@/lib/dungeon/runFloor";
 import { FLOOR_LAYOUT_VERSION } from "@/game/map/buildFloorPlan";
 
+import { playerVitals } from "@/lib/combat/playerHp";
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const user = await requireUser(request);
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             id: run.id,
             characterSlug: run.character_slug,
             weaponSlug: run.weapon_slug,
-            hearts: run.hearts_left,
+            ...playerVitals(run.hearts_left, run.character_slug),
             pointsTotal: run.points_total,
             currentFloor: await resolveCurrentFloor(
               run.id,

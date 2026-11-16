@@ -32,6 +32,6 @@ describe("lootSpotsForFloor", () => {
     for (const spot of spots) {
       expect([TileCode.FLOOR, TileCode.FLOOR_ALT]).toContain(map.tiles[spot.y]?.[spot.x]);
     }
-    expect(spots.filter((spot) => spot.key.startsWith("nook:")).length).toBe(map.deadEnds!.length);
+    expect(spots.filter((spot) => spot.key.includes("-nook:")).length).toBe(map.deadEnds!.length);
   });
 });

@@ -8,7 +8,9 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { lootAmountForKey } from "@/lib/dungeon/loot";
+import { lootAmountForKey, lootKindForKey } from "@/lib/dungeon/loot";
+import { walletFromEvents } from "@/lib/combat/shop";
+import { POTION_BAG_MAX, SHOP_ITEMS } from "@/lib/balance";
 import { lootSpotsForFloor } from "@/lib/dungeon/lootSpots";
 import { buildFloorPlan, WEAKNESS_DIMENSION } from "@/game/map/buildFloorPlan";
 import { generateFloorFromPlan } from "@/game/map/generateFloor";
@@ -21,7 +23,8 @@ const BODY = z.object({
   lootKey: z.string().min(3).max(120),
 });
 
-const LOOT_KEY = /^f(\d+)-r(\d+):(\d+),(\d+)$/;
+// Room loot `f2-r3:10,4` or dead-end loot `f2-nook:10,4`.
+const LOOT_KEY = /^f(\d+)-(?:r\d+|nook):(\d+),(\d+)$/;
 const KNOWN_TYPES = new Set(Object.keys(WEAKNESS_DIMENSION));
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -81,7 +84,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const valid = lootSpotsForFloor(floorMap).some((spot) => spot.key === body.lootKey);
     if (!valid) throw new ApiError("Loot tidak ada di lantai ini.", 400);
 
-    const amount = lootAmountForKey(body.lootKey);
+    const loadEvents = async () => {
+      const { data, error: eventsError } = await admin
+        .from("run_points_events")
+        .select("kind, amount, encounter_key")
+        .eq("run_id", run.id);
+      if (eventsError) throw new ApiError(eventsError.message, 500);
+      return data ?? [];
+    };
+
+    // A potion spot fills the bag; with a full bag it is worth points instead.
+    const before = walletFromEvents(await loadEvents());
+    const givesPotion =
+      lootKindForKey(body.lootKey) === "potion" && before.potions.length < POTION_BAG_MAX;
+    const amount = givesPotion ? 0 : lootAmountForKey(body.lootKey);
+
     const { error: insertError } = await admin.from("run_points_events").insert({
       run_id: run.id,
       kind: "loot",
@@ -92,22 +109,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (insertError && insertError.code !== "23505") {
       throw new ApiError(insertError.message, 500);
     }
+    const fresh = !insertError;
 
-    const { data: events, error: eventsError } = await admin
-      .from("run_points_events")
-      .select("amount")
-      .eq("run_id", run.id);
-    if (eventsError) throw new ApiError(eventsError.message, 500);
-    const pointsTotal = (events ?? []).reduce((sum, event) => sum + event.amount, 0);
+    if (fresh && givesPotion) {
+      const { error: potionError } = await admin.from("run_points_events").insert({
+        run_id: run.id,
+        kind: "potion_gain",
+        encounter_key: `${body.lootKey}:heal${SHOP_ITEMS.potion_small.heal}`,
+        seq: 0,
+        amount: 0,
+      });
+      if (potionError && potionError.code !== "23505") {
+        throw new ApiError(potionError.message, 500);
+      }
+    }
+
+    const wallet = walletFromEvents(await loadEvents());
     const { error: updateError } = await admin
       .from("runs")
-      .update({ points_total: pointsTotal })
+      .update({ points_total: wallet.coins })
       .eq("id", run.id);
     if (updateError) throw new ApiError(updateError.message, 500);
 
     return NextResponse.json({
-      amount: insertError ? 0 : amount,
-      pointsTotal,
+      amount: fresh ? amount : 0,
+      kind: fresh && givesPotion ? "potion" : "points",
+      pointsTotal: wallet.coins,
+      potions: wallet.potions,
     });
   } catch (error) {
     return apiErrorResponse(error);

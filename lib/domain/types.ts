@@ -79,6 +79,23 @@ export interface Room {
 export interface FindingMeta {
   weaknessType: WeaknessType;
   evidenceQuote: string;
+  /** Finding severity 1-3; with the floor it sets the monster's level. */
+  severity?: number;
+}
+
+/**
+ * A dweller fills out a floor. It is not a finding: it quizzes the player on
+ * one Research Map claim and never appears in the Weakness Report as a flaw.
+ */
+export interface Dweller {
+  /** Stable id, `f<floor>-d<index>`. */
+  id: string;
+  tile: Vec2;
+  level: number;
+  /** Which minion art to wear (a MINION_ROSTER slug). */
+  minionSlug: string;
+  /** Encounter room number sent to the server (100 + index). */
+  roomOrder: number;
 }
 
 export interface FloorMap {
@@ -98,6 +115,10 @@ export interface FloorMap {
   bossSlug?: string;
   /** Tips of the maze's dead-end corridors; loot is placed here. */
   deadEnds?: Vec2[];
+  /** Corridor junctions where a dweller may stand, nearest the start first. */
+  dwellerSpots?: Vec2[];
+  /** Dwellers placed on this floor (filled in by the play page). */
+  dwellers?: Dweller[];
 }
 
 // ---------------------------------------------------------------------------
@@ -222,4 +243,30 @@ export interface EncounterState {
   status: EncounterStatus;
   /** Evaluation from the most recent answer (null before first answer). */
   lastEvaluation: EvaluationResult | null;
+}
+
+// ---------------------------------------------------------------------------
+// Dungeon RPG v2 combat
+// ---------------------------------------------------------------------------
+
+export type Quality = 0 | 1 | 2 | 3 | 4 | 5;
+export type AttackStyle = "sword" | "bow" | "shield" | "axe";
+export type MonsterKind = "minion" | "boss" | "dweller";
+
+/** Everything the screen needs to play one exchange. Computed by the server. */
+export interface CombatOutcome {
+  quality: Quality;
+  qualityLabel: string;
+  /** The answer quoted the manuscript, a manuscript number or a listed reference. */
+  usedEvidence: boolean;
+  weaponSlug: string;
+  weaponName: string;
+  weaponKind: "basic" | "signature";
+  attackStyle: AttackStyle;
+  /** Damage dealt to the monster. */
+  damage: number;
+  /** Damage the monster deals back to the player. */
+  counterDamage: number;
+  /** A shield cancelled the counter-attack. */
+  shielded: boolean;
 }

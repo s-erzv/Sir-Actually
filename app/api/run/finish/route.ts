@@ -8,6 +8,7 @@ import { maxPointsForPlan, rankForPoints } from "@/lib/score";
 import type { FindingStub, WeaknessType } from "@/lib/domain/types";
 import type { Json } from "@/lib/supabase/database";
 
+import { walletFromEvents } from "@/lib/combat/shop";
 export const runtime = "nodejs";
 
 const BODY = z.object({ runId: z.string().uuid() });
@@ -76,7 +77,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const floors = buildFloorPlan(stubs, (citationCount ?? 0) > 0);
     const maxPoints = maxPointsForPlan(floors);
     const pointsTotal = run.points_total;
-    const rank = rankForPoints(pointsTotal, maxPoints);
+    // Rank counts what was earned; coins spent in the shop do not lower it.
+    const { data: events, error: eventsError } = await admin
+      .from("run_points_events")
+      .select("kind, amount")
+      .eq("run_id", run.id);
+    if (eventsError) throw new ApiError(eventsError.message, 500);
+    const rank = rankForPoints(walletFromEvents(events ?? []).gross, maxPoints);
 
     if (!run.points_credited && pointsTotal > 0) {
       const { data: profile, error: profileError } = await admin
