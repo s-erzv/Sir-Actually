@@ -18,9 +18,20 @@ const WALK_ROWS = [0, 1, 2, 3] as const;
 const ATTACK_ROW = 4;
 
 export const CHARACTER_SHEETS: Record<string, string> = {
-  arka: "/assets/ninja-adventure/characters/samurai_blue.png",
-  mira: "/assets/ninja-adventure/characters/ninja_blue.png",
-  sena: "/assets/ninja-adventure/characters/samurai_green.png",
+  arka: "/assets/ninja-adventure/characters/arka.png",
+  mira: "/assets/ninja-adventure/characters/mira.png",
+  sena: "/assets/ninja-adventure/characters/sena.png",
+  kiran: "/assets/ninja-adventure/characters/kiran.png",
+  vara: "/assets/ninja-adventure/characters/vara.png",
+};
+
+/** 38x38 portrait of each character, for the loadout and dialogue UI. */
+export const CHARACTER_FACES: Record<string, string> = {
+  arka: "/assets/ninja-adventure/faces/arka.png",
+  mira: "/assets/ninja-adventure/faces/mira.png",
+  sena: "/assets/ninja-adventure/faces/sena.png",
+  kiran: "/assets/ninja-adventure/faces/kiran.png",
+  vara: "/assets/ninja-adventure/faces/vara.png",
 };
 
 export const sheetKey = (slug: string): string => `sheet-${slug}`;
