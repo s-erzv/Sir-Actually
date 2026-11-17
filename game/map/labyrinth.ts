@@ -31,6 +31,10 @@ const DEAD_END_TRIM = 0.62;
 /** Longest dead-end branch kept, in tiles, so detours stay short. */
 const DEAD_END_MAX_LEN = 7;
 const FLOOR_ALT_CHANCE = 0.06;
+/** A dweller never stands this close (in steps) to the start. */
+const DWELLER_MIN_STEPS = 8;
+/** Minimum tile distance between two dweller posts. */
+const DWELLER_MIN_GAP = 6;
 
 const DIRS: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -455,10 +459,37 @@ export function generateLabyrinthFloor(plan: FloorPlan, seed: number): FloorMap 
     }
   }
 
+  // ── Dweller posts: corridor junctions away from the start and from doors ──
+  // Posts are corridor tiles only; the boss chamber is a dead-end leaf, so
+  // every post is reachable without opening the boss gate.
+  const posts: Array<{ tile: Vec2; steps: number }> = [];
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (!isWalkable(tiles[y]![x]) || inChamber(x, y)) continue;
+      const steps = distance.get(`${x},${y}`);
+      if (steps === undefined || steps < DWELLER_MIN_STEPS) continue;
+      if (exits(x, y).length < 3) continue;
+      const besideAnyDoor = DIRS.some(([dx, dy]) => {
+        const code = tiles[y + dy]?.[x + dx];
+        return code === TileCode.DOOR_OPEN || code === TileCode.DOOR_LOCKED;
+      });
+      if (!besideAnyDoor) posts.push({ tile: { x, y }, steps });
+    }
+  }
+  posts.sort((a, b) => a.steps - b.steps || a.tile.y - b.tile.y || a.tile.x - b.tile.x);
+  const dwellerSpots: Vec2[] = [];
+  for (const post of posts) {
+    const crowded = dwellerSpots.some(
+      (spot) => Math.abs(spot.x - post.tile.x) + Math.abs(spot.y - post.tile.y) < DWELLER_MIN_GAP,
+    );
+    if (!crowded) dwellerSpots.push(post.tile);
+  }
+
   return {
     floorOrder: plan.floorOrder,
     tiles,
     rooms,
+    dwellerSpots,
     playerSpawn: startCentre,
     stairs,
     width,

@@ -100,3 +100,11 @@ export function getCriterionIds(weaknessType: WeaknessType): string[] {
 export function getScoreMax(weaknessType: WeaknessType): number {
   return RUBRICS[weaknessType].length * 2;
 }
+
+/**
+ * Dwellers quiz understanding of one Research Map claim. This is not a
+ * weakness rubric: nothing here says the manuscript is flawed.
+ */
+export const COMPREHENSION_RUBRIC: RubricCriterion[] = [
+  { id: "claim_explained", label: "Menjelaskan klaim dengan kata sendiri dan sesuai naskah" },
+];

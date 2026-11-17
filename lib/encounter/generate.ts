@@ -29,7 +29,9 @@ import { RUBRICS } from "@/lib/rubrics";
 import { pickTargetCriteria, type GeneratedQuestion } from "@/lib/encounter/schema";
 import { checkQuestionQuality, templateQuestion } from "@/lib/encounter/questionQuality";
 import type { RagRpcClient } from "@/lib/rag/types";
-import type { WeaknessType } from "@/lib/domain/types";
+import { COMPREHENSION, type WeaknessType } from "@/lib/domain/types";
+import { resolveDwellerClaim } from "@/lib/dungeon/dwellerClaim";
+import { COMPREHENSION_RUBRIC } from "@/lib/rubrics";
 
 type Admin = SupabaseClient;
 type MapRow = OwnedResearchMap["map"];
@@ -70,6 +72,7 @@ export async function generateEncounterQuestions(
   input: GenerateQuestionsInput,
 ): Promise<GeneratedQuestion[]> {
   const { admin, map, provider } = input;
+  if (input.weaknessType === COMPREHENSION) return generateDwellerQuestion(input);
   const count = Math.max(1, input.count);
 
   let finding: { weakness_type: string; evidence_quote: string } | null = null;
@@ -242,4 +245,72 @@ export async function generateEncounterQuestions(
   }
 
   return questions;
+}
+
+const DWELLER_TEMPLATES = [
+  "Jelaskan dengan kata-katamu sendiri apa maksud bagian ini dan apa dasarnya di naskahmu?",
+  "Bagaimana kamu menjelaskan bagian ini kepada orang di luar bidangmu, dan apa buktinya di naskah?",
+  "Mengapa bagian ini penting untuk penelitianmu, dan di bagian mana naskahmu mendukungnya?",
+];
+
+/**
+ * A dweller asks one question about an existing claim. It checks
+ * understanding; it does not allege a weakness.
+ */
+async function generateDwellerQuestion(input: GenerateQuestionsInput): Promise<GeneratedQuestion[]> {
+  const { admin, map, provider } = input;
+  const claim = await resolveDwellerClaim(admin, map.id, input.floorOrder, input.roomOrder);
+  const attackType: AttackType = "clarify";
+  const targetCriteria = COMPREHENSION_RUBRIC;
+  const maxWords = 24;
+  const check = (question: string) =>
+    checkQuestionQuality({
+      question,
+      targetCriteria,
+      evidenceQuote: claim.sourceQuote,
+      sourceText: map.source_text,
+      previousQuestions: input.previousQuestions ?? [],
+      maxWords,
+    });
+
+  let question = "";
+  let fromModel = false;
+  try {
+    question = await provider.completeText(
+      QUESTIONER_SYSTEM,
+      `Kamu penghuni dungeon yang menguji PEMAHAMAN, bukan mencari kesalahan. Jangan menuduh ada kelemahan.
+
+Klaim dari naskah pemain (${claim.kind}):
+<<<CLAIM>>>
+${claim.text.slice(0, 600)}
+<<<END_CLAIM>>>
+
+Kutipan naskahnya:
+<<<EVIDENCE>>>
+${claim.sourceQuote.slice(0, 900)}
+<<<END_EVIDENCE>>>
+
+Tulis SATU pertanyaan (maksimal ${maxWords} kata) yang meminta pemain menjelaskan klaim ini dengan kata-katanya sendiri atau menunjukkan dasarnya di naskah. Sebut hal spesifik dari klaim itu. Jangan menyebut jawabannya.`,
+      0.3,
+    );
+    fromModel = check(question).ok;
+  } catch {
+    fromModel = false;
+  }
+  if (!fromModel) {
+    question = DWELLER_TEMPLATES[(input.floorOrder + input.roomOrder) % DWELLER_TEMPLATES.length]!;
+  }
+
+  return [
+    {
+      questionId: randomUUID(),
+      question: question.trim(),
+      attackType,
+      weaknessType: COMPREHENSION,
+      targetCriterionIds: targetCriteria.map((criterion) => criterion.id),
+      level: 1,
+      promptVersion: "dweller_v1",
+      model: fromModel ? provider.modelName : "template",
+    },
+  ];
 }

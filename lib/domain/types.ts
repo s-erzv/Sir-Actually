@@ -102,7 +102,7 @@ export interface Dweller {
   level: number;
   /** Which minion art to wear (a MINION_ROSTER slug). */
   minionSlug: string;
-  /** Encounter room number sent to the server (100 + index). */
+  /** Encounter room number sent to the server (DWELLER_ROOM_BASE + index). */
   roomOrder: number;
 }
 

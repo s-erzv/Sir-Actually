@@ -17,7 +17,7 @@ import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getLLMProviderForJudge } from "@/lib/llm";
 import { evaluateAnswer } from "@/lib/judge/evaluate";
-import { RUBRICS, getScoreMax } from "@/lib/rubrics";
+import { COMPREHENSION_RUBRIC, RUBRICS, getScoreMax } from "@/lib/rubrics";
 import { AnswerRequestSchema, AttackTypeSchema, pickTargetCriteria } from "@/lib/encounter/schema";
 import { checkQuestionQuality } from "@/lib/encounter/questionQuality";
 import { findBankQuestion } from "@/lib/encounter/questionBank";
@@ -28,6 +28,8 @@ import { answerQuality, usesManuscriptEvidence } from "@/lib/combat/quality";
 import { monsterLevel, monsterStats } from "@/lib/combat/monsterStats";
 import { resolveCombat } from "@/lib/combat/resolve";
 import { HEART_HP, POINTS_DWELLER_WON } from "@/lib/balance";
+import { isDwellerRoom } from "@/lib/dungeon/dwellers";
+import { resolveDwellerClaim } from "@/lib/dungeon/dwellerClaim";
 import { pointsForMonster } from "@/lib/score";
 import { WEAKNESS_DIMENSION, BOSS_BY_DIMENSION } from "@/game/map/buildFloorPlan";
 import { BOSS_ROSTER } from "@/lib/monsters";
@@ -151,8 +153,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       finding = data;
     }
 
+    // A dweller is identified by its room number, never by what the client
+    // claims: its topic, claim and rubric all come from the server.
+    const dweller = isDwellerRoom(body.roomOrder)
+      ? await resolveDwellerClaim(admin, map.id, body.floorOrder, body.roomOrder)
+      : null;
+    if (dweller && findingId) throw new ApiError("Penghuni tidak terkait temuan.", 400);
+
     const weaknessType = (finding?.weakness_type ?? body.weaknessType) as WeaknessType;
-    const rubricCriteria = RUBRICS[weaknessType];
+    const rubricCriteria = dweller ? COMPREHENSION_RUBRIC : RUBRICS[weaknessType];
     if (!rubricCriteria) throw new ApiError(`Unknown weaknessType: ${weaknessType}`, 400);
 
     const isBoss =
@@ -162,18 +171,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         : body.bossSlug.startsWith("minion-")
           ? false
           : body.isBoss);
-    const kind: MonsterKind =
-      (weaknessType as string) === "comprehension" ? "dweller" : isBoss ? "boss" : "minion";
+    if (dweller && isBoss) throw new ApiError("Penghuni bukan boss.", 400);
+    const kind: MonsterKind = dweller ? "dweller" : isBoss ? "boss" : "minion";
     const level = monsterLevel({ kind, floorOrder: body.floorOrder, severity: finding?.severity });
     const stats = monsterStats(kind, level);
     const hpMax = stats.hp;
     // encounters.boss_slug references bosses(slug); `minion-*` is not in that
     // catalogue, so store the floor boss slug while question persona stays
     // the minion's.
-    const dimension = WEAKNESS_DIMENSION[weaknessType] ?? "audit";
-    const encounterBossSlug = BOSS_ROSTER[body.bossSlug]
-      ? body.bossSlug
-      : (BOSS_BY_DIMENSION[dimension] ?? "veylith");
+    const dimension = dweller?.dimension ?? WEAKNESS_DIMENSION[weaknessType] ?? "audit";
+    const encounterBossSlug = dweller
+      ? dweller.floorBossSlug
+      : BOSS_ROSTER[body.bossSlug]
+        ? body.bossSlug
+        : (BOSS_BY_DIMENSION[dimension as keyof typeof BOSS_BY_DIMENSION] ?? "veylith");
 
     if (!encounter) {
       const insert = {
@@ -217,7 +228,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .eq("is_injected", false);
     if (citationsError) throw new ApiError(citationsError.message, 500);
 
-    let evidenceQuote = finding?.evidence_quote || body.evidenceQuote || "";
+    let evidenceQuote = dweller
+      ? dweller.sourceQuote
+      : finding?.evidence_quote || body.evidenceQuote || "";
     if (weaknessType === "citation_claim_mismatch" || weaknessType === "citation_not_found") {
       const { data: ghost } = await admin
         .from("citations")
@@ -237,7 +250,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Questions are generated from weakness + attack type + monster kind.
     // Recompute the target criteria so the client cannot hand-pick easy ones.
     const parsedAttack = attackTypeText ? AttackTypeSchema.safeParse(attackTypeText) : null;
-    const expectedTargets = parsedAttack?.success
+    const expectedTargets = dweller
+      ? rubricCriteria.map((criterion) => criterion.id)
+      : parsedAttack?.success
       ? pickTargetCriteria(rubricCriteria, parsedAttack.data, isBoss).map(
           (criterion) => criterion.id,
         )
@@ -420,7 +435,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const evidenceQuotes = Object.fromEntries(
       scores.map((score) => [score.criterionId, score.quote]),
     );
-    const rubricId = WEAKNESS_DIMENSION[weaknessType] ?? "audit";
+    const rubricId = dimension;
     const { error: evaluationError } = await admin.from("evaluations").insert({
       turn_id: playerTurn.id,
       rubric_id: rubricId,
