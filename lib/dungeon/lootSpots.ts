@@ -1,5 +1,6 @@
 import { TileCode } from "@/game/map/tiles";
 import type { FloorMap } from "@/lib/domain/types";
+import { lootKindForKey } from "./loot";
 
 const LOOT_FRAMES = [669, 670, 738, 739, 608, 621, 1022];
 
@@ -8,6 +9,7 @@ export interface LootSpot {
   x: number;
   y: number;
   frame: number;
+  kind: "points" | "potion";
 }
 
 /**
@@ -45,6 +47,7 @@ export function lootSpotsForFloor(map: FloorMap): LootSpot[] {
         x: tx,
         y: ty,
         frame: LOOT_FRAMES[Math.floor(rand() * LOOT_FRAMES.length)]!,
+        kind: lootKindForKey(`${room.id}:${tx},${ty}`),
       });
     }
   }
@@ -60,6 +63,7 @@ export function lootSpotsForFloor(map: FloorMap): LootSpot[] {
       x: tip.x,
       y: tip.y,
       frame: LOOT_FRAMES[Math.floor(rand() * LOOT_FRAMES.length)]!,
+      kind: lootKindForKey(`f${map.floorOrder}-nook:${tip.x},${tip.y}`),
     });
   }
 

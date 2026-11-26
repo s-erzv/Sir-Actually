@@ -27,11 +27,11 @@ export const CHARACTER_SHEETS: Record<string, string> = {
 
 /** 38x38 portrait of each character, for the loadout and dialogue UI. */
 export const CHARACTER_FACES: Record<string, string> = {
-  arka: "/assets/ninja-adventure/faces/arka.png",
-  mira: "/assets/ninja-adventure/faces/mira.png",
-  sena: "/assets/ninja-adventure/faces/sena.png",
-  kiran: "/assets/ninja-adventure/faces/kiran.png",
-  vara: "/assets/ninja-adventure/faces/vara.png",
+  arka: "/assets/ninja-adventure/faces-transparent/arka.png",
+  mira: "/assets/ninja-adventure/faces-transparent/mira.png",
+  sena: "/assets/ninja-adventure/faces-transparent/sena.png",
+  kiran: "/assets/ninja-adventure/faces-transparent/kiran.png",
+  vara: "/assets/ninja-adventure/faces-transparent/vara.png",
 };
 
 export const sheetKey = (slug: string): string => `sheet-${slug}`;

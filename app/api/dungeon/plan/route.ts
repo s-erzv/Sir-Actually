@@ -85,7 +85,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? null
         : await generateDungeonDraft(provider, stubs, claimsSummary));
 
-    if (!cached && draft) {
+    if (!cached && draft && map.status !== "confirmed") {
       const { error: cacheError } = await admin
         .from("research_maps")
         .update({
@@ -93,7 +93,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           dungeon_draft_version: draft.promptVersion,
         })
         .eq("id", map.id);
-      if (cacheError) throw new ApiError(cacheError.message, 500);
+      // Confirmed maps are frozen; a failed cache write must not block play.
+      if (cacheError) console.warn("[dungeon draft cache]", cacheError.message);
     }
 
     return NextResponse.json({

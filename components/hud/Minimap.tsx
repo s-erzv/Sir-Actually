@@ -19,6 +19,7 @@ const COLOUR_WALL    = "#1a1a2e";
 const COLOUR_DONE    = "#44bb44";   // resolved room
 const COLOUR_CURRENT = "#ddcc00";   // room player is in
 const COLOUR_BOSS    = "#cc2222";   // boss room
+const COLOUR_STAIRS  = "#e9b85d";   // stairs down
 const COLOUR_PLAYER  = "#ffffff";
 
 function roomAt(rooms: readonly Room[], x: number, y: number): Room | undefined {
@@ -81,6 +82,8 @@ export default function Minimap({ floorMap, storageKey, resolvedKeys }: MinimapP
         let colour = COLOUR_FLOOR;
         if (code === 1 || code === 3 || code === 7 || code === 8) {
           colour = COLOUR_WALL;
+        } else if (code === 6) {
+          colour = COLOUR_STAIRS;
         } else {
           const room = roomAt(rooms, x, y);
           if (room) {
@@ -202,7 +205,7 @@ export default function Minimap({ floorMap, storageKey, resolvedKeys }: MinimapP
   const canvasH = floorMap.height * PX;
 
   return (
-    <div className="pointer-events-none absolute bottom-2 right-2 z-10 border-2 border-void bg-[#0a0f14]/90 p-1.5 shadow-[inset_0_0_0_1px_#34424e,4px_4px_0_rgba(0,0,0,0.35)]">
+    <div className="pointer-events-none absolute right-2 top-2 z-10 border-2 border-void bg-[#0a0f14]/90 p-1.5 shadow-[inset_0_0_0_1px_#34424e,4px_4px_0_rgba(0,0,0,0.35)] md:bottom-2 md:top-auto">
       <div className="mb-1 flex items-center justify-between gap-2 px-0.5">
         <span className="font-pixel text-[0.46rem] text-gold">Peta</span>
         <span className="font-pixel text-[0.42rem] text-ash">F{floorMap.floorOrder}</span>

@@ -30,13 +30,13 @@ const ENCOUNTER = z.object({
   evidenceQuote: z.string().max(4000).optional(),
   isBoss: z.boolean(),
   floorOrder: z.number().int().min(1).max(12),
-  roomOrder: z.number().int().min(0).max(40),
-  count: z.number().int().min(1).max(4).optional(),
+  roomOrder: z.number().int().min(0).max(80),
+  count: z.number().int().min(1).max(MAX_QUESTIONS_BOSS).optional(),
 });
 
 const BODY = z.object({
   researchMapId: z.string().uuid(),
-  encounters: z.array(ENCOUNTER).min(1).max(24),
+  encounters: z.array(ENCOUNTER).min(1).max(80),
 });
 
 function prefetchCap(name: string, fallback: number): number {
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    if (generatedAny) {
+    if (generatedAny && map.status !== "confirmed") {
       const { error: cacheError } = await admin
         .from("research_maps")
         .update({
@@ -134,7 +134,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           } as unknown as Json,
         })
         .eq("id", map.id);
-      if (cacheError) throw new ApiError(cacheError.message, 500);
+      // Confirmed maps are frozen by a DB trigger. The client still receives
+      // these questions; persistence is a cache, not a requirement.
+      if (cacheError) console.warn("[questions cache]", cacheError.message);
     }
 
     return NextResponse.json({ questions });

@@ -12,12 +12,17 @@ import GameHud from "@/components/hud/GameHud";
 import Minimap from "@/components/hud/Minimap";
 import TouchControls from "@/components/game/TouchControls";
 import GhostLibrary from "@/components/game/GhostLibrary";
-import { HEARTS_START, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
+import { HEART_HP, HEARTS_START, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
 import LoadoutScreen from "@/components/loadout/LoadoutScreen";
 import FloorIntro from "@/components/game/FloorIntro";
 import PauseMenu from "@/components/game/PauseMenu";
 import DungeonEntry from "@/components/game/DungeonEntry";
-import { heartsForLoadout, isValidLoadout, type Loadout } from "@/lib/loadout";
+import LandscapeGate from "@/components/game/LandscapeGate";
+import ShopModal from "@/components/hud/ShopModal";
+import { placeDwellers } from "@/lib/dungeon/dwellers";
+import GameSettingsModal from "@/components/game/GameSettings";
+import { DEFAULT_GAME_SETTINGS, readGameSettings, writeGameSettings, type GameSettings } from "@/lib/gameSettings";
+import { getCharacter, heartsForLoadout, isValidLoadout, type Loadout } from "@/lib/loadout";
 import { getMinionForRoom, getMonsterDisplayName } from "@/lib/monsters";
 import type { GeneratedQuestion } from "@/lib/encounter/schema";
 import type { SpriteKind } from "@/components/brand/PixelSprite";
@@ -36,6 +41,18 @@ import type {
 
 const PhaserGame = dynamic(() => import("@/game/PhaserGame"), { ssr: false });
 
+/** Best-effort landscape lock. Android Chrome honors it in fullscreen; iOS Safari ignores it. */
+async function lockLandscape(): Promise<void> {
+  try {
+    const orientation = window.screen.orientation as ScreenOrientation & {
+      lock?: (value: string) => Promise<void>;
+    };
+    await orientation?.lock?.("landscape");
+  } catch {
+    // Unsupported (iOS Safari) — the rotate gate still covers portrait.
+  }
+}
+
 interface QuestionBankEncounter {
   encounterKey: string;
   findingId?: string;
@@ -52,6 +69,7 @@ interface ReconPayload {
   job: { id: string; research_map_id: string; status: string; error: string | null };
   map: { id: string; manuscript_id: string; status: string };
   citationCount?: number;
+  dwellerCounts?: Record<string, number>;
   findings: Array<{
     id: string;
     weakness_type: string;
@@ -77,6 +95,8 @@ interface ActiveRunPayload {
     characterSlug: string | null;
     weaponSlug: string | null;
     hearts: number;
+    hp: number;
+    hpMax: number;
     pointsTotal: number;
     currentFloor: number;
     progress: { resolved?: string[] } | null;
@@ -146,13 +166,23 @@ export default function PlayPage() {
   const [starting, setStarting] = useState(false);
   const [hearts, setHearts] = useState(HEARTS_START);
   const [floorStartHearts, setFloorStartHearts] = useState(HEARTS_START);
+  const [hp, setHp] = useState(HEARTS_START * HEART_HP);
+  const [hpMax, setHpMax] = useState(HEARTS_START * HEART_HP);
+  const [potions, setPotions] = useState(0);
+  const [potionBusy, setPotionBusy] = useState(false);
+  const potionPending = useRef(false);
+  const [shopFloor, setShopFloor] = useState<number | null>(null);
+  const [dwellerCounts, setDwellerCounts] = useState<Record<number, number>>({});
   const [loadout, setLoadout] = useState<Loadout | null>(null);
+  const [playerName, setPlayerName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showFloorIntro, setShowFloorIntro] = useState(false);
   const [showGhostLibrary, setShowGhostLibrary] = useState(false);
   const ghostShownRef = useRef(false);
   const [paused, setPaused] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [gameSettings, setGameSettings] = useState<GameSettings>(DEFAULT_GAME_SETTINGS);
   const [inEncounter, setInEncounter] = useState(false);
   const [entryPhase, setEntryPhase] = useState<"idle" | "loading" | "enter">("idle");
   const [pendingCharacter, setPendingCharacter] = useState<Loadout["characterSlug"]>("arka");
@@ -161,6 +191,7 @@ export default function PlayPage() {
   const [doorNotice, setDoorNotice] = useState(false);
   const [doorOpened, setDoorOpened] = useState<number | null>(null);
   const [roomProgress, setRoomProgress] = useState<{ roomNumber: number; remaining: number; total: number } | null>(null);
+  const [lootNotice, setLootNotice] = useState<string | null>(null);
 
   const prefetchFloorQuestions = useCallback(async (map: FloorMap, mapId: string, force = false) => {
     // Ghost questions must wait until Nyxara has injected the fake citation.
@@ -210,6 +241,17 @@ export default function PlayPage() {
         };
       });
     });
+    for (const dweller of map.dwellers ?? []) {
+      encounters.push({
+        encounterKey: `f${map.floorOrder}-r${dweller.roomOrder}:0`,
+        bossSlug: `minion-${dweller.minionSlug}`,
+        weaknessType: "comprehension",
+        isBoss: false,
+        floorOrder: map.floorOrder,
+        roomOrder: dweller.roomOrder,
+        count: 1,
+      });
+    }
     if (encounters.length === 0) return;
 
     try {
@@ -238,6 +280,13 @@ export default function PlayPage() {
           return;
         }
 
+        const email = data.session.user.email ?? "";
+        const displayName =
+          (data.session.user.user_metadata?.display_name as string | undefined) ??
+          (data.session.user.user_metadata?.full_name as string | undefined) ??
+          email.split("@")[0];
+        if (displayName) setPlayerName(displayName);
+
         const recon = await authJson<ReconPayload>(`/api/recon/${params.reconId}`);
         if (recon.job.status !== "done") {
           throw new Error("Analisis belum selesai. Buka halaman temuan dulu.");
@@ -263,11 +312,17 @@ export default function PlayPage() {
         }
         const firstPlan = plans[0]!;
         const generated = generateFloorFromPlan(firstPlan, 20261101);
+        const counts = recon.dwellerCounts ?? {};
+        const withDwellers = (map: FloorMap): FloorMap => ({
+          ...map,
+          dwellers: placeDwellers(map, counts[map.floorOrder] ?? 0),
+        });
         const findingMeta: Record<string, FindingMeta> = {};
         for (const finding of findings) {
           findingMeta[finding.id] = {
             weaknessType: finding.weaknessType,
             evidenceQuote: finding.evidenceQuote,
+            severity: finding.severity,
           };
         }
 
@@ -294,6 +349,7 @@ export default function PlayPage() {
         setDungeonTier(getDungeonTier(findings));
         setPlans(plans);
         setFindingMeta(findingMeta);
+        setDwellerCounts(counts);
 
         if (active.run) {
           const rawLoadout = {
@@ -311,12 +367,14 @@ export default function PlayPage() {
             ? active.run.progress.resolved.filter((key): key is string => typeof key === "string")
             : [];
 
-          const resumedFloor = generateFloorFromPlan(plans[resumeIndex]!, 20261101 + resumeIndex);
+          const resumedFloor = withDwellers(generateFloorFromPlan(plans[resumeIndex]!, 20261101 + resumeIndex));
           setLoadout(resumeLoadout);
           setPendingCharacter(resumeLoadout.characterSlug);
           setRunId(active.run.id);
           setPoints(active.run.pointsTotal);
           setHearts(active.run.hearts);
+          setHp(active.run.hp ?? active.run.hearts * HEART_HP);
+          setHpMax(active.run.hpMax ?? heartsForLoadout(resumeLoadout.characterSlug) * HEART_HP);
           setFloorStartHearts(active.run.hearts);
           setFloorIndex(resumeIndex);
           setResolvedKeys(keys);
@@ -329,8 +387,9 @@ export default function PlayPage() {
         }
 
         setFloorIndex(0);
-        setFloorMap({ ...generated, findingMeta });
-        void prefetchFloorQuestions({ ...generated, findingMeta }, recon.map.id);
+        const firstFloor = withDwellers(generated);
+        setFloorMap({ ...firstFloor, findingMeta });
+        void prefetchFloorQuestions({ ...firstFloor, findingMeta }, recon.map.id);
         setShowFloorIntro(true);
         setLoading(false);
       } catch (err) {
@@ -352,7 +411,7 @@ export default function PlayPage() {
       setStarting(true);
       setError(null);
       try {
-        const data = await authJson<{ runId: string; pointsTotal: number; hearts: number }>(
+        const data = await authJson<{ runId: string; pointsTotal: number; hearts: number; hp: number; hpMax: number }>(
           "/api/run/start",
           {
             method: "POST",
@@ -370,6 +429,8 @@ export default function PlayPage() {
         setRunId(data.runId);
         setPoints(data.pointsTotal);
         setHearts(data.hearts);
+        setHp(data.hp);
+        setHpMax(data.hpMax);
         setFloorStartHearts(data.hearts);
         setShowFloorIntro(false);
         setEntryPhase("enter");
@@ -442,13 +503,17 @@ export default function PlayPage() {
     }
 
     const generated = generateFloorFromPlan(plans[next]!, 20261101 + next);
+    const nextFloor = {
+      ...generated,
+      dwellers: placeDwellers(generated, dwellerCounts[generated.floorOrder] ?? 0),
+    };
     setFloorIndex(next);
-    setFloorMap({ ...generated, findingMeta });
-    void prefetchFloorQuestions({ ...generated, findingMeta }, researchMapId);
+    setFloorMap({ ...nextFloor, findingMeta });
+    void prefetchFloorQuestions({ ...nextFloor, findingMeta }, researchMapId);
     setFloorStartHearts(hearts);
     setShowFloorIntro(true);
     void persistProgress(plans[next]!.floorOrder, resolvedKeys);
-  }, [plans, findingMeta, floorIndex, runId, hearts, floorStartHearts, persistProgress, resolvedKeys, researchMapId, prefetchFloorQuestions]);
+  }, [plans, findingMeta, floorIndex, runId, hearts, floorStartHearts, persistProgress, resolvedKeys, researchMapId, prefetchFloorQuestions, dwellerCounts]);
 
   useEffect(() => {
     const onEncounterEnd = (event: {
@@ -468,6 +533,8 @@ export default function PlayPage() {
       // A retry after a KO needs fresh questions, so drop this floor's bank.
       // Encounters fall back to the single-question route until prefetch runs again.
       setQuestionBank({});
+      setHp(hpMax);
+      setHearts(Math.max(1, Math.ceil(hpMax / HEART_HP)));
       setResolvedKeys((current) => {
         const next = current.filter((key) => !key.startsWith(`f${floorOrder}-`));
         void persistProgress(floorOrder, next);
@@ -481,16 +548,26 @@ export default function PlayPage() {
       bus.off("encounter:end", onEncounterEnd);
       bus.off("floor:retry", onFloorRetry);
     };
-  }, [persistProgress, floorIndex, plans]);
+  }, [persistProgress, floorIndex, plans, hpMax]);
 
   useEffect(() => {
     const onLoot = (event: { key: string }) => {
       if (!runId) return;
-      void authJson<{ amount: number; pointsTotal: number }>("/api/run/loot", {
-        method: "POST",
-        body: JSON.stringify({ runId, lootKey: event.key }),
-      })
-        .then((data) => setPoints(data.pointsTotal))
+      void authJson<{ amount: number; kind: "points" | "potion"; pointsTotal: number; potions: number }>(
+        "/api/run/loot",
+        {
+          method: "POST",
+          body: JSON.stringify({ runId, lootKey: event.key }),
+        },
+      )
+        .then((data) => {
+          setPoints(data.pointsTotal);
+          setPotions(data.potions ?? 0);
+          setLootNotice(
+            data.kind === "potion" ? "Ramuan Kecil masuk tas." : `+${data.amount} koin.`,
+          );
+          window.setTimeout(() => setLootNotice(null), 2200);
+        })
         .catch(() => {
           // Loot still disappears locally; points can sync on the next action.
         });
@@ -498,6 +575,59 @@ export default function PlayPage() {
     bus.on("loot:collected", onLoot);
     return () => bus.off("loot:collected", onLoot);
   }, [runId]);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    authJson<{ coins: number; potions: number; hp: number; hpMax: number }>(
+      `/api/run/shop?runId=${runId}`,
+    )
+      .then((data) => {
+        if (cancelled) return;
+        setPoints(data.coins);
+        setPotions(data.potions);
+        setHp(data.hp);
+        setHpMax(data.hpMax);
+        setHearts(Math.max(0, Math.ceil(data.hp / HEART_HP)));
+      })
+      .catch(() => {
+        // Shop state is best-effort; HP still comes from the run endpoints.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId]);
+
+  useEffect(() => {
+    const onTreasure = ({ floor }: { floor: number }) => setShopFloor(floor);
+    bus.on("treasure:open", onTreasure);
+    return () => bus.off("treasure:open", onTreasure);
+  }, []);
+
+  const usePotion = useCallback(async () => {
+    if (!runId || potionPending.current || inEncounter) return;
+    potionPending.current = true;
+    setPotionBusy(true);
+    try {
+      const data = await authJson<{ hp: number; hpMax: number; potions: number; healed: number }>(
+        "/api/run/potion",
+        {
+          method: "POST",
+          body: JSON.stringify({ runId, requestId: crypto.randomUUID() }),
+        },
+      );
+      setHp(data.hp);
+      setHpMax(data.hpMax);
+      setPotions(data.potions);
+      setHearts(Math.max(0, Math.ceil(data.hp / HEART_HP)));
+      bus.emit("potion:used", { healed: data.healed });
+    } catch {
+      // The HUD keeps the old count; the next action re-syncs server state.
+    } finally {
+      potionPending.current = false;
+      setPotionBusy(false);
+    }
+  }, [runId, inEncounter]);
 
   useEffect(() => {
     if (!runId || floorMap?.dimension !== "ghost") {
@@ -553,6 +683,15 @@ export default function PlayPage() {
     };
   }, []);
 
+  const updateGameSettings = useCallback((next: GameSettings) => {
+    setGameSettings(next);
+    writeGameSettings(next);
+  }, []);
+
+  useEffect(() => {
+    setGameSettings(readGameSettings());
+  }, []);
+
   const toggleFullscreen = useCallback(() => {
     if (typeof document === "undefined") return;
     if (document.fullscreenElement) {
@@ -563,7 +702,7 @@ export default function PlayPage() {
       webkitRequestFullscreen?: () => Promise<void>;
     };
     const request = root.requestFullscreen?.bind(root) ?? root.webkitRequestFullscreen?.bind(root);
-    void request?.().catch(() => {});
+    void request?.().then(lockLandscape).catch(() => {});
   }, []);
 
   const beginRun = useCallback(
@@ -575,7 +714,7 @@ export default function PlayPage() {
           webkitRequestFullscreen?: () => Promise<void>;
         };
         const request = root.requestFullscreen?.bind(root) ?? root.webkitRequestFullscreen?.bind(root);
-        void request?.().catch(() => {});
+        void request?.().then(lockLandscape).catch(() => {});
       }
       void startRun(selected);
     },
@@ -606,6 +745,12 @@ export default function PlayPage() {
   useEffect(() => {
     if (!loadout || runComplete) return;
     const onKey = (event: KeyboardEvent) => {
+      if ((event.key === "q" || event.key === "Q") && !event.repeat) {
+        if (inEncounter || showFloorIntro || paused || shopFloor !== null) return;
+        event.preventDefault();
+        void usePotion();
+        return;
+      }
       if (event.key !== "Escape") return;
       if (inEncounter || showFloorIntro) return;
       event.preventDefault();
@@ -613,7 +758,7 @@ export default function PlayPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loadout, runComplete, inEncounter, showFloorIntro]);
+  }, [loadout, runComplete, inEncounter, showFloorIntro, paused, shopFloor, usePotion]);
 
   if (error) {
     return (
@@ -804,6 +949,11 @@ export default function PlayPage() {
         hearts={hearts}
         heartsMax={heartsForLoadout(loadout.characterSlug)}
         points={points}
+        hp={hp}
+        hpMax={hpMax}
+        potions={potions}
+        potionBusy={potionBusy}
+        onUsePotion={() => void usePotion()}
       />
 
       <div className="pointer-events-none absolute left-1/2 top-2 z-10 hidden w-[min(44vw,26rem)] -translate-x-1/2 border-2 border-void bg-[#0a0f14]/90 px-3 py-1.5 text-center shadow-[inset_0_0_0_1px_#34424e,4px_4px_0_rgba(0,0,0,0.35)] md:block">
@@ -816,12 +966,21 @@ export default function PlayPage() {
         </p>
       </div>
 
-      <Minimap
-        floorMap={floorMap}
-        storageKey={`fog:${researchMapId || "map"}:${floorMap.floorOrder}`}
-        resolvedKeys={resolvedKeys}
+      {gameSettings.showMinimap ? (
+        <Minimap
+          floorMap={floorMap}
+          storageKey={`fog:${researchMapId || "map"}:${floorMap.floorOrder}`}
+          resolvedKeys={resolvedKeys}
+        />
+      ) : null}
+      <TouchControls
+        potions={potions}
+        potionBusy={potionBusy}
+        scheme={gameSettings.controls}
+        onUsePotion={() => void usePotion()}
+        onPause={() => setPaused(true)}
+        onSettings={() => setShowSettings(true)}
       />
-      <TouchControls />
       {showGhostLibrary ? (
         <GhostLibrary
           runId={runId}
@@ -833,15 +992,36 @@ export default function PlayPage() {
       ) : null}
       <EncounterOverlay
         hearts={hearts}
-        onHeartsChange={setHearts}
+        onHeartsChange={(next) => setHearts(next)}
+        onHpChange={(nextHp, nextHpMax) => {
+          setHp(nextHp);
+          setHpMax(nextHpMax);
+          setHearts(Math.max(0, Math.ceil(nextHp / HEART_HP)));
+        }}
         researchMapId={researchMapId}
         loadout={loadout}
+        playerName={playerName ?? getCharacter(loadout.characterSlug)?.name ?? "Kamu"}
         heartsMax={heartsForLoadout(loadout.characterSlug)}
         runId={runId}
         questionBank={questionBank}
         onPointsChange={setPoints}
       />
-      <div className="absolute right-2 top-2 z-10 flex flex-wrap items-center justify-end gap-1 text-right text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash">
+      {shopFloor !== null ? (
+        <ShopModal
+          runId={runId}
+          floor={shopFloor}
+          onClose={() => setShopFloor(null)}
+          onVitals={(state) => {
+            setPoints(state.coins);
+            setPotions(state.potions);
+            setHp(state.hp);
+            setHpMax(state.hpMax);
+            setHearts(Math.max(0, Math.ceil(state.hp / HEART_HP)));
+          }}
+        />
+      ) : null}
+      <LandscapeGate />
+      <div className="absolute right-2 top-2 z-10 hidden flex-wrap items-center justify-end gap-1 text-right text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash md:flex">
         <span className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e]">
           Lantai {floorIndex + 1}/{plans.length || 1} · {roomCount} ruang
         </span>
@@ -888,7 +1068,7 @@ export default function PlayPage() {
           Naskah
         </Link>
       </div>
-      <p className="absolute bottom-2 left-2 z-10 max-w-[55vw] border-2 border-void bg-void/85 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash shadow-[inset_0_0_0_1px_#34424e]">
+      <p className="absolute bottom-2 left-2 z-10 hidden max-w-[55vw] border-2 border-void bg-void/85 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash shadow-[inset_0_0_0_1px_#34424e] md:block">
         WASD / panah · scroll zoom · tabrak monster · M suara · Esc jeda
       </p>
 
@@ -900,10 +1080,26 @@ export default function PlayPage() {
         </div>
       ) : null}
 
+      {roomProgress === null && loadout && !inEncounter && !showFloorIntro && !runComplete ? (
+        <div className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 border-2 border-gold/70 bg-[#0a0f14]/95 px-3 py-1.5 text-center shadow-[4px_4px_0_#05080b]">
+          <p className="font-pixel text-[0.5rem] text-gold">TANGGA TURUN TERBUKA</p>
+          <p className="mt-0.5 text-[0.68rem] leading-5 text-bone">
+            Ada di ruang boss — ikuti tanda <span className="text-gold">↓</span> atau titik emas di peta.
+          </p>
+        </div>
+      ) : null}
+
       {doorOpened ? (
         <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-emerald-400/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
           <p className="font-pixel text-[0.52rem] text-emerald-300">PINTU TERBUKA</p>
           <p className="mt-1 text-[0.72rem] leading-5 text-bone">Jalan ke ruang {doorOpened} sudah terbuka.</p>
+        </div>
+      ) : null}
+
+      {lootNotice ? (
+        <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-gold/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
+          <p className="font-pixel text-[0.52rem] text-gold">JARAHAN</p>
+          <p className="mt-1 text-[0.72rem] leading-5 text-bone">{lootNotice}</p>
         </div>
       ) : null}
 
@@ -940,7 +1136,19 @@ export default function PlayPage() {
           hearts={hearts}
           heartsMax={heartsForLoadout(loadout.characterSlug)}
           loadout={loadout}
+          playerName={playerName ?? getCharacter(loadout.characterSlug)?.name ?? "Kamu"}
+          findingsHref={`/findings/${params.reconId}`}
           onResume={() => setPaused(false)}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenShop={() => setShopFloor(floorIndex + 1)}
+        />
+      ) : null}
+
+      {showSettings ? (
+        <GameSettingsModal
+          settings={gameSettings}
+          onChange={updateGameSettings}
+          onClose={() => setShowSettings(false)}
         />
       ) : null}
 

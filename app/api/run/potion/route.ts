@@ -41,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     if (useError?.code === "23505") {
       // Same tap delivered twice: the potion is already drunk.
-      return NextResponse.json({ ...vitals, potions: wallet.potions, healed: 0 });
+      return NextResponse.json({ ...vitals, potions: wallet.potions.length, healed: 0 });
     }
     if (useError) throw new ApiError(useError.message, 500);
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       ...playerVitals(hp, run.character_slug),
-      potions: wallet.potions.slice(1),
+      potions: wallet.potions.length - 1,
       healed: hp - vitals.hp,
     });
   } catch (error) {

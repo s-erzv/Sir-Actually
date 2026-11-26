@@ -59,6 +59,15 @@ gerbang format, bukan monster.
 
 ## 4. Kedalaman game
 
+- **Objection! dengan lapisan verifikasi.** Sekarang Objection! langsung
+  menandai temuan `disputed` tanpa memeriksa alasannya, jadi pemain bisa
+  memakai jalur itu untuk turun lantai tanpa menjawab. Batas sementara:
+  `MAX_OBJECTIONS_PER_FLOOR` (1 per lantai) di `lib/balance.ts`. Rencana:
+  pemain menulis alasan keberatan, lalu Judge memeriksa apakah keberatan itu
+  didukung naskah (kutipan, kriteria, atau konteks metode). Keberatan yang
+  tidak berdasar ditolak — Heart tetap aman tetapi monster tetap hidup dan
+  giliran terpakai. Catat alasan di `encounters.dispute_note` supaya bisa
+  ditinjau di laporan.
 - Senjata dan perlengkapan yang bisa ditemukan dan dipasang.
 - Skill aktif per karakter dengan cooldown.
 - Varian monster elit, jebakan, kunci dan pintu rahasia.

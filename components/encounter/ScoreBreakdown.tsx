@@ -1,12 +1,12 @@
 "use client";
 
 import type { EvaluationResult } from "@/lib/domain/types";
-import type { WeaknessType } from "@/lib/domain/types";
-import { RUBRICS } from "@/lib/rubrics";
+import type { EncounterTopic } from "@/lib/domain/types";
+import { COMPREHENSION_RUBRIC, RUBRICS } from "@/lib/rubrics";
 
 interface ScoreBreakdownProps {
   evaluation: EvaluationResult;
-  weaknessType: WeaknessType;
+  weaknessType: EncounterTopic;
   targetCriterionIds?: string[];
 }
 
@@ -27,12 +27,13 @@ export default function ScoreBreakdown({
   weaknessType,
   targetCriterionIds,
 }: ScoreBreakdownProps) {
-  const allCriteria = RUBRICS[weaknessType] ?? [];
+  const allCriteria = weaknessType === "comprehension" ? COMPREHENSION_RUBRIC : (RUBRICS[weaknessType] ?? []);
   const criteria =
     targetCriterionIds && targetCriterionIds.length > 0
       ? allCriteria.filter((criterion) => targetCriterionIds.includes(criterion.id))
       : allCriteria;
   const { scores, scoreTotal, scoreMax, missing, ruleCaps } = evaluation;
+  const scorePercent = scoreMax > 0 ? Math.round((scoreTotal / scoreMax) * 100) : 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -47,7 +48,7 @@ export default function ScoreBreakdown({
           ))}
         </div>
         <span className="ml-auto font-pixel text-[0.62rem] tabular-nums text-bone">
-          {scoreTotal}/{scoreMax}
+          {scorePercent}%
         </span>
       </div>
 

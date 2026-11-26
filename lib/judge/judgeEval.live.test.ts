@@ -107,6 +107,28 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // Dweller comprehension check: quiz an existing claim, never allege a flaw.
+    weaknessType: "comprehension" as WeaknessType,
+    question: "Jelaskan dengan kata-katamu sendiri apa maksud bagian metode ini dan apa dasarnya di naskahmu?",
+    evidenceQuote: "Sampel berjumlah 45 mahasiswa angkatan 2022",
+    criterion: { id: "claim_explained", label: "Menjelaskan klaim dengan kata sendiri dan sesuai naskah" },
+    cases: [
+      {
+        name: "menjelaskan dengan kata sendiri",
+        answer:
+          "Bagian itu menjelaskan bahwa penelitian ini mengambil 45 mahasiswa angkatan 2022 sebagai sampel, lalu datanya dikumpulkan lewat angket dan dianalisis dengan korelasi Pearson untuk melihat hubungan dua variabel.",
+        level: [2, 2],
+        heartLost: false,
+      },
+      {
+        name: "di luar topik",
+        answer: "Menurut saya daftar pustaka sebaiknya memakai APA edisi ketujuh dan jurnal lima tahun terakhir.",
+        level: [0, 0],
+        heartLost: true,
+      },
+    ],
+  },
+  {
     weaknessType: "sample_unreported",
     question: "Jelaskan mengapa 45 responden cukup untuk analisis korelasimu?",
     evidenceQuote: "Sampel berjumlah 45 mahasiswa angkatan 2022",

@@ -4,7 +4,7 @@ import {
   bossFrame,
   minionFrameForSlug,
 } from "@/game/map/tileFrames";
-import { getMinionForRoom } from "@/lib/monsters";
+import { getMinionForRoom, MINION_ROSTER } from "@/lib/monsters";
 import {
   BOSS_SHEETS,
   MINION_SHEETS,
@@ -16,7 +16,7 @@ import {
   minionWalkAnim,
 } from "@/lib/sprites/monsters";
 import { FACING_COLUMN, attackFrame, type Facing } from "@/lib/sprites/sheets";
-import type { FindingMeta, FloorMap, Room, WeaknessType } from "@/lib/domain/types";
+import type { AttackStyle, EncounterTopic, FindingMeta, FloorMap, Room } from "@/lib/domain/types";
 import {
   MONSTER_BEHAVIORS,
   behaviorForSpawn,
@@ -24,6 +24,7 @@ import {
 } from "./monsterBehavior";
 import type { MonsterBehavior } from "./monsterBehavior";
 import { patrolCandidates } from "@/lib/dungeon/patrol";
+import { gearForLevel, monsterLevel, monsterStats } from "@/lib/combat/monsterStats";
 
 let encounterCounter = 0;
 
@@ -34,17 +35,24 @@ export class Monster {
   private animSlug: string | null = null;
   private bossAnimSlug: string | null = null;
   private facing: Facing = "down";
+  readonly level: number;
+  private readonly gearName: string;
+  private hpBarBg: Phaser.GameObjects.Rectangle | null = null;
+  private hpBarFill: Phaser.GameObjects.Rectangle | null = null;
+  private badge: Phaser.GameObjects.Text | null = null;
 
   readonly encounterId: string;
   readonly encounterKey: string;
   readonly findingId: string;
   readonly bossSlug: string;
   readonly isBoss: boolean;
+  readonly isDweller: boolean;
   readonly floor: number;
   readonly roomIndex: number;
   readonly roomId: string;
-  readonly weaknessType: WeaknessType;
+  readonly weaknessType: EncounterTopic;
   readonly evidenceQuote: string;
+  readonly severity?: number;
 
   tileX: number;
   tileY: number;
@@ -69,8 +77,9 @@ export class Monster {
     spawn?: {
       findingId?: string | null;
       bossSlug?: string;
-      weaknessType?: WeaknessType;
+      weaknessType?: EncounterTopic;
       evidenceQuote?: string;
+      minionSlug?: string;
     },
     monsterIndex = 0,
   ) {
@@ -85,10 +94,18 @@ export class Monster {
     this.room = room;
     this.behavior = behaviorForSpawn(isBoss, monsterIndex);
     const behavior = MONSTER_BEHAVIORS[this.behavior];
-    const minion = getMinionForRoom(floorOrder, this.roomIndex);
+    const minion = spawn?.minionSlug
+      ? (MINION_ROSTER.find((entry) => entry.slug === spawn.minionSlug) ?? getMinionForRoom(floorOrder, this.roomIndex))
+      : getMinionForRoom(floorOrder, this.roomIndex);
     this.bossSlug = spawn?.bossSlug ?? (isBoss ? `boss-floor-${floorOrder}` : `minion-${minion.slug}`);
     this.weaknessType = spawn?.weaknessType ?? meta?.weaknessType ?? "gap_unsupported";
+    this.isDweller = this.weaknessType === "comprehension";
     this.evidenceQuote = spawn?.evidenceQuote ?? meta?.evidenceQuote ?? "";
+    this.severity = meta?.severity;
+    const kind = this.weaknessType === "comprehension" ? "dweller" : isBoss ? "boss" : "minion";
+    this.level = monsterLevel({ kind, floorOrder, severity: meta?.severity });
+    const stats = monsterStats(kind, this.level);
+    this.gearName = gearForLevel(this.level).name;
 
     this.tileX = Math.floor(worldX / TILE_SIZE);
     this.tileY = Math.floor(worldY / TILE_SIZE);
@@ -158,13 +175,50 @@ export class Monster {
         strokeThickness: 2,
       },
     ).setOrigin(0.5, 1).setDepth(11);
+
+    const badgeY = worldY - TILE_SIZE * (isBoss ? 1.9 : 1.35);
+    this.badge = scene.add
+      .text(worldX, badgeY, `Lv ${this.level} · ${this.gearName}`, {
+        fontSize: "8px",
+        color: isBoss ? "#cf5c68" : "#e9b85d",
+        fontFamily: "monospace",
+        stroke: "#05070a",
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(12);
+
+    const barWidth = isBoss ? 34 : 22;
+    const barY = badgeY + 7;
+    this.hpBarBg = scene.add
+      .rectangle(worldX - barWidth / 2, barY, barWidth, 3, 0x05070a, 0.9)
+      .setOrigin(0, 0.5)
+      .setDepth(12);
+    this.hpBarFill = scene.add
+      .rectangle(worldX - barWidth / 2, barY, barWidth, 2, isBoss ? 0xcf5c68 : 0x8fbd72, 1)
+      .setOrigin(0, 0.5)
+      .setDepth(13);
+    this.setHealth(stats.hp, stats.hp);
+  }
+
+  /** Update the in-world HP bar from the server's post-strike value. */
+  setHealth(hp: number, hpMax: number): void {
+    if (!this.hpBarFill) return;
+    const ratio = hpMax > 0 ? Math.max(0, Math.min(1, hp / hpMax)) : 0;
+    this.hpBarFill.scaleX = ratio;
   }
 
   /**
    * An answer landed. White flash, knockback away from the attacker, a slash
    * across the sprite, sparks and a damage number sized by the hit.
    */
-  playHit(scene: Phaser.Scene, damage: number, from?: { x: number; y: number }): void {
+  playHit(
+    scene: Phaser.Scene,
+    damage: number,
+    from?: { x: number; y: number },
+    style: AttackStyle = "sword",
+    qualityLabel?: string,
+  ): void {
     if (this.resolved) return;
     const homeX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
     const homeY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
@@ -209,10 +263,15 @@ export class Monster {
       onComplete: () => this.sprite.setPosition(homeX, homeY),
     });
 
-    this.playSlashFx(scene, homeX, homeY, heavy, dx >= 0);
+    if (style === "sword" || style === "axe") {
+      this.playSlashFx(scene, homeX, homeY, heavy || style === "axe", dx >= 0);
+    }
     this.burst(scene, 0xfff3c4, heavy ? 10 : 6, heavy ? 16 : 11, 260);
     this.burst(scene, 0xc02020, heavy ? 8 : 5, heavy ? 18 : 12, 360);
     this.floatText(scene, `-${damage}`, heavy ? "#ffd166" : "#ff6b6b", heavy ? 14 : 11);
+    if (qualityLabel) {
+      this.floatText(scene, qualityLabel, "#f2ecdd", 9, 16);
+    }
   }
 
   /** Bosses have a dedicated hit sheet; minions flash in place. */
@@ -298,9 +357,9 @@ export class Monster {
     });
   }
 
-  private floatText(scene: Phaser.Scene, label: string, color: string, size: number): void {
+  private floatText(scene: Phaser.Scene, label: string, color: string, size: number, offset = 0): void {
     const text = scene.add
-      .text(this.sprite.x, this.sprite.y - 10, label, {
+      .text(this.sprite.x, this.sprite.y - 10 - offset, label, {
         fontSize: `${size}px`,
         color,
         fontFamily: "monospace",
@@ -509,6 +568,12 @@ export class Monster {
         stepX * TILE_SIZE + TILE_SIZE / 2,
         stepY * TILE_SIZE + TILE_SIZE / 2 - TILE_SIZE * (this.isBoss ? 1.5 : 1),
       );
+      const barX = stepX * TILE_SIZE + TILE_SIZE / 2;
+      const barY = stepY * TILE_SIZE + TILE_SIZE / 2 - TILE_SIZE * (this.isBoss ? 1.9 : 1.35) + 7;
+      const barWidth = this.isBoss ? 34 : 22;
+      this.badge?.setPosition(barX, barY - 7);
+      this.hpBarBg?.setPosition(barX - barWidth / 2, barY);
+      this.hpBarFill?.setPosition(barX - barWidth / 2, barY);
     }
     this.playWalk();
     this.sprite.scene.tweens.add({
@@ -575,6 +640,12 @@ export class Monster {
     this.breathTween?.stop();
     this.exclamation?.destroy();
     this.exclamation = null;
+    this.hpBarBg?.destroy();
+    this.hpBarFill?.destroy();
+    this.badge?.destroy();
+    this.hpBarBg = null;
+    this.hpBarFill = null;
+    this.badge = null;
     this.sprite.destroy();
   }
 
@@ -582,6 +653,12 @@ export class Monster {
   destroy(): void {
     this.breathTween?.stop();
     this.exclamation?.destroy();
+    this.hpBarBg?.destroy();
+    this.hpBarFill?.destroy();
+    this.badge?.destroy();
+    this.hpBarBg = null;
+    this.hpBarFill = null;
+    this.badge = null;
     this.sprite.destroy();
   }
 }

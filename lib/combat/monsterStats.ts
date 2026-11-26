@@ -28,7 +28,7 @@ export function monsterStats(kind: MonsterKind, level: number): MonsterStats {
   const lvl = clamp(level, 1, MONSTER_LEVEL_MAX);
   const base = MONSTER_STATS[kind];
   const maxQuestions =
-    kind === "dweller" ? 1 : kind === "boss" ? (lvl >= 4 ? 5 : 4) : lvl >= 3 ? 3 : 2;
+    kind === "dweller" ? 1 : kind === "boss" ? (lvl >= 4 ? 7 : 6) : lvl >= 3 ? 4 : 3;
   return {
     hp: base.hp + base.hpPerLevel * (lvl - 1),
     attack: Math.min(base.attackMax, base.attack + base.attackPerLevel * (lvl - 1)),

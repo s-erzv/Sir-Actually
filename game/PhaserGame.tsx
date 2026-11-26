@@ -18,6 +18,7 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
     if (gameRef.current) return;
 
     let game: import("phaser").Game | null = null;
+    let cancelled = false;
 
     (async () => {
       const Phaser = await import("phaser");
@@ -42,6 +43,10 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
         },
       });
 
+      if (cancelled) {
+        game.destroy(true);
+        return;
+      }
       // Pass floorMap and the chosen character to DungeonScene via the registry.
       game.registry.set("floorMap", floorMap);
       game.registry.set("characterSlug", characterSlug);
@@ -53,6 +58,7 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
     })();
 
     return () => {
+      cancelled = true;
       game?.destroy(true);
       gameRef.current = null;
     };

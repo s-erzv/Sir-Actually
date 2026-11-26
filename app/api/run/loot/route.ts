@@ -135,7 +135,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       amount: fresh ? amount : 0,
       kind: fresh && givesPotion ? "potion" : "points",
       pointsTotal: wallet.coins,
-      potions: wallet.potions,
+      potions: wallet.potions.length,
     });
   } catch (error) {
     return apiErrorResponse(error);

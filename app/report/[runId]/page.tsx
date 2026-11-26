@@ -23,6 +23,7 @@ interface ReportPayload {
     dungeonTitle: string | null;
   };
   pointsByKind: Record<string, number>;
+  comprehension?: { passed: number; total: number };
   report: null | {
     readiness: {
       complete: boolean;
@@ -123,6 +124,13 @@ export default function ReportPage() {
               <Stat label="Dikonced" value={payload.report.readiness.conceded} tone="text-gold" />
               <Stat label="Belum diuji" value={payload.report.readiness.untested} tone="text-blood" />
             </div>
+
+            {payload.comprehension && payload.comprehension.total > 0 ? (
+              <p className="mt-3 border-2 border-ridge/60 bg-void/45 px-3 py-2 text-[0.72rem] text-ash">
+                Uji pemahaman: {payload.comprehension.passed} dari {payload.comprehension.total} klaim dijelaskan dengan baik.
+                Ini bukan kelemahan naskah.
+              </p>
+            ) : null}
 
             <section className="mt-6 border-2 border-ridge/60 bg-void/45 p-4">
               <h2 className="font-pixel text-[0.56rem] uppercase tracking-[0.1em] text-gold">

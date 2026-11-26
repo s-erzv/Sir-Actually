@@ -9,6 +9,7 @@ import {
   FLOOR_SHEET_KEY, dungeonFloorFrame,
 } from "@/game/map/tileFrames";
 import type { DungeonDimension, FloorMap, Room } from "@/lib/domain/types";
+import { COMPREHENSION } from "@/lib/domain/types";
 import { Player } from "@/game/entities/Player";
 import { Monster } from "@/game/entities/Monster";
 import {
@@ -20,6 +21,7 @@ import {
   toggleMute,
 } from "@/game/audio";
 import { lootSpotsForFloor } from "@/lib/dungeon/lootSpots";
+import { shakeCamera } from "@/game/feel";
 
 // ---------------------------------------------------------------------------
 // Frame lookup: TileCode → sprite frame index in tilemap.png
@@ -77,10 +79,18 @@ export class DungeonScene extends Phaser.Scene {
   private busOff: Array<() => void> = [];
   private minZoom = 1;
   private maxZoom = 6;
+  private pinchStartDistance = 0;
+  private pinchStartZoom = 1;
+  private pinching = false;
   private encounterActive = false;
   private worldPaused = false;
   private lastPlayerTileKey = "";
   private darkness: Phaser.GameObjects.Image | null = null;
+  private chest: Phaser.GameObjects.Image | null = null;
+  private chestTile: { x: number; y: number } | null = null;
+  private chestOpened = false;
+  private stairsMarker: Phaser.GameObjects.Container | null = null;
+  private descending = false;
 
   constructor(key = "DungeonScene") {
     super({ key });
@@ -349,6 +359,7 @@ export class DungeonScene extends Phaser.Scene {
     for (const room of rooms) {
       this.spawnRoomMonsters(room);
     }
+    this.spawnDwellers();
 
     const resolvedKeys = new Set(
       (this.game.registry.get("resolvedKeys") as string[] | undefined) ?? [],
@@ -360,11 +371,14 @@ export class DungeonScene extends Phaser.Scene {
     }
     // Floors with no minions (Ghost/Throne) must open the boss gate immediately.
     this.unlockBossDoorIfCleared(false);
+    if (this.monsters.some((monster) => monster.isBoss && monster.resolved)) {
+      this.spawnBossChest();
+    }
   }
 
   /** The boss door stays shut until every minion on the floor is resolved. */
   private unlockBossDoorIfCleared(announce = true): void {
-    if (this.monsters.some((monster) => !monster.isBoss && !monster.resolved)) return;
+    if (this.monsters.some((monster) => !monster.isBoss && !monster.isDweller && !monster.resolved)) return;
     const bossRoom = this.floorMap.rooms.find((room) => room.isBoss);
     if (!bossRoom?.entranceDoor) return;
     const { x, y } = bossRoom.entranceDoor;
@@ -373,7 +387,6 @@ export class DungeonScene extends Phaser.Scene {
     if (announce) {
       bus.emit("door:opened", { roomNumber: this.floorMap.rooms.indexOf(bossRoom) + 1 });
       playSfx("doorOpen");
-      this.cameras.main.flash(180, 255, 200, 120, false);
     }
   }
 
@@ -425,9 +438,14 @@ export class DungeonScene extends Phaser.Scene {
   private addLoot(): void {
     const spots = lootSpotsForFloor(this.floorMap);
     spots.forEach((spot, index) => {
-      const sprite = this.add
-        .image(spot.x * TILE_SIZE + TILE_SIZE / 2, spot.y * TILE_SIZE + TILE_SIZE / 2, "rl", spot.frame)
-        .setDepth(1.5);
+      const sprite = spot.kind === "potion" && this.textures.exists("item-potion")
+        ? this.add
+            .image(spot.x * TILE_SIZE + TILE_SIZE / 2, spot.y * TILE_SIZE + TILE_SIZE / 2, "item-potion")
+            .setScale(1.5)
+            .setDepth(1.5)
+        : this.add
+            .image(spot.x * TILE_SIZE + TILE_SIZE / 2, spot.y * TILE_SIZE + TILE_SIZE / 2, "rl", spot.frame)
+            .setDepth(1.5);
       this.loot.push({ sprite, x: spot.x, y: spot.y, key: spot.key });
       this.tweens.add({
         targets: sprite,
@@ -489,6 +507,122 @@ export class DungeonScene extends Phaser.Scene {
       }
     }
     bus.emit("room:progress", null);
+    this.showStairsMarker();
+  }
+
+  /** Once the floor is clear, point at the stairs in the boss room. */
+  private showStairsMarker(): void {
+    if (this.stairsMarker) return;
+    const { stairs } = this.floorMap;
+    const x = stairs.x * TILE_SIZE + TILE_SIZE / 2;
+    const y = stairs.y * TILE_SIZE + TILE_SIZE / 2;
+    const glow = this.add
+      .circle(0, 0, TILE_SIZE * 1.1, 0xe9b85d, 0.16)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const shaft = this.add
+      .rectangle(0, -TILE_SIZE * 0.9, TILE_SIZE * 0.55, TILE_SIZE * 1.4, 0xe9b85d, 0.22)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const label = this.add
+      .text(0, -TILE_SIZE * 1.8, "TURUN ↓", {
+        fontFamily: "monospace",
+        fontSize: "9px",
+        color: "#ffe7ad",
+        stroke: "#05070a",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5);
+    const arrow = this.add
+      .text(0, -TILE_SIZE * 1.25, "▼", {
+        fontFamily: "monospace",
+        fontSize: "11px",
+        color: "#e9b85d",
+        stroke: "#05070a",
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5);
+    this.stairsMarker = this.add.container(x, y, [glow, shaft, label, arrow]).setDepth(48);
+    this.tweens.add({
+      targets: arrow,
+      y: arrow.y + 4,
+      duration: 560,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.16, to: 0.34 },
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+  }
+
+  /** Play a real descent before telling React to load the next floor. */
+  beginStairsDescent(): void {
+    if (this.descending) return;
+    this.descending = true;
+    this.worldPaused = true;
+    this.player.lockInput();
+    playSfx("doorOpen");
+    this.cameras.main.stopFollow();
+    const sprite = this.player.sprite;
+    this.tweens.add({
+      targets: sprite,
+      y: sprite.y + TILE_SIZE * 0.9,
+      scaleX: sprite.scaleX * 0.8,
+      scaleY: sprite.scaleY * 0.8,
+      angle: 8,
+      alpha: 0.15,
+      duration: 700,
+      ease: "Cubic.easeIn",
+    });
+    this.time.delayedCall(780, () => {
+      this.cameras.main.fadeOut(420, 3, 5, 8);
+    });
+    this.time.delayedCall(1250, () => {
+      bus.emit("stairs:reach", { floor: this.floorMap.floorOrder });
+    });
+  }
+
+  /** Dwellers quiz a claim; they are not findings and never open the boss gate. */
+  private spawnDwellers(): void {
+    const dwellers = this.floorMap.dwellers ?? [];
+    for (const dweller of dwellers) {
+      const roomId = `f${this.floorMap.floorOrder}-r${dweller.roomOrder}`;
+      const room: Room = {
+        id: roomId,
+        findingId: null,
+        rect: {
+          x: dweller.tile.x - 1,
+          y: dweller.tile.y - 1,
+          width: 3,
+          height: 3,
+        },
+        isBoss: false,
+        monsterSpawn: dweller.tile,
+        monsterSpawns: [dweller.tile],
+        entranceDoor: null,
+        kind: "special",
+      };
+      const monster = new Monster(
+        this,
+        dweller.tile.x * TILE_SIZE + TILE_SIZE / 2,
+        dweller.tile.y * TILE_SIZE + TILE_SIZE / 2,
+        false,
+        room,
+        this.floorMap.floorOrder,
+        undefined,
+        {
+          weaknessType: COMPREHENSION,
+          minionSlug: dweller.minionSlug,
+          bossSlug: `minion-${dweller.minionSlug}`,
+        },
+        1,
+      );
+      this.monsters.push(monster);
+    }
   }
 
   private spawnRoomMonsters(room: Room): void {
@@ -522,6 +656,53 @@ export class DungeonScene extends Phaser.Scene {
     });
   }
 
+  /** The boss's own tile becomes the treasure chest once it falls. */
+  private spawnBossChest(): void {
+    if (this.chest || this.chestOpened) return;
+    const bossRoom = this.floorMap.rooms.find((room) => room.isBoss);
+    if (!bossRoom) return;
+    const tile = bossRoom.monsterSpawn;
+    this.chestTile = { x: tile.x, y: tile.y };
+    this.chest = this.add
+      .image(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.y * TILE_SIZE + TILE_SIZE / 2, "item-chest")
+      .setDepth(8)
+      .setScale(1.7);
+    this.add
+      .image(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.y * TILE_SIZE + TILE_SIZE / 2, "glow-small")
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(0xe9b85d)
+      .setAlpha(0.55)
+      .setDisplaySize(TILE_SIZE * 3, TILE_SIZE * 3)
+      .setDepth(7);
+    this.tweens.add({
+      targets: this.chest,
+      y: this.chest.y - 3,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+  }
+
+  private openChestAt(tile: { x: number; y: number }): void {
+    if (!this.chest || !this.chestTile || this.chestOpened) return;
+    if (tile.x !== this.chestTile.x || tile.y !== this.chestTile.y) return;
+    this.chestOpened = true;
+    playSfx("pickup");
+    this.tweens.add({
+      targets: this.chest,
+      y: this.chest.y - 10,
+      alpha: 0,
+      duration: 260,
+      ease: "Sine.easeOut",
+      onComplete: () => {
+        this.chest?.destroy();
+        this.chest = null;
+      },
+    });
+    bus.emit("treasure:open", { floor: this.floorMap.floorOrder });
+  }
+
   // ---------------------------------------------------------------------------
   // Camera
   // ---------------------------------------------------------------------------
@@ -553,7 +734,14 @@ export class DungeonScene extends Phaser.Scene {
     this.maxZoom = Math.min(9, baseZoom + 3);
     this.cameras.main.setZoom(baseZoom);
     this.cameras.main.setBounds(0, 0, width * TILE_SIZE, height * TILE_SIZE);
-    this.cameras.main.startFollow(this.player.sprite, true, 0.15, 0.15);
+    // Lerp 1 keeps the hero exactly centred while tiles tween underfoot.
+    this.cameras.main.startFollow(this.player.sprite, true, 1, 1);
+
+    this.input.addPointer(2);
+    this.input.on("pointerdown", this.onPinchStart, this);
+    this.input.on("pointermove", this.onPinchMove, this);
+    this.input.on("pointerup", this.onPinchEnd, this);
+    this.input.on("pointerupoutside", this.onPinchEnd, this);
 
     this.input.on(
       "wheel",
@@ -561,6 +749,45 @@ export class DungeonScene extends Phaser.Scene {
         this.zoomBy(dy > 0 ? -0.5 : 0.5);
       },
     );
+  }
+
+  /** Distance between the two active pointers, or 0 when fewer than two touch. */
+  private pinchDistance(): number {
+    const first = this.input.pointer1;
+    const second = this.input.pointer2;
+    if (!first?.isDown || !second?.isDown) return 0;
+    return Phaser.Math.Distance.Between(first.x, first.y, second.x, second.y);
+  }
+
+  private onPinchStart(): void {
+    const distance = this.pinchDistance();
+    if (distance < 1) {
+      this.pinching = false;
+      return;
+    }
+    this.pinching = true;
+    this.pinchStartDistance = distance;
+    this.pinchStartZoom = this.cameras.main.zoom;
+  }
+
+  private onPinchMove(): void {
+    const distance = this.pinchDistance();
+    if (distance < 1) return;
+    if (!this.pinching) {
+      this.onPinchStart();
+      return;
+    }
+    const ratio = distance / this.pinchStartDistance;
+    const next = Phaser.Math.Clamp(
+      this.pinchStartZoom * ratio,
+      this.minZoom,
+      this.maxZoom,
+    );
+    this.cameras.main.setZoom(next);
+  }
+
+  private onPinchEnd(): void {
+    if (this.pinchDistance() < 1) this.pinching = false;
   }
 
   private zoomBy(delta: number): void {
@@ -609,8 +836,8 @@ export class DungeonScene extends Phaser.Scene {
       playSfx(result === "won" ? "win" : "lose");
       monster.markResolved(result);
       if (result === "won") {
-        this.cameras.main.shake(monster.isBoss ? 420 : 220, monster.isBoss ? 0.012 : 0.006);
-        this.cameras.main.flash(monster.isBoss ? 260 : 140, 255, 220, 150, false);
+        shakeCamera(this.cameras.main, monster.isBoss ? 200 : 120, monster.isBoss ? 0.002 : 0.0012);
+        if (monster.isBoss) this.spawnBossChest();
       }
 
       startMusic(this.floorMusic());
@@ -621,36 +848,53 @@ export class DungeonScene extends Phaser.Scene {
     const onBossHit = ({
       encounterId,
       damage,
-      heartLost,
+      quality,
+      qualityLabel,
+      attackStyle,
+      counterDamage,
+      shielded,
+      monsterHp,
+      monsterHpMax,
     }: {
       encounterId: string;
       damage: number;
+      quality?: number;
+      qualityLabel?: string;
+      attackStyle?: "sword" | "bow" | "shield" | "axe";
+      counterDamage?: number;
+      shielded?: boolean;
+      monsterHp?: number;
+      monsterHpMax?: number;
       heartLost?: boolean;
     }) => {
       const monster = this.monsters.find((m) => m.encounterId === encounterId);
       if (!monster) return;
+      const style = attackStyle ?? "sword";
       const playerAt = { x: this.player.sprite.x, y: this.player.sprite.y };
       const monsterAt = { x: monster.sprite.x, y: monster.sprite.y };
 
-      this.player.attack(monsterAt.x, monsterAt.y);
-      // The blow lands at the end of the lunge.
-      this.time.delayedCall(70, () => {
+      this.player.attack(monsterAt.x, monsterAt.y, style);
+      // Ranged styles land when the projectile arrives; melee lands on the lunge.
+      const landDelay = style === "bow" ? 170 : style === "shield" ? 110 : 70;
+      this.time.delayedCall(landDelay, () => {
         playSfx(damage > 0 ? "hit" : "miss");
-        monster.playHit(this, damage, playerAt);
-        if (damage > 0) {
-          this.cameras.main.shake(damage >= 35 ? 160 : 90, damage >= 35 ? 0.008 : 0.004);
-          this.hitStop(damage >= 35 ? 90 : 50);
+        monster.playHit(this, damage, playerAt, style, qualityLabel);
+        if (typeof monsterHp === "number" && typeof monsterHpMax === "number") {
+          monster.setHealth(monsterHp, monsterHpMax);
+        }
+        if ((quality ?? 0) >= 4) {
+          shakeCamera(this.cameras.main, 120, 0.0012);
+          this.hitStop(50);
         }
       });
 
-      if (heartLost) {
+      if (!shielded && (counterDamage ?? 0) > 0) {
         this.time.delayedCall(420, () => {
           monster.playCounter(this, playerAt);
           this.time.delayedCall(90, () => {
             playSfx("hurt");
             this.player.hurt(monsterAt.x, monsterAt.y);
-            this.cameras.main.shake(200, 0.01);
-            this.cameras.main.flash(160, 190, 30, 30, false);
+            shakeCamera(this.cameras.main, 120, 0.0012);
           });
         });
       }
@@ -676,6 +920,38 @@ export class DungeonScene extends Phaser.Scene {
       this.player.step(dir, this.monsters);
     };
 
+    const onPotionUsed = ({ healed }: { healed: number }) => {
+      playSfx("pickup");
+      const glow = this.add
+        .image(this.player.sprite.x, this.player.sprite.y, "glow")
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(0x8fbd72)
+        .setAlpha(0.7)
+        .setDisplaySize(TILE_SIZE * 4, TILE_SIZE * 4)
+        .setDepth(49);
+      const text = this.add
+        .text(this.player.sprite.x, this.player.sprite.y - 14, `+${healed} HP`, {
+          fontFamily: "monospace",
+          fontSize: "10px",
+          color: "#8fbd72",
+          stroke: "#05070a",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setDepth(60);
+      this.tweens.add({
+        targets: [glow, text],
+        alpha: 0,
+        y: "-=16",
+        duration: 620,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          glow.destroy();
+          text.destroy();
+        },
+      });
+    };
+
     bus.on("encounter:start", onEncounterStart);
     bus.on("encounter:end", onEncounterEnd);
     bus.on("boss:hit", onBossHit);
@@ -684,6 +960,7 @@ export class DungeonScene extends Phaser.Scene {
     bus.on("game:pause", onGamePause);
     bus.on("game:resume", onGameResume);
     bus.on("player:step", onPlayerStep);
+    bus.on("potion:used", onPotionUsed);
 
     this.busOff.push(
       () => bus.off("encounter:start", onEncounterStart),
@@ -694,6 +971,7 @@ export class DungeonScene extends Phaser.Scene {
       () => bus.off("game:pause", onGamePause),
       () => bus.off("game:resume", onGameResume),
       () => bus.off("player:step", onPlayerStep),
+      () => bus.off("potion:used", onPotionUsed),
     );
   }
 
@@ -742,6 +1020,7 @@ export class DungeonScene extends Phaser.Scene {
       room: monster.roomIndex,
       isBoss: monster.isBoss,
       weaknessType: monster.weaknessType,
+      severity: monster.severity,
       evidenceQuote: monster.evidenceQuote,
     });
   }
@@ -772,6 +1051,14 @@ export class DungeonScene extends Phaser.Scene {
     this.unlockBossDoorIfCleared(false);
     this.emitRoomProgress();
 
+    this.chest?.destroy();
+    this.chest = null;
+    this.chestTile = null;
+    this.chestOpened = false;
+    this.stairsMarker?.destroy();
+    this.stairsMarker = null;
+    this.descending = false;
+
     // Teleport player back to spawn
     const { playerSpawn } = this.floorMap;
     this.player.teleport(playerSpawn.x, playerSpawn.y);
@@ -797,6 +1084,7 @@ export class DungeonScene extends Phaser.Scene {
     this.emitPlayerTile();
     if (!this.encounterActive && !this.worldPaused) {
       this.collectLootAt(this.player.getTile());
+      this.openChestAt(this.player.getTile());
     }
     if (this.encounterActive || this.worldPaused) return;
 

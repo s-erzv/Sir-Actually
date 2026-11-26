@@ -16,6 +16,7 @@ import {
   hasSixWordQuote,
   mentionsCitation,
   mentionsLimitation,
+  mentionsSection,
   mentionsSourceNumber,
   type WeaponSlug,
 } from "@/lib/loadout";
@@ -58,6 +59,14 @@ export function signatureUnlocked(weapon: WeaponSlug, ctx: StrikeContext): boole
       return hasSixWordQuote(ctx.answer, ctx.sourceText);
     case "kapak_vonis":
       return ctx.enemyHpRatio <= 0.3;
+    case "belati_presisi":
+      return hasSixWordQuote(ctx.answer, ctx.sourceText);
+    case "jaring_bukti":
+      return mentionsSection(ctx.answer);
+    case "kompas_rujukan":
+      return mentionsCitation(ctx.answer, ctx.citations);
+    case "rantai_batas":
+      return mentionsLimitation(ctx.answer);
     default:
       return false;
   }
@@ -77,14 +86,21 @@ export interface ResolveInput extends StrikeContext {
   monsterAttack: number;
   /** Sena's shield is still unused on this floor. */
   shieldAvailable: boolean;
+  /** Weapon the player picked as their signature in the loadout. */
+  chosenWeaponSlug?: string;
   /** Answers too short to judge are not punished. */
   tooShort?: boolean;
 }
 
 export function resolveCombat(input: ResolveInput): CombatOutcome {
-  const arsenal = ARSENALS[getCharacter(input.characterSlug)?.slug ?? "arka"] ?? ARSENALS.arka!;
-  const signature = input.quality > 0 && signatureUnlocked(arsenal.signature, input);
-  const weaponSlug = signature ? arsenal.signature : arsenal.basic;
+  const character = getCharacter(input.characterSlug);
+  const arsenal = ARSENALS[character?.slug ?? "arka"] ?? ARSENALS.arka!;
+  const weapons = character?.weaponSlugs ?? [];
+  const chosen = weapons.find((slug) => slug === input.chosenWeaponSlug);
+  const signatureSlug = chosen ?? arsenal.signature;
+  const basicSlug = weapons.find((slug) => slug !== signatureSlug) ?? arsenal.basic;
+  const signature = input.quality > 0 && signatureUnlocked(signatureSlug, input);
+  const weaponSlug = signature ? signatureSlug : basicSlug;
   const power = signature ? WEAPON_POWER.signature : WEAPON_POWER.basic;
 
   let damage = Math.round(power * QUALITY_MULTIPLIER[input.quality]);
@@ -95,7 +111,7 @@ export function resolveCombat(input: ResolveInput): CombatOutcome {
   const rawCounter = input.tooShort
     ? 0
     : Math.round(input.monsterAttack * COUNTER_BY_QUALITY[input.quality]);
-  const shielded = rawCounter > 0 && arsenal.basic === "perisai_batas" && input.shieldAvailable;
+  const shielded = rawCounter > 0 && basicSlug === "perisai_batas" && input.shieldAvailable;
 
   return {
     quality: input.quality,

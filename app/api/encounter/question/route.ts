@@ -60,13 +60,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!generated) throw new ApiError("Questioner tidak menghasilkan pertanyaan.", 502);
 
     // Cache fallback questions too, so the answer route can verify them.
-    if (body.encounterKey) {
+    if (body.encounterKey && map.status !== "confirmed") {
       const merged = mergeQuestionBank(map.question_bank, body.encounterKey, [generated]);
       const { error: cacheError } = await admin
         .from("research_maps")
         .update({ question_bank: merged as unknown as Json })
         .eq("id", map.id);
-      if (cacheError) throw new ApiError(cacheError.message, 500);
+      // Confirmed maps are frozen by a DB trigger; the question is still valid.
+      if (cacheError) console.warn("[question cache]", cacheError.message);
     }
 
     return NextResponse.json(generated);

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusTrap } from "@/lib/useFocusTrap";
-import type { WeaknessType } from "@/lib/domain/types";
+import type { EncounterTopic } from "@/lib/domain/types";
 import { authJson } from "@/lib/api/client";
-import { RUBRICS } from "@/lib/rubrics";
+import { COMPREHENSION_RUBRIC, RUBRICS } from "@/lib/rubrics";
 import { PixelSprite } from "@/components/brand/PixelSprite";
 
 interface Debrief {
@@ -29,7 +29,7 @@ interface AdviceModalProps {
   roomOrder?: number;
   findingId?: string;
   bossSlug: string;
-  weaknessType: WeaknessType;
+  weaknessType: EncounterTopic;
   evidenceQuote: string;
   playerAnswer: string;
   missing: string;
@@ -110,7 +110,7 @@ export default function AdviceModal({
     void load();
   }, [load]);
 
-  const rubric = RUBRICS[weaknessType] ?? [];
+  const rubric = weaknessType === "comprehension" ? COMPREHENSION_RUBRIC : (RUBRICS[weaknessType] ?? []);
   const pattern = useMemo(() => {
     return rubric.map((criterion) => {
       const levels = history.flatMap((entry) =>
@@ -196,7 +196,7 @@ export default function AdviceModal({
                     Pola pertarungan
                   </p>
                   <p className="mt-1 text-[0.74rem] leading-5 text-[#4a3a25]">
-                    Rata-rata {average.toFixed(1)} / {scoreMax} poin per jawaban.
+                    Rata-rata {scoreMax > 0 ? Math.round((average / scoreMax) * 100) : 0}% per jawaban.
                   </p>
                   <ul className="mt-3 space-y-2">
                     {pattern.map((criterion) => (

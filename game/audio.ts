@@ -88,8 +88,11 @@ export function currentMusic(): MusicTrack | null {
 function audio(): AudioContext | null {
   if (typeof window === "undefined") return null;
   try {
-    ctx ??= new AudioContext();
-    if (ctx.state === "suspended") void ctx.resume();
+    if (!ctx || ctx.state === "closed") {
+      ctx = new AudioContext();
+      noiseBuffer = null;
+    }
+    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
     return ctx;
   } catch {
     return null;

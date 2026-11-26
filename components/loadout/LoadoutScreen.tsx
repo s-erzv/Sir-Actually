@@ -2,16 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CharacterPortrait } from "@/components/brand/Portrait";
+import { WeaponIcon } from "@/components/loadout/WeaponIcon";
 import QuestPath from "@/components/game/QuestPath";
 import { authJson } from "@/lib/api/client";
 import {
   CHARACTERS,
-  WEAPONS,
+  getWeapon,
   isValidLoadout,
   type CharacterSlug,
   type Loadout,
   type WeaponSlug,
 } from "@/lib/loadout";
+import { ARSENALS } from "@/lib/combat/resolve";
+import { WEAPON_POWER } from "@/lib/balance";
 
 interface LoadoutScreenProps {
   onStart: (loadout: Loadout) => void;
@@ -24,6 +27,7 @@ interface CatalogResponse {
 
 export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
   const [characterSlug, setCharacterSlug] = useState<CharacterSlug>("arka");
+  const [weaponSlug, setWeaponSlug] = useState<WeaponSlug>("pedang_sitasi");
   const [unlocked, setUnlocked] = useState<Set<CharacterSlug>>(
     () =>
       new Set(
@@ -40,8 +44,10 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const character = CHARACTERS.find((item) => item.slug === characterSlug)!;
-  const weaponSlug: WeaponSlug = character.weaponSlugs[0]!;
-  const arsenal = WEAPONS.filter((weapon) => weapon.characterSlug === characterSlug);
+  const loadoutArsenal = ARSENALS[characterSlug] ?? ARSENALS.arka!;
+  const signatureWeapon = getWeapon(weaponSlug);
+  const basicWeaponSlug =
+    character.weaponSlugs.find((slug) => slug !== weaponSlug) ?? loadoutArsenal.basic;
   const targetInfo = unlockTarget
     ? CHARACTERS.find((item) => item.slug === unlockTarget) ?? null
     : null;
@@ -80,7 +86,9 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
       setUnlockTarget(next);
       return;
     }
+    const nextCharacter = CHARACTERS.find((item) => item.slug === next);
     setCharacterSlug(next);
+    if (nextCharacter) setWeaponSlug(nextCharacter.weaponSlugs[0]!);
   }
 
   async function unlockCharacter() {
@@ -224,25 +232,50 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
             <div className="mt-4 flex items-center justify-between gap-2">
               <p className="font-pixel text-[0.56rem] text-gold">Arsenal otomatis</p>
               <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash/70">
-                Server pilih per jawaban
+                Andalan harus dibuka jawaban
               </span>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {arsenal.map((item) => (
-                <div key={item.slug} className="border-2 border-ridge/60 bg-void/40 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-bold text-bone">{item.name}</h3>
-                    <span className="font-pixel text-[0.48rem] text-ash">
-                      x{item.baseBonus.toFixed(2)}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-[0.72rem] leading-5 text-ash">{item.condition}</p>
-                </div>
-              ))}
+            <div className="mt-3 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Pilih senjata andalan">
+              {character.weaponSlugs.map((slug) => {
+                const weapon = getWeapon(slug);
+                const selected = slug === weaponSlug;
+                return (
+                  <button
+                    key={slug}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setWeaponSlug(slug)}
+                    className={`border-2 p-3 text-left transition ${
+                      selected
+                        ? "border-gold bg-gold/10 shadow-[3px_3px_0_#05080b]"
+                        : "border-ridge/60 bg-void/40 hover:border-gold/60"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className={`grid h-11 w-11 place-items-center border-2 ${selected ? "border-gold/60 bg-gold/10 text-gold" : "border-ridge/60 bg-void/50 text-ash"}`}>
+                        <WeaponIcon slug={slug} size={28} />
+                      </span>
+                      <span className={`font-pixel text-[0.46rem] ${selected ? "text-gold" : "text-ash"}`}>
+                        {selected ? "ANDALAN" : "PILIH"}
+                      </span>
+                    </div>
+                    <h3 className="mt-2 text-sm font-bold text-bone">{weapon?.name ?? slug}</h3>
+                    <p className="mt-1 font-pixel text-[0.44rem] text-ash">
+                      {selected ? `DAYA ${WEAPON_POWER.signature}` : `DAYA ${WEAPON_POWER.basic}`}
+                    </p>
+                    <p className="mt-1 text-[0.7rem] leading-5 text-ash">
+                      {selected
+                        ? weapon?.condition ?? "Keluar jika jawaban memenuhi syaratnya."
+                        : "Jadi serangan dasar; selalu bisa dipakai."}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
             <p className="mt-3 text-[0.7rem] leading-5 text-ash/75">
-              Nggak ada menu pilih senjata. Begitu kamu menekan Serang, server mencocokkan
-              jawabanmu dengan arsenal karakter dan memakai senjata yang paling cocok.
+              Pilih satu sebagai senjata andalan. Senjata satunya jadi serangan dasar.
+              Server tetap memilih kapan andalan keluar, sesuai isi jawabanmu.
             </p>
           </section>
 
@@ -260,7 +293,10 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
                 <dt className="text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash">
                   Senjata
                 </dt>
-                <dd className="text-sm font-bold text-gold">Otomatis</dd>
+                <dd className="flex items-center gap-1.5 text-sm font-bold text-gold">
+                  <WeaponIcon slug={weaponSlug} size={16} />
+                  {signatureWeapon?.name ?? weaponSlug}
+                </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash">

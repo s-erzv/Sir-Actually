@@ -16,7 +16,7 @@ import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getLLMProviderForJudge } from "@/lib/llm";
-import { evaluateAnswer } from "@/lib/judge/evaluate";
+import { evaluateAnswer, type EvaluateResult } from "@/lib/judge/evaluate";
 import { COMPREHENSION_RUBRIC, RUBRICS, getScoreMax } from "@/lib/rubrics";
 import { AnswerRequestSchema, AttackTypeSchema, pickTargetCriteria } from "@/lib/encounter/schema";
 import { checkQuestionQuality } from "@/lib/encounter/questionQuality";
@@ -27,7 +27,7 @@ import { heartsForLoadout } from "@/lib/loadout";
 import { answerQuality, usesManuscriptEvidence } from "@/lib/combat/quality";
 import { monsterLevel, monsterStats } from "@/lib/combat/monsterStats";
 import { resolveCombat } from "@/lib/combat/resolve";
-import { HEART_HP, POINTS_DWELLER_WON } from "@/lib/balance";
+import { HEART_HP, MIN_ANSWER_LENGTH, POINTS_DWELLER_WON } from "@/lib/balance";
 import { isDwellerRoom } from "@/lib/dungeon/dwellers";
 import { resolveDwellerClaim } from "@/lib/dungeon/dwellerClaim";
 import { pointsForMonster } from "@/lib/score";
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const { data: run, error: runError } = await admin
       .from("runs")
-      .select("id, research_map_id, status, hearts_left, points_total, character_slug")
+      .select("id, research_map_id, status, hearts_left, points_total, character_slug, weapon_slug")
       .eq("id", body.runId)
       .maybeSingle();
     if (runError) throw new ApiError(runError.message, 500);
@@ -284,24 +284,43 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const provider = getLLMProviderForJudge(body.bossSlug);
-    if (provider.providerName === "dummy") {
+    // A too-short answer deals no damage and draws no counter (BRIEF §13.4).
+    // Skip the Judge entirely: no model call, no score, no Heart loss.
+    const tooShort = body.answer.trim().length < MIN_ANSWER_LENGTH;
+    const provider = tooShort ? null : getLLMProviderForJudge(body.bossSlug);
+    if (provider?.providerName === "dummy") {
       throw new ApiError("LLM belum dikonfigurasi untuk menilai jawaban.", 503);
     }
 
-    const judged = await evaluateAnswer(provider, {
-      playerAnswer: body.answer,
-      question: questionText,
-      evidenceQuote,
-      weaknessType,
-      targetCriteria,
-      sourceText: map.source_text,
-      knownCitations: (citations ?? []).map((citation) => citation.raw_text),
-      contextChunks: retrieval.chunks.map((chunk) => ({
-        section: chunk.sectionLabel,
-        text: chunk.text,
-      })),
-    });
+    const judged: EvaluateResult = tooShort
+      ? {
+          scores: rubricIds.map((id) => ({ criterionId: id, level: 0, quote: "", capApplied: false })),
+          caps: [],
+          scoreTotal: 0,
+          missing: "Jawaban terlalu pendek. Tulis dulu minimal 12 karakter.",
+          addressed: false,
+          heartLost: false,
+          rawOutput: {
+            criteria: rubricIds.map((id) => ({ id, level: 0, quote: "" })),
+            missing: "Jawaban terlalu pendek.",
+            addressed: false,
+            verdict: "nonsense",
+          },
+          judgedBy: "code",
+        }
+      : await evaluateAnswer(provider!, {
+          playerAnswer: body.answer,
+          question: questionText,
+          evidenceQuote,
+          weaknessType,
+          targetCriteria,
+          sourceText: map.source_text,
+          knownCitations: (citations ?? []).map((citation) => citation.raw_text),
+          contextChunks: retrieval.chunks.map((chunk) => ({
+            section: chunk.sectionLabel,
+            text: chunk.text,
+          })),
+        });
     const { rawOutput, scores, caps, scoreTotal, addressed } = judged;
 
     // The run's own character decides the arsenal; the client cannot pick one.
@@ -313,9 +332,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const playerHpBefore = Math.min(playerHpMax, run.hearts_left);
 
     const usedEvidence = usesManuscriptEvidence(body.answer, map.source_text, citationTexts);
-    const quality = answerQuality({ scoreTotal, scoreMax, addressed, usedEvidence });
+    const quality = tooShort
+      ? 0
+      : answerQuality({ scoreTotal, scoreMax, addressed, usedEvidence });
     const strike = {
       characterSlug,
+      chosenWeaponSlug: run.weapon_slug ?? undefined,
       quality,
       usedEvidence,
       answer: body.answer,
@@ -325,7 +347,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       firstAnswer: previousQuestionsAsked === 0,
       monsterAttack: stats.attack,
     };
-    let combat = resolveCombat({ ...strike, shieldAvailable: true });
+    let combat = resolveCombat({ ...strike, shieldAvailable: true, tooShort });
 
     // Sena's Perisai Batas: once per floor, cancel one counter-attack.
     if (combat.shielded) {
@@ -338,7 +360,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
       if (shieldError) {
         if (shieldError.code !== "23505") throw new ApiError(shieldError.message, 500);
-        combat = resolveCombat({ ...strike, shieldAvailable: false });
+        combat = resolveCombat({ ...strike, shieldAvailable: false, tooShort });
       }
     }
 
@@ -448,7 +470,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       missing: rawOutput.missing,
       rule_caps: caps as unknown as Json,
       raw_judge_output: rawOutput as unknown as Json,
-      judge_model: provider.modelName,
+      judge_model: provider?.modelName ?? "short_answer",
       prompt_version: JUDGE_PROMPT_VERSION,
     });
     if (evaluationError) throw new ApiError(evaluationError.message, 500);

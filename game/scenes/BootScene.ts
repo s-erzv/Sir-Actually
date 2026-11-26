@@ -95,6 +95,10 @@ export class BootScene extends Phaser.Scene {
       frameWidth: 20,
       frameHeight: 30,
     });
+    this.load.image("fx-arrow", "/assets/ninja-adventure/fx/arrow.png");
+    this.load.image("fx-shield", "/assets/ninja-adventure/fx/shield.png");
+    this.load.image("item-potion", "/assets/ninja-adventure/items/potion.png");
+    this.load.image("item-chest", "/assets/ninja-adventure/items/chest.png");
   }
 
   create(): void {
@@ -281,6 +285,10 @@ export class BootScene extends Phaser.Scene {
           repeat: -1,
         });
       }
+    }
+
+    for (const key of ["fx-arrow", "fx-shield", "item-potion", "item-chest"]) {
+      if (this.textures.exists(key)) this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
 
     const fxFrames: Record<string, number> = { "fx-cut": 4, "fx-cut-double": 5 };

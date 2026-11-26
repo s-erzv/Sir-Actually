@@ -28,7 +28,7 @@ const BODY = z.object({
 function shopState(wallet: Wallet, storedHp: number, characterSlug: string | null) {
   return {
     coins: wallet.coins,
-    potions: wallet.potions,
+    potions: wallet.potions.length,
     bagMax: POTION_BAG_MAX,
     ...playerVitals(storedHp, characterSlug),
     items: SHOP_ITEM_SLUGS.map((slug) => ({ slug, ...SHOP_ITEMS[slug] })),
@@ -60,18 +60,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const admin = getAdminSupabase();
     const run = await loadOwnedActiveRun(admin, body.runId, user.id);
 
-    // The chest only exists once this floor's boss has fallen.
-    const { data: boss, error: bossError } = await admin
-      .from("encounters")
-      .select("id")
-      .eq("run_id", run.id)
-      .eq("floor_order", body.floor)
-      .eq("is_boss", true)
-      .eq("status", "won")
-      .limit(1);
-    if (bossError) throw new ApiError(bossError.message, 500);
-    if (!boss || boss.length === 0) {
-      throw new ApiError("Peti harta baru terbuka setelah boss lantai ini kalah.", 403);
+    // The chest only exists once this floor's boss has fallen. In dev the
+    // merchant stands anywhere so coins can be tested from the first floor.
+    if (process.env.NODE_ENV === "production") {
+      const { data: boss, error: bossError } = await admin
+        .from("encounters")
+        .select("id")
+        .eq("run_id", run.id)
+        .eq("floor_order", body.floor)
+        .eq("is_boss", true)
+        .eq("status", "won")
+        .limit(1);
+      if (bossError) throw new ApiError(bossError.message, 500);
+      if (!boss || boss.length === 0) {
+        throw new ApiError("Peti harta baru terbuka setelah boss lantai ini kalah.", 403);
+      }
     }
 
     const shopKey = `shop:${body.purchaseId}`;

@@ -45,9 +45,9 @@ describe("usesManuscriptEvidence", () => {
 
 describe("monsterStats", () => {
   it("naik bersama level dan lantai", () => {
-    expect(monsterStats("minion", 1)).toEqual({ hp: 45, attack: 30, maxQuestions: 2 });
-    expect(monsterStats("minion", 3)).toEqual({ hp: 61, attack: 46, maxQuestions: 3 });
-    expect(monsterStats("boss", 2)).toEqual({ hp: 125, attack: 70, maxQuestions: 4 });
+    expect(monsterStats("minion", 1)).toEqual({ hp: 45, attack: 30, maxQuestions: 3 });
+    expect(monsterStats("minion", 3)).toEqual({ hp: 61, attack: 46, maxQuestions: 4 });
+    expect(monsterStats("boss", 2)).toEqual({ hp: 125, attack: 70, maxQuestions: 6 });
     expect(monsterStats("boss", 6).attack).toBe(100);
     expect(monsterStats("dweller", 1)).toEqual({ hp: 22, attack: 20, maxQuestions: 1 });
   });
@@ -135,5 +135,29 @@ describe("resolveCombat", () => {
     expect(shielded).toMatchObject({ counterDamage: 0, shielded: true });
     const spent = resolveCombat({ ...base, characterSlug: "sena", quality: 0, shieldAvailable: false });
     expect(spent).toMatchObject({ counterDamage: 30, shielded: false });
+  });
+});
+
+describe("pilihan senjata pemain", () => {
+  const base = {
+    answer: "Menurut sumber yang saya kutip, data ini diambil dari bagian metode.",
+    sourceText: "Data diambil dari bagian metode penelitian.",
+    citations: ["Sugiyono. (2019). Metode."],
+    enemyHpRatio: 1,
+    firstAnswer: false,
+    characterSlug: "mira",
+    quality: 5 as const,
+    usedEvidence: true,
+    monsterAttack: 30,
+    shieldAvailable: false,
+  };
+
+  it("senjata pilihan jadi andalan, senjata lain jadi dasar", () => {
+    const withChosen = resolveCombat({ ...base, chosenWeaponSlug: "jaring_bukti" });
+    expect(withChosen.weaponKind).toBe("signature");
+    expect(withChosen.weaponSlug).toBe("jaring_bukti");
+    const withoutChosen = resolveCombat(base);
+    expect(withoutChosen.weaponKind).toBe("basic");
+    expect(withoutChosen.weaponSlug).toBe("jaring_bukti");
   });
 });

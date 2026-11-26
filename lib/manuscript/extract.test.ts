@@ -9,6 +9,16 @@ describe("htmlToMarkdown", () => {
     expect(md).not.toContain("**");
   });
 
+  it("unescapes numbered heading punctuation from DOCX headings", () => {
+    const md = htmlToMarkdown(
+      "<h1>1. Pendahuluan</h1><h2>2. Metode Penelitian</h2><h1>4. Kesimpulan</h1>",
+    );
+    expect(md).toContain("# 1. Pendahuluan");
+    expect(md).toContain("## 2. Metode Penelitian");
+    expect(md).toContain("# 4. Kesimpulan");
+    expect(md).not.toContain("\\.");
+  });
+
   it("removes scripts and images", () => {
     const md = htmlToMarkdown('<p>Halo</p><script>alert(1)</script><img src="x.png">');
     expect(md).toBe("Halo");

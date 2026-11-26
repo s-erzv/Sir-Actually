@@ -248,9 +248,9 @@ export async function generateEncounterQuestions(
 }
 
 const DWELLER_TEMPLATES = [
-  "Jelaskan dengan kata-katamu sendiri apa maksud bagian ini dan apa dasarnya di naskahmu?",
-  "Bagaimana kamu menjelaskan bagian ini kepada orang di luar bidangmu, dan apa buktinya di naskah?",
-  "Mengapa bagian ini penting untuk penelitianmu, dan di bagian mana naskahmu mendukungnya?",
+  "Coba jelasin pakai kata-katamu sendiri, bagian ini maksudnya apa? Dasarnya di naskah yang mana?",
+  "Kalau ngobrol sama orang di luar bidangmu, gimana kamu jelasin bagian ini? Buktinya di naskah mana?",
+  "Kenapa bagian ini penting buat penelitianmu, dan di bagian mana naskahmu mendukungnya?",
 ];
 
 /**
@@ -290,7 +290,7 @@ Kutipan naskahnya:
 ${claim.sourceQuote.slice(0, 900)}
 <<<END_EVIDENCE>>>
 
-Tulis SATU pertanyaan (maksimal ${maxWords} kata) yang meminta pemain menjelaskan klaim ini dengan kata-katanya sendiri atau menunjukkan dasarnya di naskah. Sebut hal spesifik dari klaim itu. Jangan menyebut jawabannya.`,
+Tulis SATU pertanyaan (maksimal ${maxWords} kata) dengan gaya santai seperti ngobrol, yang meminta pemain menjelaskan klaim ini dengan kata-katanya sendiri atau menunjukkan dasarnya di naskah. Sebut hal spesifik dari klaim itu. Jangan menyebut jawabannya.`,
       0.3,
     );
     fromModel = check(question).ok;

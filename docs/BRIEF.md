@@ -129,6 +129,10 @@ Status verifikasi migration: dijalankan di PGlite 0.3.4 (Postgres WASM + pgvecto
 
 ## 7. Aturan game dan balance
 
+> **Dungeon RPG v2 (17 Nov 2026):** rumus damage, Heart (1 Heart = 100 HP),
+> level monster, harta, ramuan, dan senjata di bagian ini digantikan oleh
+> `docs/superpowers/specs/2026-11-17-dungeon-rpg-v2-design.md`.
+
 ### Roster Monster & Hierarki Penamaan (Universe Dark Fantasy Original)
 
 Sir, Actually mengusung semesta dark fantasy original dengan fonetik konsisten: dark, ancient, alien, dan berkarakter kuat.
@@ -550,6 +554,10 @@ Tidak ada timer di MVP. Tekanan datang dari pertanyaan dan Heart, bukan countdow
 
 ### 13.2 Karakter dan senjata
 
+> **Dungeon RPG v2 (17 Nov 2026):** loadout 5 karakter, senjata dasar/andalan,
+> dan `weaponBonus` 0,95–1,10 digantikan oleh
+> `docs/superpowers/specs/2026-11-17-dungeon-rpg-v2-design.md` §2.
+
 Tiga karakter, masing-masing dua senjata. Semua terbuka di MVP; tidak ada shop dan tidak ada pay-to-win.
 
 | Slug | Karakter | Peran | Pasif | Heart awal |
@@ -613,6 +621,10 @@ type FloorPlan = {
 - Tidak ada pertanyaan yang menyuruh pemain menebak jawaban benar. Semua pertanyaan harus bisa dijawab dari naskah atau alasan eksplisit pemain.
 
 ### 13.5 Poin dan rank
+
+> **Dungeon RPG v2 (17 Nov 2026):** poin = koin, rank dari poin kotor (belanja
+> tidak menurunkan rank), dan toko/peti digantikan oleh
+> `docs/superpowers/specs/2026-11-17-dungeon-rpg-v2-design.md` §6.
 
 Semua poin dihitung **server** dan disimpan sebagai event; angka di klien hanya tampilan.
 

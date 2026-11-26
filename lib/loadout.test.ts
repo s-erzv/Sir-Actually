@@ -49,10 +49,10 @@ describe("loadout", () => {
     expect(bonus).toBe(1.1);
   });
 
-  it("keeps paid characters locked until unlocked", () => {
-    expect(isCharacterUnlocked("kiran", [])).toBe(false);
-    expect(isCharacterUnlocked("kiran", ["kiran"])).toBe(true);
-    expect(isCharacterUnlocked("arka", null)).toBe(true);
+  it("unlocks every character for every player", () => {
+    expect(isCharacterUnlocked("kiran", [])).toBe(true);
+    expect(isCharacterUnlocked("vara", null)).toBe(true);
+    expect(isCharacterUnlocked("arka", [])).toBe(true);
   });
 
   it("auto-picks the weapon whose condition matches the answer", () => {

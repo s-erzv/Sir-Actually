@@ -4,7 +4,7 @@ import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getLLMProviderForBoss } from "@/lib/llm";
-import { RUBRICS } from "@/lib/rubrics";
+import { COMPREHENSION_RUBRIC, RUBRICS } from "@/lib/rubrics";
 import { BOSS_ROSTER, MINION_ROSTER, getMonsterDisplayName } from "@/lib/monsters";
 import { DEBRIEF_SYSTEM, PROMPT_VERSION, buildDebriefPrompt } from "@/lib/prompts/debrief_v1";
 import { retrieveChunks } from "@/lib/rag/retrieve";
@@ -98,8 +98,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .order("position");
     if (claimsError) throw new ApiError(claimsError.message, 500);
 
-    const weaknessType = (finding?.weakness_type ?? body.weaknessType) as WeaknessType;
-    const rubric = RUBRICS[weaknessType];
+    const weaknessType = (finding?.weakness_type ?? body.weaknessType) as WeaknessType | "comprehension";
+    const rubric =
+      weaknessType === "comprehension" ? COMPREHENSION_RUBRIC : RUBRICS[weaknessType];
     if (!rubric) throw new ApiError("Rubrik tidak ditemukan.", 422);
     const ids = new Set(rubric.map((criterion) => criterion.id));
     const history = body.history ?? [];

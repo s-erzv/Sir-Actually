@@ -74,6 +74,17 @@ and license. Only CC0 (Creative Commons Zero) assets are used.
 - **Source**: https://pixel-boy.itch.io/ninja-adventure-asset-pack (files taken from the
   author's repository, https://github.com/pixel-boy/NinjaAdventure)
 - **License**: CC0
-- **Files**: `public/assets/ninja-adventure/characters/` (64x112 sheets, 16x16 frames:
-  columns down/up/left/right, rows 0-3 walk, row 4 attack)
-- **Used for**: animated player characters (`lib/sprites/sheets.ts`)
+- **Files**:
+  - `public/assets/ninja-adventure/characters/` (64x112 sheets, 16x16 frames:
+    columns down/up/left/right, rows 0-3 walk, row 4 attack) — animated player
+    characters (`lib/sprites/sheets.ts`).
+  - `public/assets/ninja-adventure/monsters/` and `bosses/` — monster idle/walk/hit
+    sheets (`lib/sprites/monsters.ts`).
+  - `public/assets/ninja-adventure/portraits/` and `faces/` — character and monster
+    portraits (`components/brand/Portrait.tsx`). `faces-transparent/` contains the
+    same face sprites with the opaque backdrop keyed out for UI use.
+  - `public/assets/ninja-adventure/items/` — chest and potion sprites (`DungeonScene`).
+  - `public/assets/ninja-adventure/fx/` — arrow, shield, slash, flame and cut effects
+    (`Player` attack styles, monster hits).
+  - `public/assets/ninja-adventure/audio/music/` and `audio/sfx/` — floor/fight music
+    and sound effects (`game/audio.ts`).

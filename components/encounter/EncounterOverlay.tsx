@@ -4,17 +4,19 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { bus } from "@/game/bus";
 import type { GameEvents } from "@/game/bus";
 import type {
-  WeaknessType,
+  CombatOutcome,
+  EncounterTopic,
   EvaluationResult,
   EncounterStatus,
+  MonsterKind,
 } from "@/lib/domain/types";
+import { COMPREHENSION } from "@/lib/domain/types";
 import type { GeneratedQuestion } from "@/lib/encounter/schema";
-import { BOSS_HP, MINION_HP, MAX_QUESTIONS_BOSS, MAX_QUESTIONS_MINION } from "@/lib/balance";
+import { HEART_HP, MAX_ANSWER_LENGTH, MIN_ANSWER_LENGTH } from "@/lib/balance";
+import { monsterLevel, monsterStats } from "@/lib/combat/monsterStats";
 import { getWeapon, type Loadout } from "@/lib/loadout";
-import { MONSTER_LEVEL_LABELS, monsterLevelFor } from "@/lib/planner/difficulty";
 import { getMonsterDisplayName } from "@/lib/monsters";
 import { authJson } from "@/lib/api/client";
-import { useFocusTrap } from "@/lib/useFocusTrap";
 import { PixelSprite } from "@/components/brand/PixelSprite";
 import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
 import HeartDisplay from "./HeartDisplay";
@@ -30,7 +32,7 @@ function wait(ms: number): Promise<void> {
   });
 }
 
-function fallbackWeakness(bossSlug: string, provided?: WeaknessType): WeaknessType {
+function fallbackTopic(bossSlug: string, provided?: EncounterTopic): EncounterTopic {
   if (provided) return provided;
   if (bossSlug === "nyxara") return "citation_claim_mismatch";
   if (bossSlug === "eldravos") return "conclusion_overclaim";
@@ -43,7 +45,7 @@ function fallbackWeakness(bossSlug: string, provided?: WeaknessType): WeaknessTy
 
 interface EncounterRuntimeState {
   encounter: EncounterData;
-  weaknessType: WeaknessType;
+  weaknessType: EncounterTopic;
   evidenceQuote: string;
   hp: number;
   hpMax: number;
@@ -67,6 +69,12 @@ interface EncounterRuntimeState {
   lastLootAwarded: number;
   lastLootKind: "zonk" | "coins" | "gem";
   lastPointsTotal: number;
+  combat: CombatOutcome | null;
+  monsterLevel: number;
+  monsterHpMax: number;
+  maxQuestions: number;
+  playerHp: number;
+  playerHpMax: number;
   history: Array<{ answer: string; evaluation: EvaluationResult }>;
 }
 
@@ -75,10 +83,12 @@ interface EncounterOverlayProps {
   onHeartsChange: (hearts: number) => void;
   researchMapId: string;
   loadout: Loadout;
+  playerName?: string;
   heartsMax: number;
   runId: string;
   questionBank?: Record<string, GeneratedQuestion[]>;
   onPointsChange: (points: number) => void;
+  onHpChange?: (hp: number, hpMax: number) => void;
 }
 
 export default function EncounterOverlay({
@@ -86,10 +96,12 @@ export default function EncounterOverlay({
   onHeartsChange,
   researchMapId,
   loadout,
+  playerName,
   heartsMax,
   runId,
   questionBank,
   onPointsChange,
+  onHpChange,
 }: EncounterOverlayProps) {
   const [state, setState] = useState<EncounterRuntimeState | null>(null);
   const [answer, setAnswer] = useState("");
@@ -103,7 +115,7 @@ export default function EncounterOverlay({
   const [indexLoading, setIndexLoading] = useState(false);
   const [attackPhase, setAttackPhase] = useState<"idle" | "attack" | "waiting" | "hit">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(state));
+  const panelRef = useRef<HTMLElement>(null);
 
   const adviceScores = useMemo(
     () =>
@@ -135,8 +147,15 @@ export default function EncounterOverlay({
             targetCriterionIds: string[] | null;
           };
           hearts: number;
+          hp: number;
+          hpMax: number;
         }>(`/api/encounter/state?${params.toString()}`);
         onHeartsChange(data.hearts);
+        setState((prev) =>
+          prev
+            ? { ...prev, playerHp: data.hp, playerHpMax: data.hpMax }
+            : prev,
+        );
         if (!data.encounter) return;
         const saved = data.encounter;
         setState((prev) =>
@@ -145,6 +164,7 @@ export default function EncounterOverlay({
                 ...prev,
                 hp: saved.hp,
                 hpMax: saved.hpMax,
+                monsterHpMax: saved.hpMax,
                 questionsAsked: saved.questionsAsked,
                 status: saved.status,
               }
@@ -203,7 +223,7 @@ export default function EncounterOverlay({
           researchMapId,
           encounterKey: encounter.encounterKey,
           bossSlug: encounter.bossSlug,
-          weaknessType: fallbackWeakness(encounter.bossSlug, encounter.weaknessType),
+          weaknessType: fallbackTopic(encounter.bossSlug, encounter.weaknessType),
           evidenceQuote: encounter.evidenceQuote ?? "",
           previousQuestions,
           previousAttackTypes,
@@ -255,9 +275,12 @@ export default function EncounterOverlay({
 
   useEffect(() => {
     const onStart = (data: EncounterData) => {
-      const wt = fallbackWeakness(data.bossSlug, data.weaknessType);
+      const wt = fallbackTopic(data.bossSlug, data.weaknessType);
       const isBoss = data.isBoss ?? data.bossSlug.startsWith("boss");
-      const hpMax = isBoss ? BOSS_HP : MINION_HP;
+      const kind: MonsterKind = wt === COMPREHENSION ? "dweller" : isBoss ? "boss" : "minion";
+      const level = monsterLevel({ kind, floorOrder: data.floor, severity: data.severity });
+      const stats = monsterStats(kind, level);
+      const hpMax = stats.hp;
       const bank = questionBank?.[data.encounterKey] ?? [];
       const first = bank[0] ?? null;
 
@@ -287,6 +310,12 @@ export default function EncounterOverlay({
         lastLootAwarded: 0,
         lastLootKind: "zonk",
         lastPointsTotal: 0,
+        combat: null,
+        monsterLevel: level,
+        monsterHpMax: stats.hp,
+        maxQuestions: stats.maxQuestions,
+        playerHp: hearts * HEART_HP,
+        playerHpMax: heartsMax * HEART_HP,
         history: [],
       });
       setAnswer("");
@@ -302,7 +331,18 @@ export default function EncounterOverlay({
 
     bus.on("encounter:start", onStart);
     return () => bus.off("encounter:start", onStart);
-  }, [requestQuestion, questionBank, syncEncounterState]);
+  }, [requestQuestion, questionBank, syncEncounterState, hearts, heartsMax]);
+
+  // Short landscape screens make the story column scroll; keep the live part
+  // (answer composer, then the result) inside the visible area.
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || panel.scrollHeight <= panel.clientHeight) return;
+    panel.scrollTo({
+      top: state?.showBreakdown ? panel.scrollHeight : 0,
+      behavior: "smooth",
+    });
+  }, [state?.question, state?.showBreakdown]);
 
   // ── Resolve encounter (close overlay, emit bus event) ────────────────────
 
@@ -324,6 +364,10 @@ export default function EncounterOverlay({
 
   const handleSubmit = useCallback(async () => {
     if (!state || submitting || !state.question || answer.trim().length === 0) return;
+    if (answer.trim().length < MIN_ANSWER_LENGTH) {
+      setAnswerError("Tulis dulu — minimal 12 karakter. Jawaban pendek tidak memotong Heart.");
+      return;
+    }
     setSubmitting(true);
     setAnswerError(null);
     setAttackPhase("attack");
@@ -341,6 +385,11 @@ export default function EncounterOverlay({
         lootKind: "zonk" | "coins" | "gem";
         pointsTotal: number;
         weaponUsed: string | null;
+        combat: CombatOutcome;
+        hp: number;
+        hpMax: number;
+        monsterLevel: number;
+        monsterHpMax: number;
       }>("/api/encounter/answer", {
         method: "POST",
         body: JSON.stringify({
@@ -371,10 +420,20 @@ export default function EncounterOverlay({
       setAttackPhase("hit");
       bus.emit("boss:hit", {
         encounterId: state.encounter.encounterId,
-        damage: data.evaluation.damage,
+        damage: data.combat.damage,
+        quality: data.combat.quality,
+        qualityLabel: data.combat.qualityLabel,
+        attackStyle: data.combat.attackStyle,
+        weaponName: data.combat.weaponName,
+        weaponKind: data.combat.weaponKind,
+        counterDamage: data.combat.counterDamage,
+        shielded: data.combat.shielded,
+        monsterHp: data.newHp,
+        monsterHpMax: data.monsterHpMax,
         heartLost: data.evaluation.heartLost,
       });
       onHeartsChange(data.newHearts);
+      onHpChange?.(data.hp, data.hpMax);
       onPointsChange(data.pointsTotal);
 
       setState((prev) =>
@@ -386,7 +445,12 @@ export default function EncounterOverlay({
               status: data.encounterStatus,
               lastEvaluation: data.evaluation,
               lastAnswer: answer,
-              lastWeapon: data.weaponUsed,
+              lastWeapon: data.combat.weaponSlug,
+              combat: data.combat,
+              monsterLevel: data.monsterLevel,
+              monsterHpMax: data.monsterHpMax,
+              playerHp: data.hp,
+              playerHpMax: data.hpMax,
               lastPointsAwarded: data.pointsAwarded,
               lastLootAwarded: data.lootAwarded,
               lastLootKind: data.lootKind,
@@ -411,7 +475,7 @@ export default function EncounterOverlay({
       setSubmitting(false);
       setAnswerError(err instanceof Error ? err.message : "Gagal menilai jawaban.");
     }
-  }, [state, answer, submitting, hearts, onHeartsChange, researchMapId, loadout, runId, onPointsChange]);
+  }, [state, answer, submitting, hearts, onHeartsChange, onHpChange, researchMapId, loadout, runId, onPointsChange]);
 
   // ── Continue after score breakdown ────────────────────────────────────────
 
@@ -514,6 +578,7 @@ export default function EncounterOverlay({
 
   const handleObjection = useCallback(async () => {
     if (!state) return;
+    setAnswerError(null);
     try {
       await authJson("/api/encounter/dispute", {
         method: "POST",
@@ -527,8 +592,10 @@ export default function EncounterOverlay({
           isBoss: state.encounter.isBoss ?? state.encounter.bossSlug.startsWith("boss"),
         }),
       });
-    } catch {
-      // Keep the local resolution; the room can be disputed again next run.
+    } catch (err) {
+      // Objection quota lives on the server; keep the fight open if it refuses.
+      setAnswerError(err instanceof Error ? err.message : "Objection! ditolak.");
+      return;
     }
     resolveEncounter("disputed");
   }, [state, resolveEncounter, runId]);
@@ -592,12 +659,7 @@ export default function EncounterOverlay({
 
   const bossName      = getMonsterDisplayName(encounter.bossSlug) || "Examiner";
   const isBoss        = encounter.isBoss ?? encounter.bossSlug.startsWith("boss");
-  const level         = monsterLevelFor({
-    floorOrder: encounter.floor,
-    roomOrder: encounter.room,
-    isBoss,
-    bossSlug: encounter.bossSlug,
-  });
+  const level         = state.monsterLevel;
 
   // Show Kitab Nasihat
   if (showAdvice) {
@@ -629,82 +691,104 @@ export default function EncounterOverlay({
   }
 
   return (
-    <div className="game-fade fixed inset-0 z-50 flex items-center justify-center bg-[#05080b]/88 px-3 py-4 backdrop-blur-[3px]">
+    <div className="comic-overlay game-fade fixed inset-0 z-50 flex flex-col justify-end">
       <div
-        ref={dialogRef}
         role="dialog"
-        aria-modal="true"
         aria-label="Pertarungan"
-        className={`game-screen-in max-h-[94vh] w-full max-w-3xl overflow-y-auto border-2 bg-[#0a0f14] shadow-[8px_8px_0_#05080b] ${
+        className={`comic-dock game-screen-in max-h-[100dvh] w-full overflow-y-auto border-t-4 bg-[#0a0f14] shadow-[0_-8px_0_rgba(0,0,0,0.35)] ${
           isBoss ? "border-gold" : "border-ridge"
         }`}
       >
-        <div className="flex items-center justify-between gap-3 border-b-2 border-void bg-tomb px-3 py-2">
+        <div className="comic-strip-bar flex items-center justify-between gap-3 px-3 py-2">
           <span className="font-pixel text-[0.54rem] text-gold">
-            PERTARUNGAN · LANTAI {encounter.floor} · RUANG {encounter.room + 1}
+            PERTARUNGAN · LANTAI {encounter.floor} ·{" "}
+            {weaknessType === COMPREHENSION ? "LORONG" : `RUANG ${encounter.room + 1}`}
           </span>
           <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash">
             {statusLabel(status)} · Tingkat {level}
           </span>
         </div>
 
-        <div className="grid gap-0 lg:grid-cols-[0.82fr_1.18fr]">
-          <aside className="tile-floor relative border-b-2 border-void p-3 lg:border-b-0 lg:border-r-2">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(233,184,93,0.14),transparent_65%)]" aria-hidden="true" />
+        <div className="comic-grid grid gap-0 sm:grid-cols-[0.9fr_1.1fr]">
+          <aside className="comic-panel comic-panel-monster relative border-b-2 border-void p-3 sm:border-b-0 sm:border-r-2">
+            <div className="comic-halftone" aria-hidden="true" />
 
-            <div className={`battle-arena relative h-36 overflow-hidden border-2 border-void bg-[#070b10] ${attackPhase === "hit" ? "battle-arena-hit" : ""}`}>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#0a0f14] to-transparent" aria-hidden="true" />
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(233,184,93,0.1),transparent_65%)]" aria-hidden="true" />
-              <span className="absolute left-2 top-2 font-pixel text-[0.46rem] text-moss">KAMU</span>
-              <span className="absolute right-2 top-2 font-pixel text-[0.46rem] text-blood">
-                {isBoss ? "BOSS" : "ANTEK"} · T{level} {MONSTER_LEVEL_LABELS[level]}
+            {evidenceQuote ? (
+              <p className="comic-caption relative z-10">
+                <span>Kutipan yang diserang</span>
+                “{evidenceQuote}”
+              </p>
+            ) : null}
+
+            <div className={`comic-arena relative z-10 h-40 overflow-hidden border-2 border-void ${attackPhase === "hit" ? "is-hit" : ""}`}>
+              <div className="comic-sky" aria-hidden="true" />
+              <span className="absolute left-2 top-2 z-20 font-pixel text-[0.46rem] text-moss">KAMU</span>
+              <span className="absolute right-2 top-2 z-20 font-pixel text-[0.46rem] text-blood">
+                {weaknessType === COMPREHENSION ? "PENGHUNI" : isBoss ? "BOSS" : "ANTEK"} · Lv {level}
               </span>
 
-              <div className={`battle-player absolute bottom-3 left-[13%] ${attackPhase === "attack" ? "battle-player-attack" : ""}`}>
+              {attackPhase === "attack" || attackPhase === "hit" ? (
+                <div className="comic-speed-lines" aria-hidden="true" />
+              ) : null}
+
+              <div className={`comic-player absolute bottom-3 left-[11%] ${attackPhase === "attack" ? "is-attacking" : ""}`}>
                 <CharacterPortrait
                   slug={loadout.characterSlug}
-                  size={72}
+                  size={isBoss ? 78 : 68}
                   className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
                 />
               </div>
 
-              <div className={`battle-monster absolute bottom-3 right-[10%] ${attackPhase === "hit" ? "battle-monster-hit" : ""} ${attackPhase === "hit" && lastEvaluation?.damage === 0 ? "battle-monster-miss" : ""} ${status === "won" ? "battle-monster-dead" : ""}`}>
+              <div className={`comic-monster absolute bottom-3 right-[9%] ${attackPhase === "hit" ? (lastEvaluation?.damage === 0 ? "is-miss" : "is-hit") : ""} ${status === "won" ? "is-dead" : ""}`}>
                 <MonsterPortrait
                   slug={encounter.bossSlug}
                   isBoss={isBoss}
-                  size={isBoss ? 108 : 88}
+                  size={isBoss ? 116 : 92}
                   className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
                 />
+                <span className={`comic-nameplate ${isBoss ? "is-boss" : ""}`}>{bossName}</span>
               </div>
 
               {attackPhase === "attack" ? (
                 <>
-                  <span className="battle-slash" aria-hidden="true" />
-                  <span className="battle-slash battle-slash-b" aria-hidden="true" />
+                  <span className="comic-slash" aria-hidden="true" />
+                  <span className="comic-slash is-second" aria-hidden="true" />
                 </>
               ) : null}
-              {attackPhase === "hit" ? <span className="battle-impact" aria-hidden="true" /> : null}
+
               {attackPhase === "hit" && lastEvaluation ? (
-                <span
-                  key={`${lastEvaluation.damage}-${state.questionsAsked}`}
-                  className={`battle-damage ${lastEvaluation.damage > 0 ? "battle-damage-hit" : ""}`}
-                  aria-hidden="true"
-                >
-                  {lastEvaluation.damage > 0 ? `-${lastEvaluation.damage}` : "MISS"}
-                </span>
+                <>
+                  <span
+                    key={`word-${state.questionsAsked}`}
+                    className={`comic-impact-word ${lastEvaluation.damage > 0 ? "" : "is-miss"}`}
+                    aria-hidden="true"
+                  >
+                    {lastEvaluation.damage <= 0
+                      ? "MELESET!"
+                      : state.combat?.attackStyle === "bow"
+                        ? "TEMBAK!"
+                        : state.combat?.attackStyle === "axe"
+                          ? "TEBAS GANDA!"
+                          : state.combat?.attackStyle === "shield"
+                            ? "HANTAM!"
+                            : "TEBAS!"}
+                  </span>
+                  <span
+                    key={`damage-${lastEvaluation.damage}-${state.questionsAsked}`}
+                    className={`comic-damage ${lastEvaluation.damage > 0 ? "is-hit" : ""}`}
+                    aria-hidden="true"
+                  >
+                    {lastEvaluation.damage > 0 ? `−${lastEvaluation.damage}` : "0"}
+                  </span>
+                </>
               ) : null}
             </div>
 
-            <div className="relative mt-3">
-              <h2 className={`text-xl font-bold leading-tight sm:text-2xl ${isBoss ? "text-blood" : "text-gold"}`}>
-                {bossName}
-              </h2>
-              <div className="mt-2">
-                <HpBar hp={hp} hpMax={hpMax} />
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="relative z-10 mt-2">
+              <HpBar hp={hp} hpMax={hpMax} />
+              <div className="mt-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1" aria-label={`Serangan ${state.questionsAsked}`}>
-                  {Array.from({ length: isBoss ? MAX_QUESTIONS_BOSS : MAX_QUESTIONS_MINION }).map((_, index) => (
+                  {Array.from({ length: state.maxQuestions }).map((_, index) => (
                     <span
                       key={index}
                       className="turn-pip"
@@ -713,24 +797,138 @@ export default function EncounterOverlay({
                     />
                   ))}
                 </div>
-                <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash">
-                  Serangan {state.questionsAsked}/{isBoss ? MAX_QUESTIONS_BOSS : MAX_QUESTIONS_MINION}
+                <span className="text-[0.54rem] font-bold uppercase tracking-[0.08em] text-ash">
+                  Serangan {state.questionsAsked}/{state.maxQuestions}
                 </span>
               </div>
-              <div className="mt-3">
-                <HeartDisplay hearts={hearts} heartsMax={heartsMax} />
+              <div className="mt-2">
+                <HeartDisplay hearts={hearts} heartsMax={heartsMax} hp={state.playerHp} hpMax={state.playerHpMax} />
               </div>
             </div>
+
           </aside>
 
-          <section className="p-4 sm:p-5">
-            {evidenceQuote ? (
-              <blockquote className="border-l-2 border-gold/70 bg-void/55 py-2 pl-3 text-[0.8rem] leading-6 text-ash">
-                <span className="mb-1 block font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-gold">
-                  Kutipan yang diserang
-                </span>
-                “{evidenceQuote}”
-              </blockquote>
+          <section ref={panelRef} className="comic-panel comic-panel-player relative p-3 sm:p-4">
+                        <div className="comic-bubble-wrap relative z-10 mb-3">
+              <div className="comic-bubble is-monster-speech" aria-live="polite">
+                <div className="mb-2 flex items-start justify-between gap-2 border-b-2 border-[#2c2114]/25 pb-1.5">
+                  <span className="font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-[#6b4b1e]">
+                    {showBreakdown && lastEvaluation ? "Monster menjawab" : `${bossName.split(" — ")[0]} menyerang`}
+                  </span>
+                  {!showBreakdown ? (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {loadout.characterSlug === "mira" &&
+                      !indexUsedFloors.includes(state.encounter.floor) ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleIndex()}
+                          disabled={indexLoading}
+                          className="comic-mini-button text-[#2f6f68]"
+                          aria-label="Tampilkan label bagian bukti"
+                        >
+                          {indexLoading ? "Membaca..." : "Indeks"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handleHint()}
+                        disabled={hintLoading}
+                        className="comic-mini-button"
+                        aria-label="Jelaskan maksud pertanyaan"
+                      >
+                        <BulbIcon />
+                        {hintLoading ? "Menerjemahkan..." : "Petunjuk"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {showBreakdown && lastEvaluation ? (
+                  <p className="comic-line text-[0.92rem] leading-6 text-[#2b2318]">
+                    {status === "won"
+                      ? "Kuh... bukti itu terlalu tajam. Klaimku runtuh."
+                      : lastEvaluation.damage === 0
+                        ? "Kosong. Tidak ada bukti yang menusukku."
+                        : state.combat && state.combat.counterDamage > 0
+                          ? "Jawabanmu goyah. Rasakan balasanku!"
+                          : state.combat?.shielded
+                            ? "Tameng itu menahan seranganku..."
+                            : `Ugh! ${lastEvaluation.damage} damage... jawaban itu kena.`}
+                  </p>
+                ) : state.questionLoading ? (
+                  <p className="comic-line flex items-center gap-2 text-[0.88rem] text-[#4a3a25]">
+                    <span className="comic-typing" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    Penguji menyusun serangan...
+                  </p>
+                ) : state.questionError ? (
+                  <div>
+                    <p className="comic-line text-[0.82rem] leading-5 text-[#7a2d1e]">{state.questionError}</p>
+                    <button
+                      onClick={() => void requestQuestion(state.encounter, state.previousQuestions, state.previousAttackTypes)}
+                      className="comic-mini-button mt-2"
+                    >
+                      Coba lagi
+                    </button>
+                  </div>
+                ) : (
+                  <p className="comic-line text-[0.95rem] leading-6 text-[#2b2318]">
+                    {state.question ?? "..."}
+                  </p>
+                )}
+
+                {hintError ? (
+                  <p className="mt-2 border-l-2 border-[#8a3a2a]/60 pl-2 text-[0.72rem] leading-5 text-[#7a2d1e]">
+                    {hintError}
+                  </p>
+                ) : null}
+
+                {hint && hint.question === state.question ? (
+                  <div className="mt-2 border-l-2 border-[#b8792c]/60 bg-[#e3d0a6]/55 py-1.5 pl-2">
+                    <p className="font-pixel text-[0.44rem] uppercase tracking-[0.1em] text-[#6b4b1e]">
+                      Maksud pertanyaan
+                    </p>
+                    <p className="mt-1 text-[0.76rem] leading-5 text-[#4a3a25]">{hint.text}</p>
+                  </div>
+                ) : null}
+
+                {indexInfo && indexInfo.floor === state.encounter.floor ? (
+                  <div className="mt-2 border-l-2 border-[#2f6f68]/60 bg-[#d7ece8]/55 py-1.5 pl-2">
+                    <p className="font-pixel text-[0.44rem] uppercase tracking-[0.1em] text-[#2f6f68]">
+                      Indeks Mira · lokasi bukti
+                    </p>
+                    <p className="mt-1 text-[0.76rem] leading-5 text-[#4a3a25]">
+                      {indexInfo.section && indexInfo.section !== "tanpa bagian"
+                        ? `Bukti ini ada di bagian: ${indexInfo.section}`
+                        : "Naskahmu belum punya judul bagian di sekitar bukti ini."}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="comic-player-head relative z-10 mb-3 flex items-center gap-2 border-b-2 border-void pb-2">
+              <CharacterPortrait slug={loadout.characterSlug} size={38} />
+              <div>
+                <p className="font-pixel text-[0.44rem] uppercase tracking-[0.12em] text-moss">Kamu</p>
+                <p className="text-sm font-bold leading-5 text-bone">
+                  {playerName ?? loadout.characterSlug}
+                </p>
+              </div>
+            </div>
+
+            {state.lastAnswer && (showBreakdown || submitting) ? (
+              <div className="comic-bubble is-player mb-3">
+                <p className="font-pixel text-[0.44rem] uppercase tracking-[0.1em] text-[#33474f]">
+                  Jawabanmu
+                </p>
+                <p className="comic-line mt-1 text-[0.84rem] leading-5 text-[#223035]">
+                  “{state.lastAnswer}”
+                </p>
+              </div>
             ) : null}
 
             {showBreakdown && lastEvaluation ? (
@@ -740,7 +938,7 @@ export default function EncounterOverlay({
                     {status === "won"
                       ? "Monster tumbang"
                       : status === "lost"
-                        ? "Heart habis"
+                        ? "HP habis"
                         : status === "conceded"
                           ? "Monster bertahan"
                           : "Hasil serangan"}
@@ -760,7 +958,9 @@ export default function EncounterOverlay({
                   <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
                     <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Skor</span>
                     <span className="mt-0.5 block font-pixel text-sm text-gold">
-                      {lastEvaluation.scoreTotal}/{lastEvaluation.scoreMax}
+                      {lastEvaluation.scoreMax > 0
+                        ? `${Math.round((lastEvaluation.scoreTotal / lastEvaluation.scoreMax) * 100)}%`
+                        : "0%"}
                     </span>
                   </span>
                   <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
@@ -770,6 +970,29 @@ export default function EncounterOverlay({
                     </span>
                   </span>
                 </div>
+
+                {state.combat ? (
+                  <div className="mb-2 border border-ridge/50 bg-void/45 px-2 py-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em]">
+                      <span className="text-ash">Mutu jawaban</span>
+                      <span className="text-gold">
+                        Q{state.combat.quality} · {state.combat.qualityLabel}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em]">
+                      <span className="text-ash">Senjata</span>
+                      <span className={state.combat.weaponKind === "signature" ? "text-ember" : "text-bone"}>
+                        {state.combat.weaponName} · {state.combat.weaponKind === "signature" ? "andalan" : "dasar"}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em]">
+                      <span className="text-ash">Balasan monster</span>
+                      <span className={state.combat.counterDamage > 0 ? "text-blood" : "text-moss"}>
+                        {state.combat.shielded ? "ditahan tameng" : state.combat.counterDamage > 0 ? `-${state.combat.counterDamage} HP` : "tidak ada"}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
 
                 {lastEvaluation.heartLost ? (
                   <p className="mb-2 border border-blood/30 bg-blood/10 px-2 py-1 text-[0.66rem] leading-5 text-blood">
@@ -869,92 +1092,31 @@ export default function EncounterOverlay({
               </div>
             ) : null}
 
+            {!showBreakdown && status !== "active" && attackPhase === "idle" && !submitting ? (
+              <div className="mt-4 border-2 border-gold/50 bg-gold/5 p-3 text-center">
+                <p className="font-pixel text-[0.5rem] uppercase tracking-[0.1em] text-gold">
+                  {status === "won"
+                    ? "MONSTER TUMBANG"
+                    : status === "lost"
+                      ? "HP HABIS"
+                      : "PERTARUNGAN SELESAI"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-ash">
+                  Pertarungan ini sudah selesai. Lanjutkan ekspedisi.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  className="pixel-button pixel-button-sm mt-3 border-gold bg-gold text-void hover:bg-bone"
+                >
+                  Lanjut
+                </button>
+              </div>
+            ) : null}
+
             {!showBreakdown && status === "active" && attackPhase === "idle" && !submitting ? (
-              <div className="mt-4">
-                {state.questionLoading ? (
-                  <div className="border-2 border-void bg-void/50 p-4">
-                    <p className="flex items-center gap-2 font-pixel text-[0.54rem] text-gold">
-                      <span className="h-2 w-2 animate-flicker bg-ember" aria-hidden="true" />
-                      PENGUJI MENYUSUN SERANGAN
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-ash">Dengarkan baik-baik...</p>
-                  </div>
-                ) : null}
-
-                {state.questionError ? (
-                  <div className="border-2 border-ember/50 bg-ember/10 p-3 text-sm text-ember">
-                    <p>{state.questionError}</p>
-                    <button
-                      onClick={() => void requestQuestion(state.encounter, state.previousQuestions, state.previousAttackTypes)}
-                      className="pixel-button pixel-button-sm mt-3 border-ember text-ember hover:bg-ember hover:text-void"
-                    >
-                      Coba lagi
-                    </button>
-                  </div>
-                ) : null}
-
-                {state.question ? (
-                  <div className="game-rise border-2 border-ridge/70 bg-[#111920] p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-pixel text-[0.48rem] uppercase tracking-[0.1em] text-gold">
-                        {bossName.split(" — ")[0]} menyerang
-                      </p>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {loadout.characterSlug === "mira" &&
-                        !indexUsedFloors.includes(state.encounter.floor) ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleIndex()}
-                            disabled={indexLoading}
-                            className="flex items-center gap-1.5 border border-[#9fe3d8]/50 bg-[#9fe3d8]/5 px-2 py-1 text-[0.56rem] font-bold uppercase tracking-[0.06em] text-[#9fe3d8] hover:bg-[#9fe3d8]/15 disabled:opacity-50"
-                            aria-label="Tampilkan label bagian bukti"
-                          >
-                            {indexLoading ? "Membaca..." : "Indeks"}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void handleHint()}
-                          disabled={hintLoading}
-                          className="flex items-center gap-1.5 border border-gold/40 bg-gold/5 px-2 py-1 text-[0.56rem] font-bold uppercase tracking-[0.06em] text-gold hover:bg-gold/15 disabled:opacity-50"
-                          aria-label="Jelaskan maksud pertanyaan"
-                        >
-                          <BulbIcon />
-                          {hintLoading ? "Menerjemahkan..." : "Petunjuk"}
-                        </button>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-[0.95rem] leading-7 text-bone">{state.question}</p>
-
-                    {hintError ? (
-                      <p className="mt-2 border-l-2 border-blood/60 pl-2 text-[0.72rem] leading-5 text-blood">
-                        {hintError}
-                      </p>
-                    ) : null}
-
-                    {hint && hint.question === state.question ? (
-                      <div className="mt-2 border-l-2 border-gold/60 bg-gold/5 py-1.5 pl-2">
-                        <p className="font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-gold/80">
-                          Maksud pertanyaan
-                        </p>
-                        <p className="mt-1 text-[0.78rem] leading-5 text-ash">{hint.text}</p>
-                      </div>
-                    ) : null}
-
-                    {indexInfo && indexInfo.floor === state.encounter.floor ? (
-                      <div className="mt-2 border-l-2 border-[#9fe3d8]/60 bg-[#9fe3d8]/5 py-1.5 pl-2">
-                        <p className="font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-[#9fe3d8]/80">
-                          Indeks Mira
-                        </p>
-                        <p className="mt-1 text-[0.78rem] leading-5 text-ash">
-                          Bukti ini ada di bagian: {indexInfo.section}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <div className="mt-4 grid grid-cols-3 gap-1.5" aria-hidden="true">
+              <div className="sticky bottom-0 z-20 -mx-3 mt-4 border-t-2 border-void bg-[#0d1218] px-3 pb-3 pt-2 sm:-mx-4 sm:px-4 sm:pb-4">
+                <div className="comic-chips mt-4 grid grid-cols-3 gap-1.5" aria-hidden="true">
                   <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
                     Klaim
                   </span>
@@ -969,18 +1131,18 @@ export default function EncounterOverlay({
                 <textarea
                   ref={textareaRef}
                   value={answer}
-                  maxLength={1200}
+                  maxLength={MAX_ANSWER_LENGTH}
                   onChange={(e) => setAnswer(e.target.value)}
                   onKeyDown={handleKeyDown}
                   rows={4}
                   placeholder="Serang dengan bukti dari naskah..."
-                  className="pixel-input mt-2 resize-none"
+                  className="comic-answer pixel-input mt-2 resize-none"
                   aria-label="Jawabanmu"
                 />
 
-                <div className="mt-2 flex items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em] text-ash/70">
+                <div className="comic-counter mt-2 flex items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em] text-ash/70">
                   <span>Bukti lebih kuat daripada gaya bahasa</span>
-                  <span>{answer.length}/1200</span>
+                  <span>{answer.length}/{MAX_ANSWER_LENGTH}</span>
                 </div>
 
                 {answerError ? (
@@ -988,13 +1150,17 @@ export default function EncounterOverlay({
                 ) : null}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  <button
-                    onClick={handleObjection}
-                    className="pixel-button pixel-button-sm border-ember/60 bg-ember/10 text-ember hover:bg-ember hover:text-void"
-                    title="Tandai temuan ini salah. Tidak memotong Heart."
-                  >
-                    Objection!
-                  </button>
+                  {weaknessType !== COMPREHENSION ? (
+                    <button
+                      onClick={handleObjection}
+                      className="pixel-button pixel-button-sm border-ember/60 bg-ember/10 text-ember hover:bg-ember hover:text-void"
+                      title="Tandai temuan ini salah. Tidak memotong Heart."
+                    >
+                      Objection!
+                    </button>
+                  ) : (
+                    <span />
+                  )}
                   <button
                     onClick={handleSubmit}
                     disabled={
@@ -1009,8 +1175,8 @@ export default function EncounterOverlay({
                     {submitting ? "Menilai..." : "Serang ⚔"}
                   </button>
                 </div>
-                <p className="mt-2 text-[0.6rem] leading-4 text-ash/70">
-                  Minimal tulis satu kalimat. Jawaban kosong tidak memotong Heart.
+                <p className="comic-helper mt-2 text-[0.6rem] leading-4 text-ash/70">
+                  Minimal {MIN_ANSWER_LENGTH} karakter. Jawaban terlalu pendek tidak memotong Heart.
                 </p>
               </div>
             ) : null}

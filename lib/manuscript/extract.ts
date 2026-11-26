@@ -213,12 +213,24 @@ function isHeading(line: string): boolean {
   return false;
 }
 
-function sanitizeMarkdown(text: string): string {
+/** Turndown escapes "1." in headings as "1\."; undo that only on heading lines. */
+function unescapeHeadingPunctuation(text: string): string {
   return text
-    .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{4,}/g, "\n\n\n")
-    .trim();
+    .split("\n")
+    .map((line) =>
+      /^#{1,6}\s/.test(line) ? line.replace(/\\([\\`*_{}\[\]()#+.!>-])/g, "$1") : line,
+    )
+    .join("\n");
+}
+
+function sanitizeMarkdown(text: string): string {
+  return unescapeHeadingPunctuation(
+    text
+      .normalize("NFKC")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{4,}/g, "\n\n\n")
+      .trim(),
+  );
 }

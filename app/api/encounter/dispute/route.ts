@@ -8,7 +8,7 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { BOSS_HP, MINION_HP } from "@/lib/balance";
+import { BOSS_HP, MINION_HP, MAX_OBJECTIONS_PER_FLOOR } from "@/lib/balance";
 import { BOSS_BY_DIMENSION, WEAKNESS_DIMENSION } from "@/game/map/buildFloorPlan";
 import { BOSS_ROSTER } from "@/lib/monsters";
 import type { WeaknessType } from "@/lib/domain/types";
@@ -43,6 +43,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) throw new ApiError(error.message, 500);
     if (!run || run.status !== "active") throw new ApiError("Run aktif tidak ditemukan.", 404);
     await loadOwnedResearchMap(run.research_map_id, user.id);
+
+    const { count: disputedThisFloor, error: countError } = await admin
+      .from("encounters")
+      .select("id", { count: "exact", head: true })
+      .eq("run_id", run.id)
+      .eq("floor_order", body.floorOrder)
+      .eq("status", "disputed");
+    if (countError) throw new ApiError(countError.message, 500);
+    // Testing: unlimited in dev. Production keeps the per-floor cap until the
+    // dispute-verification layer lands (see docs/FUTURE-WORK.md §4).
+    const objectionCap =
+      process.env.NODE_ENV === "production" ? MAX_OBJECTIONS_PER_FLOOR : Number.POSITIVE_INFINITY;
+    if ((disputedThisFloor ?? 0) >= objectionCap) {
+      throw new ApiError(
+        "Objection! di lantai ini sudah habis. Jawab dulu sisanya.",
+        409,
+      );
+    }
 
     let { data: encounter, error: encounterError } = await admin
       .from("encounters")

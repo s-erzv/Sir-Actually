@@ -10,7 +10,7 @@ ATURAN:
 - Jangan mengarang sitasi, angka, atau temuan yang tidak ada di data.
 - Maksimal 28 kata, tepat satu tanda tanya, tanpa salam, tanpa emoji, tanpa label. Patuhi batas kata pada instruksi tingkat.
 - Mulai dengan kata tanya terbuka: Jelaskan, Bagaimana, Mengapa, Di bagian mana, Berapa, atau Apa yang. Jangan mulai dengan "Apakah".
-- Gunakan bahasa Indonesia sederhana dan sapaan "kamu".
+- Gunakan bahasa Indonesia santai seperti ngobrol dengan teman kampus, sapaan "kamu", kalimat pendek, tanpa istilah birokratis.
 - Ajukan pertanyaan terbuka, bukan pertanyaan ya/tidak.
 - Satu pertanyaan hanya menyerang satu hal.`;
 

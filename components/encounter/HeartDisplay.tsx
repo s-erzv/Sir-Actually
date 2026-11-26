@@ -1,13 +1,36 @@
 "use client";
 
-import { HEARTS_START } from "@/lib/balance";
+import { HEART_HP, HEARTS_START } from "@/lib/balance";
 
 interface HeartDisplayProps {
   hearts: number;
   heartsMax?: number;
+  hp?: number;
+  hpMax?: number;
 }
 
-export default function HeartDisplay({ hearts, heartsMax = HEARTS_START }: HeartDisplayProps) {
+export default function HeartDisplay({ hearts, heartsMax = HEARTS_START, hp, hpMax }: HeartDisplayProps) {
+  if (hp !== undefined && hpMax !== undefined) {
+    return (
+      <div className="flex items-center gap-1.5" aria-label={`${hp} dari ${hpMax} HP`}>
+        {Array.from({ length: heartsMax }, (_, i) => {
+          const ratio = Math.max(0, Math.min(1, (hp - i * HEART_HP) / HEART_HP));
+          return (
+            <span key={i} className="relative inline-flex text-ash/25" aria-hidden="true">
+              <Heart />
+              <span className="absolute inset-0 overflow-hidden text-blood" style={{ width: `${ratio * 100}%` }}>
+                <Heart />
+              </span>
+            </span>
+          );
+        })}
+        <span className="ml-1 text-[0.68rem] uppercase tracking-[0.1em] text-ash">
+          {hp}/{hpMax}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex items-center gap-1.5"

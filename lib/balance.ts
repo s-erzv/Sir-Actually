@@ -30,10 +30,17 @@ export const WEAPON_DAMAGE_BONUS_MIN = 0.95;
 export const WEAPON_DAMAGE_BONUS_MAX = 1.10;
 
 export const MAX_QUESTIONS_PER_ROOM = 4;
-export const MAX_QUESTIONS_BOSS = 4;
-export const MAX_QUESTIONS_MINION = 2;
+export const MAX_QUESTIONS_BOSS = 6;
+export const MAX_QUESTIONS_MINION = 3;
 export const MAX_ROOMS_PER_RUN = 18;
 export const MAX_FLOORS = 6;
+
+/**
+ * Objection! is a free pass with no evidence check yet. Cap it so a player
+ * cannot dispute every monster and walk down the dungeon without answering.
+ * Future work: verify the dispute against the manuscript before accepting it.
+ */
+export const MAX_OBJECTIONS_PER_FLOOR = 1;
 
 /** Confidence below this value makes the room optional, not an accusation. */
 export const LOW_CONFIDENCE = 0.5;
@@ -86,6 +93,10 @@ export const RANK_RATIO = { S: 0.85, A: 0.7, B: 0.5 } as const;
 /** One Heart is a container of this much HP. */
 export const HEART_HP = 100;
 
+/** Answer length gate (BRIEF §13.4). Short answers deal no damage, no counter. */
+export const MIN_ANSWER_LENGTH = 12;
+export const MAX_ANSWER_LENGTH = 1200;
+
 /** Damage multiplier per answer quality 0-5. Deliberately stingy. */
 export const QUALITY_MULTIPLIER = [0, 0.15, 0.35, 0.55, 0.8, 1] as const;
 export const QUALITY_LABELS = ["Meleset", "Goresan", "Lemah", "Kena", "Telak", "Kritis"] as const;
@@ -113,6 +124,7 @@ export const POTION_BAG_MAX = 3;
 export const SHOP_ITEMS = {
   potion_small: { name: "Ramuan Kecil", heal: 40, price: 25 },
   potion_large: { name: "Ramuan Besar", heal: 100, price: 55 },
+  potion_heart: { name: "Ramuan Hati", heal: HEART_HP, price: 90 },
 } as const;
 /** One in N loot spots holds a potion instead of points. */
 export const LOOT_POTION_ONE_IN = 5;

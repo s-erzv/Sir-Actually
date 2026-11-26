@@ -11,6 +11,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   transpilePackages: ["phaser"],
   poweredByHeader: false,
+  allowedDevOrigins: ["192.168.*.*", "172.*.*.*", "10.*.*.*"],
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

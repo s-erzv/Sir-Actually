@@ -11,23 +11,31 @@ Inti produk yang tidak boleh hilang: setiap serangan adalah **jawaban atas perta
 - `state`, `run/start`, `run/active`, `run/retry` mengembalikan `hp`, `hpMax`, `hearts`, `heartsMax`.
 - `app/api/run/shop` (GET/POST), `app/api/run/potion`, `run/loot` (bisa memberi ramuan, kunci jalan buntu `f<n>-nook:x,y`).
 - Rank dari poin kotor (`run/finish`). `FLOOR_LAYOUT_VERSION` = 8 (run lama tertutup otomatis).
-- Penghuni (monster pengisi): `lib/dungeon/dwellers.ts`, `dwellerClaim.ts`, pos di `FloorMap.dwellerSpots` (labirin), rubrik `COMPREHENSION_RUBRIC`, cabang di `lib/encounter/generate.ts` dan answer route.
+- Penghuni (monster pengisi): `lib/dungeon/dwellers.ts`, `dwellerClaim.ts`, pos di `FloorMap.dwellerSpots` (labirin), rubrik `COMPREHENSION_RUBRIC`, cabang di `lib/encounter/generate.ts` dan answer route. Jumlah per lantai dikirim `/api/recon/[id]` (`dwellerCounts`) dan dipasang `placeDwellers` di halaman main; pertanyaan penghuni ikut di-prefetch.
+- Jawaban pendek: `MIN_ANSWER_LENGTH`/`MAX_ANSWER_LENGTH` di `lib/balance.ts`; answer route mengirim `tooShort` (tanpa damage/serangan balik), UI memblokir < 12 karakter.
+- Laporan: penghuni tidak masuk peta kelemahan; `/api/run/report` mengembalikan `comprehension { passed, total }` dan halaman laporan menampilkan "Uji pemahaman".
+- HUD: tombol ramuan `Q` + toast jarahan. Tes cabang penghuni ada di `lib/encounter/generate.test.ts`; suite live `claim_explained` ditambahkan.
 - Labirin: `game/map/labyrinth.ts`. Judge v2, Recon 4 spesialis, model default `glm-5-3-flash`.
 - Aset Ninja Adventure (CC0) sudah dipasang: karakter, potret, monster, boss, musik, SFX. Zip sumber ada di root proyek (di-gitignore).
+- Data uji dibuat di akun uji: naskah "Uji E2E Media Sosial dan Prestasi" (`/map/ebf658f4-e9cb-4778-9af7-e7f91ef1028f`) dan satu run aktif (`de05feb8-835b-4ce5-949f-6ebb051d803a`). Hapus lewat UI/DB kalau tidak diperlukan.
 
-Status tes saat handoff: `pnpm vitest run` hijau (251). `tsc` hanya punya 2 error di `components/encounter/EncounterOverlay.tsx` (baris ±206 dan ±258: `EncounterTopic` masuk ke fungsi yang minta `WeaknessType`); itu bagian Tugas B.
+Status terakhir: `pnpm typecheck` bersih, `pnpm vitest run` hijau (255 lulus, 13 live test dilewati), `pnpm build` lulus. `pnpm lint` tidak bisa dipakai karena Next 16 menghapus `next lint`.
 
-## Yang belum
+## Sisa pekerjaan
 
-### Server (kecil, kerjakan dulu)
-1. **Endpoint jumlah penghuni.** `dwellerCountsByFloor()` sudah ada di `lib/dungeon/dwellerClaim.ts` tapi belum dipanggil. Tambahkan ke respons `/api/dungeon/plan` (atau `run/active`) supaya halaman main bisa memanggil `placeDwellers(map, count)` per lantai dan mengisi `FloorMap.dwellers`.
-2. **Prefetch pertanyaan penghuni.** `/api/encounter/questions` dan `/question` menerima `weaknessType: "comprehension"` secara skema, tapi cek: `findingId` kosong, `roomOrder` >= 30 (`DWELLER_ROOM_BASE`), kunci bank `${dweller.id}:0`. Tambahkan tes untuk `generateEncounterQuestions` cabang penghuni (jalur templat saat LLM gagal).
-3. **`tooShort`.** `resolveCombat` punya opsi `tooShort` (jawaban < 12 karakter tidak dibalas) tapi answer route belum mengirimnya. Skema `AnswerRequestSchema.answer` masih `min(1)`; samakan dengan aturan BRIEF §13.4.
-4. **Weakness Report** harus mengabaikan encounter penghuni (tanpa `finding_id`) sebagai kelemahan; tampilkan terpisah "uji pemahaman: X dari Y". Cek `app/api/run/report` dan `app/report`.
-5. Tes live Judge untuk rubrik `claim_explained` (`RUN_LLM_EVAL=1`, lihat `lib/judge/judgeEval.live.test.ts`).
+Tugas A, B, dan item server di bawah **kodenya sudah selesai**. Verifikasi browser/end-to-end utama sudah dijalankan dengan akun uji; sisa kecil ada di daftar.
 
-### Tugas A: tampilan bertarung di Phaser
-File milik A: `game/entities/**`, `game/scenes/**`, `game/audio.ts`, `game/feel.ts` (baru), `game/PhaserGame.tsx`, `lib/sprites/**`, `app/dev/dungeon/page.tsx`, `public/assets/**`. Aset FX baru sudah mulai disalin (`public/assets/ninja-adventure/fx/arrow.png`, `shield.png`, `items/`); belum ada kode yang memakainya, dan belum ada baris di `public/assets/CREDITS.md`.
+### Verifikasi browser / end-to-end (akun uji, 17 Nov 2026)
+1. ~~`/dev/dungeon`: kelima karakter~~ **sudah diverifikasi lewat Chrome headless + CDP** (2026-11-17): 5 tekstur berbeda (`sheet-arka`, `sheet-mira`, `sheet-sena`, `sheet-kiran`, `sheet-vara`), 2 penghuni terpasang, panel "Pratinjau visual" tampil, Q5 mengubah HP bar penghuni, 0 error JS.
+2. ~~HUD 667x375 + D-pad + rotasi~~ **sudah diverifikasi**: HUD 184x125 di dalam viewport, tombol D-pad 48 px, tidak ada scroll horizontal, `.landscape-gate` tampil `flex` saat portrait + pointer kasar.
+3. ~~Alur nyata~~ **sudah diverifikasi sampai pertarungan**: login → unggah DOCX uji → Recon (14 temuan, 6 lantai) → loadout Arka → masuk lantai 1 → encounter. Judge nyata memberi 27 damage, mutu Q3, Heart aman; Objection! menutup ruang; GET `/api/run/shop` 200; POST potion 409 "tas kosong"; POST beli ditolak 403 sebelum boss kalah.
+4. Belum diuji: menang boss → peti benar-benar terbuka lewat jalan kaki, beli ramuan sukses, minum ramuan, lantai berikutnya, laporan akhir (butuh menyelesaikan lantai).
+5. Jalankan tes live Judge `RUN_LLM_EVAL=1 pnpm vitest run lib/judge/judgeEval.live.test.ts` (butuh kunci LLM; satu panggilan Judge nyata sudah lolos di alur di atas).
+6. `pnpm lint` rusak karena Next 16 menghapus `next lint`; pakai `pnpm typecheck && pnpm test && pnpm build`.
+7. Landing page di 360 px: tidak ada scroll horizontal (diverifikasi).
+
+### Catatan Tugas A: tampilan bertarung di Phaser (kode selesai)
+File milik A: `game/entities/**`, `game/scenes/**`, `game/audio.ts`, `game/feel.ts` (baru), `game/PhaserGame.tsx`, `lib/sprites/**`, `app/dev/dungeon/page.tsx`, `public/assets/**`. Aset FX sudah dipakai (`fx/arrow.png`, `shield.png`, `items/`), dan `public/assets/CREDITS.md` sudah mencantumkan monsters, bosses, portraits, items, fx, serta audio.
 
 - Kenyamanan: getar layar sesuai spec §7 (mutu 1-3 tanpa getar; mutu 4-5 maks 2 px; mati 3 px, boss 4 px; pemain kena 2 px), skala dari `localStorage["sa-shake"]` = `off|soft|full` (default `soft`). Hilangkan kilat layar penuh saat bertarung. Hit-stop maks 50 ms, hanya mutu >= 4, aman bila bertumpuk.
 - Animasi per `attackStyle` (`sword` tebas, `bow` proyektil, `shield` dorong, `axe` tebas ganda) memakai field baru di event `boss:hit` (`game/bus.ts`, jangan diubah). Angka damage + label mutu, serangan balik ke pemain, efek tameng.
@@ -36,7 +44,7 @@ File milik A: `game/entities/**`, `game/scenes/**`, `game/audio.ts`, `game/feel.
 - **Bug yang dilaporkan pengguna:** di `/dev/dungeon` ganti karakter tidak mengubah sprite. Cari akar masalahnya (dugaan: `PhaserGame` memakai `if (gameRef.current) return` dan registry diset sekali, jadi game lama tetap hidup saat `key` berganti) dan buktikan di browser untuk kelima karakter.
 - `/dev/dungeon`: panel pertanyaan tiruan berlabel jelas "Pratinjau visual", tombol mutu 0-5 yang memakai `resolveCombat`, dua penghuni palsu. Pertanyaan asli hanya ada di alur utama.
 
-### Tugas B: layar, HUD, kontrol
+### Catatan Tugas B: layar, HUD, kontrol (kode selesai)
 File milik B: `components/**`, `app/**/page.tsx`, `app/layout.tsx`, `app/globals.css`, `tailwind.config.ts`, `lib/useFocusTrap.ts`, `lib/ui/**` (jangan sentuh `app/api`, `app/dev`, `game/**`). Pekerja sebelumnya berhenti sebelum mengubah file apa pun.
 
 - HP di klien: `HeartDisplay` menggambar `hpMax/100` hati yang terisi proporsional plus angka `hp/hpMax`; ubah `GameHud`, `PauseMenu`, `EncounterOverlay`, halaman main.
@@ -47,8 +55,8 @@ File milik B: `components/**`, `app/**/page.tsx`, `app/layout.tsx`, `app/globals
 - Ponsel: layar "Putar perangkatmu" saat potret + layar sentuh (tanpa melepas game atau kehilangan teks jawaban); D-pad kiri bawah dengan tahan-untuk-jalan (`bus.emit("player:step")` tiap ±130 ms, pointer capture), tombol aksi kanan bawah, target >= 44 px, safe-area, `touch-action: none`. Overlay pertarungan di viewport pendek (< 480 px) jadi dua kolom, `100dvh`. HUD harus muat di 667x375.
 - Tampilan "lebih dungeon" untuk landing, login, dashboard, upload, map, findings, report, history: bingkai batu, obor, potret (`components/brand/Portrait.tsx`), dashboard sebagai "markas". Jangan hapus fungsi, teks privasi, atau disclaimer dosen pembimbing; hormati `prefers-reduced-motion`; tanpa scroll horizontal dari 360 px.
 
-### Integrasi (terakhir)
-Jalankan alur nyata dengan akun uji: unggah, Recon, loadout, bertarung, buka peti, beli ramuan, minum, lantai berikutnya, laporan. Lalu `pnpm typecheck && pnpm test && pnpm build`. Perbarui pointer di `docs/BRIEF.md` (§7, §13.2, §13.5 digantikan spec v2). Belum ada yang dimainkan end-to-end lewat login; semua verifikasi visual sejauh ini lewat `/dev/dungeon`.
+### Integrasi (belum dijalankan)
+`pnpm typecheck && pnpm test && pnpm build` sudah lulus. Belum ada yang dimainkan end-to-end lewat login; semua verifikasi visual sejauh ini lewat `/dev/dungeon`.
 
 ## Aturan kerja
 

@@ -3,7 +3,7 @@ import { bus } from "@/game/bus";
 import { playSfx } from "@/game/audio";
 import { TILE_SIZE, TileCode, isSolid } from "@/game/map/tiles";
 import { playerFrameFor } from "@/game/map/tileFrames";
-import type { FloorMap } from "@/lib/domain/types";
+import type { AttackStyle, FloorMap } from "@/lib/domain/types";
 import type { Monster } from "./Monster";
 import {
   attackFrame,
@@ -100,6 +100,11 @@ export class Player {
   }
 
   /** Teleport to a tile position immediately (used on floor:retry). */
+  /** Stop accepting movement (encounter, cutscene, stairs descent). */
+  lockInput(): void {
+    this.inputLocked = true;
+  }
+
   teleport(tileX: number, tileY: number): void {
     this.tileX = tileX;
     this.tileY = tileY;
@@ -141,9 +146,14 @@ export class Player {
     }
 
     if (code === TileCode.STAIRS) {
-      if (monsters.every((monster) => monster.resolved)) {
+      if (monsters.every((monster) => monster.resolved || monster.isDweller)) {
         this.inputLocked = true;
-        bus.emit("stairs:reach", { floor: this.floorMap.floorOrder });
+        const scene = this.scene as Phaser.Scene & { beginStairsDescent?: () => void };
+        if (scene.beginStairsDescent) {
+          scene.beginStairsDescent();
+        } else {
+          bus.emit("stairs:reach", { floor: this.floorMap.floorOrder });
+        }
       }
       return;
     }
@@ -163,6 +173,7 @@ export class Player {
         room:        hitMonster.roomIndex,
         isBoss:      hitMonster.isBoss,
         weaknessType: hitMonster.weaknessType,
+        severity: hitMonster.severity,
         evidenceQuote: hitMonster.evidenceQuote,
       });
       return;
@@ -219,8 +230,8 @@ export class Player {
     }
   }
 
-  /** Lunge at a target and strike; used when an answer lands. */
-  attack(targetX: number, targetY: number): void {
+  /** Strike in the character's weapon style; used when an answer lands. */
+  attack(targetX: number, targetY: number, style: AttackStyle = "sword"): void {
     const homeX = this.tileX * TILE_SIZE + TILE_SIZE / 2;
     const homeY = this.tileY * TILE_SIZE + TILE_SIZE / 2;
     const dx = targetX - homeX;
@@ -231,6 +242,46 @@ export class Player {
       this.sprite.setFrame(attackFrame(this.facing));
     }
     const length = Math.hypot(dx, dy) || 1;
+    if (style === "bow" && this.scene.textures.exists("fx-arrow")) {
+      const arrow = this.scene.add
+        .image(homeX, homeY, "fx-arrow")
+        .setDepth(60)
+        .setRotation(Math.atan2(dy, dx))
+        .setScale(1.4);
+      this.scene.tweens.add({
+        targets: arrow,
+        x: targetX,
+        y: targetY,
+        duration: 170,
+        ease: "Quad.easeIn",
+        onComplete: () => {
+          arrow.destroy();
+          this.standStill();
+        },
+      });
+      return;
+    }
+    if (style === "shield" && this.scene.textures.exists("fx-shield")) {
+      const shield = this.scene.add
+        .image(homeX, homeY, "fx-shield")
+        .setDepth(60)
+        .setAlpha(0.9)
+        .setScale(0.5)
+        .setRotation(Math.atan2(dy, dx));
+      this.scene.tweens.add({
+        targets: shield,
+        x: homeX + (dx / length) * 10,
+        y: homeY + (dy / length) * 10,
+        alpha: 0,
+        duration: 190,
+        ease: "Quad.easeOut",
+        onComplete: () => {
+          shield.destroy();
+          this.standStill();
+        },
+      });
+      return;
+    }
     this.scene.tweens.add({
       targets: this.sprite,
       x: homeX + (dx / length) * 6,

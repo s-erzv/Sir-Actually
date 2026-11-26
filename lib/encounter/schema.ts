@@ -13,6 +13,7 @@
 import { z } from "zod";
 import type { RubricCriterion } from "@/lib/domain/types";
 import type { AttackType } from "@/lib/planner/attackType";
+import { MAX_ANSWER_LENGTH } from "@/lib/balance";
 
 export const ATTACK_TYPE_VALUES = [
   "clarify",
@@ -90,7 +91,7 @@ export const AnswerRequestSchema = z.object({
   findingId: z.string().uuid().optional(),
   weaknessType: z.string().min(1),
   bossSlug: z.string().min(1).max(80),
-  answer: z.string().min(1).max(4000),
+  answer: z.string().min(1).max(MAX_ANSWER_LENGTH),
   evidenceQuote: z.string().max(4000).optional(),
   /** The exact question the player answered. Sent so the Judge can check it. */
   question: z.string().max(600).optional(),

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       query: parsed.data.evidenceQuote || map.source_text.slice(0, 400),
       limit: 1,
     });
-    const section = retrieval.chunks[0]?.sectionLabel ?? "tanpa bagian";
+    const section = retrieval.chunks[0]?.sectionLabel?.trim() ?? "";
 
     return NextResponse.json({ section });
   } catch (error) {

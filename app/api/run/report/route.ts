@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
+import { DWELLER_ROOM_BASE } from "@/lib/dungeon/dwellers";
 
 export const runtime = "nodejs";
 
@@ -39,6 +40,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       pointsByKind[event.kind] = (pointsByKind[event.kind] ?? 0) + event.amount;
     }
 
+    // Dwellers are comprehension checks, never weaknesses: keep them out of
+    // the Weakness Report and report them on their own line.
+    const { data: dwellerEncounters, error: dwellerError } = await admin
+      .from("encounters")
+      .select("status")
+      .eq("run_id", run.id)
+      .gte("room_order", DWELLER_ROOM_BASE);
+    if (dwellerError) throw new ApiError(dwellerError.message, 500);
+    const dwellerRows = dwellerEncounters ?? [];
+    const comprehension = {
+      passed: dwellerRows.filter((row) => row.status === "won").length,
+      total: dwellerRows.length,
+    };
+
     return NextResponse.json({
       run: {
         id: run.id,
@@ -49,6 +64,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         dungeonTitle: run.dungeon_title,
       },
       pointsByKind,
+      comprehension,
       report: report
         ? {
             readiness: report.readiness,

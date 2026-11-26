@@ -14,6 +14,8 @@ export type GameEvents = {
     isBoss?: boolean;
     /** A finding's weakness type, or "comprehension" for a dweller. */
     weaknessType?: EncounterTopic;
+    /** Finding severity, used only to derive the monster level on screen. */
+    severity?: number;
     evidenceQuote?: string;
   };
   /** React → Phaser: player finished (or skipped) the encounter. */
@@ -56,6 +58,9 @@ export type GameEvents = {
     weaponKind?: "basic" | "signature";
     counterDamage?: number;
     shielded?: boolean;
+    /** Monster HP after the strike, for the in-world bar. */
+    monsterHp?: number;
+    monsterHpMax?: number;
     /** The exchange emptied a whole Heart. */
     heartLost?: boolean;
   };
