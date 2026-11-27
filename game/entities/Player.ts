@@ -5,6 +5,7 @@ import { TILE_SIZE, TileCode, isSolid } from "@/game/map/tiles";
 import { playerFrameFor } from "@/game/map/tileFrames";
 import type { AttackStyle, FloorMap } from "@/lib/domain/types";
 import type { Monster } from "./Monster";
+import { pushHeld, releaseHeld, type Direction } from "./heldDirections";
 import {
   attackFrame,
   idleFrame,
@@ -14,8 +15,9 @@ import {
 } from "@/lib/sprites/sheets";
 
 const TWEEN_DURATION = 120; // ms per tile move
+/** A press that lands mid-step still fires if the step ends within this window. */
+const BUFFER_MS = 160;
 
-type Direction = "up" | "down" | "left" | "right";
 export type { Direction };
 
 const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
@@ -40,6 +42,9 @@ export class Player {
   private moving = false;
   private lastLockedSfx = 0;
   private inputLocked = false; // locked during encounter overlay
+  private held: Direction[] = [];
+  private queued: { dir: Direction; at: number } | null = null;
+  private lastMonsters: Monster[] = [];
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: {
@@ -84,6 +89,21 @@ export class Player {
         left:  scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
         right: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       };
+      const dirs: Direction[] = ["up", "down", "left", "right"];
+      for (const dir of dirs) {
+        for (const key of [this.cursors[dir], this.wasd[dir]]) {
+          key?.on("down", () => {
+            this.held = pushHeld(this.held, dir);
+            if (this.moving) this.queued = { dir, at: this.scene.time.now };
+          });
+          key?.on("up", () => {
+            // Both bindings of a direction must be up before it is released.
+            if (!this.cursors[dir]?.isDown && !this.wasd[dir].isDown) {
+              this.held = releaseHeld(this.held, dir);
+            }
+          });
+        }
+      }
     }
 
     // Lock/unlock input when encounter overlay opens/closes
@@ -117,13 +137,20 @@ export class Player {
 
   // Called from DungeonScene.update()
   update(monsters: Monster[]): void {
-    const dir = this.readDirection();
+    this.lastMonsters = monsters;
+    if (this.moving || this.inputLocked) return;
+    const dir = this.takeQueued() ?? this.readDirection();
     if (dir) this.step(dir, monsters);
   }
 
   /** One-tile move, used by both keyboard and the touch D-pad. */
   step(dir: Direction, monsters: Monster[]): void {
-    if (this.moving || this.inputLocked) return;
+    if (this.inputLocked) return;
+    if (this.moving) {
+      // Remember a press that arrives mid-step instead of dropping it.
+      this.queued = { dir, at: this.scene.time.now };
+      return;
+    }
 
     this.face(dir);
     const { dx, dy } = DIR_DELTA[dir];
@@ -182,13 +209,18 @@ export class Player {
     this.moveTo(nx, ny);
   }
 
+  /** Newest held direction. Keys released while the page lost focus are dropped. */
   private readDirection(): Direction | null {
     if (!this.scene.input.keyboard) return null;
-    if (this.cursors.up.isDown || this.wasd.up.isDown) return "up";
-    if (this.cursors.down.isDown || this.wasd.down.isDown) return "down";
-    if (this.cursors.left.isDown || this.wasd.left.isDown) return "left";
-    if (this.cursors.right.isDown || this.wasd.right.isDown) return "right";
-    return null;
+    this.held = this.held.filter((dir) => this.cursors[dir]?.isDown || this.wasd[dir].isDown);
+    return this.held[0] ?? null;
+  }
+
+  private takeQueued(): Direction | null {
+    const queued = this.queued;
+    this.queued = null;
+    if (!queued || this.scene.time.now - queued.at > BUFFER_MS) return null;
+    return queued.dir;
   }
 
   private moveTo(tx: number, ty: number): void {
@@ -207,10 +239,16 @@ export class Player {
       x: tx * TILE_SIZE + TILE_SIZE / 2,
       y: ty * TILE_SIZE + TILE_SIZE / 2,
       duration: TWEEN_DURATION,
-      ease: "Sine.easeInOut",
+      // Linear keeps chained steps at one speed; ease-in-out stalled at every tile.
+      ease: "Linear",
       onComplete: () => {
         this.moving = false;
-        // Held keys chain steps; only settle to idle if no step follows.
+        // Chain the next step in the same tick so held keys never stutter.
+        const next = this.inputLocked ? null : this.takeQueued() ?? this.readDirection();
+        if (next) {
+          this.step(next, this.lastMonsters);
+          if (this.moving) return;
+        }
         this.stopTimer = this.scene.time.delayedCall(60, () => this.standStill());
       },
     });
