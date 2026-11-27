@@ -64,7 +64,7 @@ export const CHARACTERS: readonly CharacterInfo[] = [
     name: "Sena",
     title: "Sang Penjaga",
     role: "Penahan",
-    passive: "Tabah: +1 Heart (100 HP) saat run dimulai.",
+    passive: "Tabah: HP maksimal 400 (yang lain 300).",
     hearts: 4,
     weaponSlugs: ["perisai_batas", "lentera_kubur"],
     unlockCost: 0,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canBuy, healedHp, potionHealFromKey, walletFromEvents } from "./shop";
+import { absorbHit, canBuy, healedHp, potionHealFromKey, walletFromEvents, type Wallet } from "./shop";
+import { stockForFloor } from "./items";
 import { lootKindForKey } from "@/lib/dungeon/loot";
 
 describe("walletFromEvents", () => {
@@ -13,7 +14,7 @@ describe("walletFromEvents", () => {
     { kind: "potion_use", amount: 0, encounter_key: "use:0" },
   ];
 
-  it("koin = semua event; poin kotor = hanya yang positif", () => {
+  it("koin = semua event; koin kotor = hanya yang positif", () => {
     const wallet = walletFromEvents(events);
     expect(wallet.coins).toBe(-1);
     expect(wallet.gross).toBe(24);
@@ -28,18 +29,76 @@ describe("walletFromEvents", () => {
   });
 });
 
+const empty: Wallet = { coins: 0, gross: 0, potions: [], weapon: null, armor: null };
+
 describe("canBuy", () => {
-  it("menolak kalau poin kurang, tanpa memotong apa pun", () => {
-    const check = canBuy({ coins: 24, gross: 24, potions: [] }, "potion_small");
-    expect(check).toEqual({ ok: false, reason: "Poin kurang: butuh 25, kamu punya 24." });
+  it("menolak kalau koin kurang, tanpa memotong apa pun", () => {
+    const check = canBuy({ ...empty, coins: 24, gross: 24 }, "potion_small", 1);
+    expect(check).toEqual({ ok: false, reason: "Koin kurang: butuh 25, kamu punya 24." });
   });
 
   it("menolak kalau tas penuh", () => {
-    expect(canBuy({ coins: 999, gross: 999, potions: [40, 40, 40] }, "potion_large").ok).toBe(false);
+    expect(canBuy({ ...empty, coins: 999, potions: [40, 40, 40] }, "potion_small", 1).ok).toBe(false);
   });
 
   it("mengizinkan saat cukup", () => {
-    expect(canBuy({ coins: 55, gross: 55, potions: [40] }, "potion_large")).toEqual({ ok: true });
+    expect(canBuy({ ...empty, coins: 55, potions: [40] }, "potion_large", 2)).toEqual({ ok: true });
+  });
+
+  it("hanya menjual barang yang ada di rak lantai itu", () => {
+    expect(canBuy({ ...empty, coins: 999 }, "weapon_katana", 1).ok).toBe(false);
+    expect(canBuy({ ...empty, coins: 999 }, "weapon_katana", 4).ok).toBe(true);
+  });
+
+  it("tidak menjual senjata yang sedang dipakai", () => {
+    const wallet = { ...empty, coins: 999, weapon: { slug: "weapon_stick", name: "Tongkat Kayu", power: 4 } };
+    expect(canBuy(wallet, "weapon_stick", 1).ok).toBe(false);
+  });
+});
+
+describe("perlengkapan", () => {
+  it("equip terbaru menggantikan yang lama", () => {
+    const wallet = walletFromEvents([
+      { kind: "equip", amount: 0, encounter_key: "equip:a:weapon_stick" },
+      { kind: "equip", amount: 0, encounter_key: "equip:b:weapon_sword" },
+    ]);
+    expect(wallet.weapon?.slug).toBe("weapon_sword");
+    expect(wallet.weapon?.power).toBe(8);
+  });
+
+  it("armor menyerap damage sampai shield habis lalu hancur", () => {
+    const events = [
+      { kind: "equip", amount: 0, encounter_key: "equip:a:armor_helmet" },
+      { kind: "armor_absorb", amount: 0, encounter_key: "absorb:e:1:abs20" },
+    ];
+    expect(walletFromEvents(events).armor).toMatchObject({ shield: 10, shieldMax: 30 });
+    const broken = walletFromEvents([...events, { kind: "armor_absorb", amount: 0, encounter_key: "absorb:e:2:abs10" }]);
+    expect(broken.armor).toBeNull();
+  });
+
+  it("serapan sebelum armor baru dipasang tidak memotong armor baru", () => {
+    const wallet = walletFromEvents([
+      { kind: "equip", amount: 0, encounter_key: "equip:a:armor_helmet" },
+      { kind: "armor_absorb", amount: 0, encounter_key: "absorb:e:1:abs30" },
+      { kind: "equip", amount: 0, encounter_key: "equip:b:armor_mail" },
+    ]);
+    expect(wallet.armor).toMatchObject({ slug: "armor_mail", shield: 60 });
+  });
+
+  it("shield dulu, sisanya ke HP", () => {
+    expect(absorbHit(25, 10)).toEqual({ absorbed: 10, hpLoss: 15, broken: true });
+    expect(absorbHit(25, 60)).toEqual({ absorbed: 25, hpLoss: 0, broken: false });
+    expect(absorbHit(25, 0)).toEqual({ absorbed: 0, hpLoss: 25, broken: false });
+  });
+});
+
+describe("stockForFloor", () => {
+  it("lantai lebih dalam menjual barang lebih kuat", () => {
+    const first = stockForFloor(1).map((item) => item.slug);
+    expect(first).toEqual(["potion_small", "weapon_stick", "armor_helmet"]);
+    const deep = stockForFloor(5).map((item) => item.slug);
+    expect(deep).toContain("weapon_wand");
+    expect(deep).not.toContain("weapon_stick");
   });
 });
 

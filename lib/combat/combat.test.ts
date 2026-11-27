@@ -78,46 +78,38 @@ describe("resolveCombat", () => {
     enemyHpRatio: 1,
     firstAnswer: false,
     monsterAttack: 30,
-    shieldAvailable: false,
   };
 
-  it("senjata dasar dipakai kalau syarat andalan tidak terpenuhi", () => {
+  it("serangan dasar tanpa bukti dan tanpa senjata", () => {
     const outcome = resolveCombat(base);
-    expect(outcome.weaponKind).toBe("basic");
-    expect(outcome.weaponSlug).toBe("jaring_bukti");
     expect(outcome.damage).toBe(24); // 30 x 0.8
+    expect(outcome.weaponName).toBe("Tangan kosong");
     expect(outcome.attackStyle).toBe("bow");
   });
 
-  it("senjata andalan keluar saat jawaban memenuhi syaratnya", () => {
-    const outcome = resolveCombat({ ...base, quality: 5, answer: "Sampelnya 45 mahasiswa karena itu seluruh angkatan." });
-    expect(outcome.weaponKind).toBe("signature");
-    expect(outcome.weaponSlug).toBe("busur_angka");
-    expect(outcome.damage).toBe(44);
+  it("bukti dari naskah menambah kekuatan", () => {
+    expect(resolveCombat({ ...base, quality: 5, usedEvidence: true }).damage).toBe(44);
   });
 
-  it("pelit: dua jawaban Telak dengan senjata dasar pas membunuh antek level 1", () => {
+  it("senjata yang dibeli menambah kekuatan sebelum dikali mutu", () => {
+    const sword = { slug: "weapon_sword", name: "Pedang Besi", power: 8 };
+    expect(resolveCombat({ ...base, weapon: sword }).damage).toBe(30); // (30 + 8) x 0.8
+  });
+
+  it("pelit: dua jawaban Telak tanpa perlengkapan pas membunuh antek level 1", () => {
     const hit = resolveCombat(base).damage;
     expect(hit * 2).toBeGreaterThanOrEqual(monsterStats("minion", 1).hp);
     expect(hit).toBeLessThan(monsterStats("minion", 1).hp);
   });
 
   it("satu jawaban sempurna tidak pernah membunuh boss", () => {
-    const best = resolveCombat({
-      ...base,
-      characterSlug: "arka",
-      quality: 5,
-      firstAnswer: true,
-      answer: "yang dipilih secara purposive dari satu program studi",
-    });
-    expect(best.damage).toBe(47); // 44 + pasif 3
+    const best = resolveCombat({ ...base, characterSlug: "arka", quality: 5, usedEvidence: true, firstAnswer: true });
+    expect(best.damage).toBe(47); // 44 + skill Arka 3
     expect(best.damage).toBeLessThan(monsterStats("boss", 2).hp / 2);
   });
 
-  it("jawaban meleset tidak melukai monster dan tidak memakai andalan", () => {
-    const miss = resolveCombat({ ...base, quality: 0, answer: "45" });
-    expect(miss.damage).toBe(0);
-    expect(miss.weaponKind).toBe("basic");
+  it("jawaban meleset tidak melukai monster", () => {
+    expect(resolveCombat({ ...base, quality: 0 }).damage).toBe(0);
   });
 
   it("serangan balik: penuh di mutu 0, 40% di mutu 1, nol dari mutu 2", () => {
@@ -130,34 +122,10 @@ describe("resolveCombat", () => {
     expect(resolveCombat({ ...base, quality: 0, tooShort: true }).counterDamage).toBe(0);
   });
 
-  it("tameng Sena membatalkan satu serangan balik", () => {
-    const shielded = resolveCombat({ ...base, characterSlug: "sena", quality: 0, shieldAvailable: true });
-    expect(shielded).toMatchObject({ counterDamage: 0, shielded: true });
-    const spent = resolveCombat({ ...base, characterSlug: "sena", quality: 0, shieldAvailable: false });
-    expect(spent).toMatchObject({ counterDamage: 30, shielded: false });
-  });
-});
-
-describe("pilihan senjata pemain", () => {
-  const base = {
-    answer: "Menurut sumber yang saya kutip, data ini diambil dari bagian metode.",
-    sourceText: "Data diambil dari bagian metode penelitian.",
-    citations: ["Sugiyono. (2019). Metode."],
-    enemyHpRatio: 1,
-    firstAnswer: false,
-    characterSlug: "mira",
-    quality: 5 as const,
-    usedEvidence: true,
-    monsterAttack: 30,
-    shieldAvailable: false,
-  };
-
-  it("senjata pilihan jadi andalan, senjata lain jadi dasar", () => {
-    const withChosen = resolveCombat({ ...base, chosenWeaponSlug: "jaring_bukti" });
-    expect(withChosen.weaponKind).toBe("signature");
-    expect(withChosen.weaponSlug).toBe("jaring_bukti");
-    const withoutChosen = resolveCombat(base);
-    expect(withoutChosen.weaponKind).toBe("basic");
-    expect(withoutChosen.weaponSlug).toBe("jaring_bukti");
+  it("armor menahan serangan balik dulu, sisanya ke HP", () => {
+    const blocked = resolveCombat({ ...base, quality: 0, shield: 60 });
+    expect(blocked).toMatchObject({ counterDamage: 0, absorbed: 30, shielded: true, armorBroken: false });
+    const cracked = resolveCombat({ ...base, quality: 0, shield: 10 });
+    expect(cracked).toMatchObject({ counterDamage: 20, absorbed: 10, shielded: false, armorBroken: true });
   });
 });

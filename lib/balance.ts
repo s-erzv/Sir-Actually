@@ -89,7 +89,10 @@ export const MAX_ANSWER_LENGTH = 1200;
 export const QUALITY_MULTIPLIER = [0, 0.15, 0.35, 0.55, 0.8, 1] as const;
 export const QUALITY_LABELS = ["Meleset", "Goresan", "Lemah", "Kena", "Telak", "Kritis"] as const;
 
-export const WEAPON_POWER = { basic: 30, signature: 44 } as const;
+/** Strike power before answer quality: everyone starts here. */
+export const ATTACK_BASE = 30;
+/** Extra power when the answer uses manuscript evidence (quote, number, reference). */
+export const EVIDENCE_POWER = 14;
 /** Flat damage a character passive may add to a hit that already landed. */
 export const PASSIVE_DAMAGE_MAX = 3;
 
@@ -109,11 +112,6 @@ export const FLOOR_MONSTER_TARGET_MAX = 7;
 export const POINTS_DWELLER_WON = 10;
 
 export const POTION_BAG_MAX = 3;
-export const SHOP_ITEMS = {
-  potion_small: { name: "Ramuan Kecil", heal: 40, price: 25 },
-  potion_large: { name: "Ramuan Besar", heal: 100, price: 55 },
-  potion_heart: { name: "Ramuan Hati", heal: HEART_HP, price: 90 },
-} as const;
 /** One in N loot spots holds a potion instead of points. */
 export const LOOT_POTION_ONE_IN = 5;
 export const NOOK_POTION_ONE_IN = 3;

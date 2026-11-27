@@ -275,6 +275,10 @@ export interface CombatOutcome {
   damage: number;
   /** Damage the monster deals back to the player. */
   counterDamage: number;
-  /** A shield cancelled the counter-attack. */
+  /** Armor took the whole counter-attack. */
   shielded: boolean;
+  /** Counter-attack points the armor's shield took. */
+  absorbed: number;
+  /** The shield ran out on this hit and the armor broke. */
+  armorBroken: boolean;
 }

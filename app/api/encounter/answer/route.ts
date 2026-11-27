@@ -27,6 +27,8 @@ import { heartsForLoadout } from "@/lib/loadout";
 import { answerQuality, usesManuscriptEvidence } from "@/lib/combat/quality";
 import { monsterLevel, monsterStats } from "@/lib/combat/monsterStats";
 import { resolveCombat } from "@/lib/combat/resolve";
+import { ABSORB } from "@/lib/combat/shop";
+import { loadWallet } from "@/lib/api/run";
 import { HEART_HP, MIN_ANSWER_LENGTH, POINTS_DWELLER_WON } from "@/lib/balance";
 import { isDwellerRoom } from "@/lib/dungeon/dwellers";
 import { resolveDwellerClaim } from "@/lib/dungeon/dwellerClaim";
@@ -63,6 +65,8 @@ interface AnswerResponse {
   /** Player HP after the exchange; one Heart holds HEART_HP. */
   hp: number;
   hpMax: number;
+  /** Equipped armor after the exchange; null when none or broken. */
+  armor: { slug: string; name: string; shield: number; shieldMax: number } | null;
   monsterLevel: number;
   monsterHpMax: number;
 }
@@ -335,9 +339,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const quality = tooShort
       ? 0
       : answerQuality({ scoreTotal, scoreMax, addressed, usedEvidence });
+    // Bought weapon and armor shield come from the run's own events.
+    const wallet = await loadWallet(admin, run.id);
     const strike = {
       characterSlug,
-      chosenWeaponSlug: run.weapon_slug ?? undefined,
+      weapon: wallet.weapon,
+      shield: wallet.armor?.shield ?? 0,
       quality,
       usedEvidence,
       answer: body.answer,
@@ -347,22 +354,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       firstAnswer: previousQuestionsAsked === 0,
       monsterAttack: stats.attack,
     };
-    let combat = resolveCombat({ ...strike, shieldAvailable: true, tooShort });
-
-    // Sena's Perisai Batas: once per floor, cancel one counter-attack.
-    if (combat.shielded) {
-      const { error: shieldError } = await admin.from("run_points_events").insert({
-        run_id: run.id,
-        kind: "shield_used",
-        encounter_key: `shield:${body.floorOrder}`,
-        seq: 0,
-        amount: 0,
-      });
-      if (shieldError) {
-        if (shieldError.code !== "23505") throw new ApiError(shieldError.message, 500);
-        combat = resolveCombat({ ...strike, shieldAvailable: false, tooShort });
-      }
-    }
+    const combat = resolveCombat({ ...strike, tooShort });
 
     const damage = combat.damage;
     const newHp = Math.max(0, hpBefore - damage);
@@ -403,6 +395,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!claimed || claimed.length === 0) {
       throw new ApiError("Jawaban ini sudah diproses.", 409);
     }
+
+    // The armor's shield takes its share only once this turn is ours.
+    if (combat.absorbed > 0) {
+      const { error: absorbError } = await admin.from("run_points_events").insert({
+        run_id: run.id,
+        kind: ABSORB,
+        encounter_key: `absorb:${encounter.id}:${newQuestionsAsked}:abs${combat.absorbed}`,
+        seq: 0,
+        amount: 0,
+      });
+      if (absorbError && absorbError.code !== "23505") throw new ApiError(absorbError.message, 500);
+    }
+    const armorAfter =
+      wallet.armor && !combat.armorBroken
+        ? {
+            slug: wallet.armor.slug,
+            name: wallet.armor.name,
+            shield: wallet.armor.shield - combat.absorbed,
+            shieldMax: wallet.armor.shieldMax,
+          }
+        : null;
 
     const evaluation: EvaluationResult = {
       scores,
@@ -548,6 +561,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       combat,
       hp: playerHp,
       hpMax: playerHpMax,
+      armor: armorAfter,
       monsterLevel: level,
       monsterHpMax: hpMax,
     };

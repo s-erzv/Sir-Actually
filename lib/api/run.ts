@@ -11,6 +11,7 @@ export interface ActiveRun {
   research_map_id: string;
   hearts_left: number;
   character_slug: string | null;
+  current_floor: number | null;
 }
 
 /** The caller's active run, or a 404. Ownership is checked through the map. */
@@ -21,7 +22,7 @@ export async function loadOwnedActiveRun(
 ): Promise<ActiveRun> {
   const { data: run, error } = await admin
     .from("runs")
-    .select("id, research_map_id, status, hearts_left, character_slug")
+    .select("id, research_map_id, status, hearts_left, character_slug, current_floor")
     .eq("id", runId)
     .maybeSingle();
   if (error) throw new ApiError(error.message, 500);
@@ -34,7 +35,10 @@ export async function loadWallet(admin: Admin, runId: string): Promise<Wallet> {
   const { data, error } = await admin
     .from("run_points_events")
     .select("kind, amount, encounter_key")
-    .eq("run_id", runId);
+    .eq("run_id", runId)
+    // Equipment and armor wear replay in order: the newest equip wins.
+    .order("created_at", { ascending: true })
+    .order("seq", { ascending: true });
   if (error) throw new ApiError(error.message, 500);
   return walletFromEvents(data ?? []);
 }

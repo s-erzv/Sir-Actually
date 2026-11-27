@@ -10,7 +10,8 @@ import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { lootAmountForKey, lootKindForKey } from "@/lib/dungeon/loot";
 import { walletFromEvents } from "@/lib/combat/shop";
-import { POTION_BAG_MAX, SHOP_ITEMS } from "@/lib/balance";
+import { POTION_BAG_MAX } from "@/lib/balance";
+import { ITEMS } from "@/lib/combat/items";
 import { lootSpotsForFloor } from "@/lib/dungeon/lootSpots";
 import { buildFloorPlan, WEAKNESS_DIMENSION } from "@/game/map/buildFloorPlan";
 import { generateFloorFromPlan } from "@/game/map/generateFloor";
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const { error: potionError } = await admin.from("run_points_events").insert({
         run_id: run.id,
         kind: "potion_gain",
-        encounter_key: `${body.lootKey}:heal${SHOP_ITEMS.potion_small.heal}`,
+        encounter_key: `${body.lootKey}:heal${ITEMS.potion_small.heal}`,
         seq: 0,
         amount: 0,
       });

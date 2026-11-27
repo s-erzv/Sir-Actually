@@ -76,7 +76,7 @@ export default function DevDungeonPage() {
       quality,
       usedEvidence: quality >= 2,
       monsterAttack: 20,
-      shieldAvailable: true,
+      shield: character === "sena" ? 30 : 0,
     });
     const nextHp = Math.max(0, monsterHp - combat.damage);
     setMonsterHp(nextHp);
