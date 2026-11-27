@@ -3,40 +3,32 @@
 import { useEffect, useState } from "react";
 import { bus } from "@/game/bus";
 import { HEART_HP, HEARTS_START, POTION_BAG_MAX } from "@/lib/balance";
-import type { DungeonDimension, FloorMap } from "@/lib/domain/types";
+import type { FloorMap } from "@/lib/domain/types";
+import { getItem } from "@/lib/combat/items";
+import { ShieldBar } from "@/components/encounter/BattleScene";
 
 interface GameHudProps {
   floorMap: FloorMap;
   hearts: number;
   heartsMax?: number;
   points?: number;
-  /** Total player HP; when present, Hearts render as partial containers. */
+  /** Total player HP; when present, the bar shows it instead of whole Hearts. */
   hp?: number;
   hpMax?: number;
   potions?: number;
   potionBusy?: boolean;
   onUsePotion?: () => void;
+  armor?: { slug: string; name: string; shield: number; shieldMax: number } | null;
+  weapon?: { slug: string; name: string; power: number } | null;
 }
 
-const DIMENSION_NAMES: Record<DungeonDimension, string> = {
-  gap: "Veylith · Gap Hunter",
-  align: "Draeven · The Aligner",
-  method: "Kryvax · Methodologist",
-  audit: "Morvane · The Auditor",
-  ghost: "Nyxara · Ghost Library",
-  throne: "Eldravos · Final Boss",
-};
+function hpLevel(ratio: number): "high" | "mid" | "low" {
+  if (ratio > 0.5) return "high";
+  if (ratio > 0.2) return "mid";
+  return "low";
+}
 
-const FLOOR_NAMES = [
-  "",
-  "Veylith · Gap Hunter",
-  "Draeven · The Aligner",
-  "Kryvax · Methodologist",
-  "Morvane · The Auditor",
-  "Nyxara · Ghost Library",
-  "Eldravos · Final Boss",
-];
-
+/** One box, top-left: floor and room, HP, Hearts, coins, and the potion. */
 export default function GameHud({
   floorMap,
   hearts,
@@ -47,168 +39,92 @@ export default function GameHud({
   potions = 0,
   potionBusy = false,
   onUsePotion,
+  armor = null,
+  weapon = null,
 }: GameHudProps) {
   const [roomCurrent, setRoomCurrent] = useState(0);
-  const [resolvedRooms, setResolvedRooms] = useState<Set<number>>(new Set());
-  const [open, setOpen] = useState(true);
-
-  useEffect(() => {
-    if (window.matchMedia("(pointer: coarse)").matches) setOpen(false);
-  }, []);
 
   useEffect(() => {
     const onEncounterStart = (evt: { room: number }) => {
       // Dwellers use room numbers above the real rooms; they are corridors.
       if (evt.room < floorMap.rooms.length) setRoomCurrent(evt.room);
     };
-    const onEncounterEnd = () => {
-      setResolvedRooms((current) => new Set(current).add(roomCurrent));
-    };
-    const onFloorRetry = () => {
-      setRoomCurrent(0);
-      setResolvedRooms(new Set());
-    };
-
+    const onFloorRetry = () => setRoomCurrent(0);
     bus.on("encounter:start", onEncounterStart);
-    bus.on("encounter:end", onEncounterEnd);
     bus.on("floor:retry", onFloorRetry);
     return () => {
       bus.off("encounter:start", onEncounterStart);
-      bus.off("encounter:end", onEncounterEnd);
       bus.off("floor:retry", onFloorRetry);
     };
-  }, [roomCurrent, floorMap.rooms.length]);
+  }, [floorMap.rooms.length]);
 
   useEffect(() => {
     setRoomCurrent(0);
-    setResolvedRooms(new Set());
   }, [floorMap]);
 
-  const floorName = floorMap.dimension
-    ? DIMENSION_NAMES[floorMap.dimension]
-    : (FLOOR_NAMES[floorMap.floorOrder] ?? `Lantai ${floorMap.floorOrder}`);
-
-  const heartsNode =
-    hp !== undefined ? (
-      <HpHearts hp={hp} hpMax={hpMax ?? heartsMax * HEART_HP} heartsMax={heartsMax} />
-    ) : (
-      <div className="flex gap-1" aria-label={`${hearts} nyawa tersisa`}>
-        {Array.from({ length: heartsMax }).map((_, i) => (
-          <span key={i} className={i < hearts ? "text-blood" : "text-ash/35"}>
-            <Heart />
-          </span>
-        ))}
-      </div>
-    );
+  const max = hpMax ?? heartsMax * HEART_HP;
+  const current = hp ?? hearts * HEART_HP;
+  const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
+  const canDrink = Boolean(onUsePotion) && potions > 0 && !potionBusy;
 
   return (
-    <div
-      className={`pointer-events-none absolute left-2 top-2 z-10 border-2 border-void bg-[#0a0f14]/92 shadow-[inset_0_0_0_1px_#34424e,4px_4px_0_rgba(0,0,0,0.35)] ${
-        open ? "w-[11.5rem] p-2.5" : "p-1.5"
-      }`}
-      aria-label="HUD"
-    >
+    <div className="ui-chip font-game absolute left-2 top-2 z-10 w-[min(15.5rem,46vw)]" aria-label="Status">
+      <div className="g-1 flex items-center justify-between gap-2">
+        <span>Lantai {floorMap.floorOrder}</span>
+        <span className="text-[var(--ui-rust)]">
+          Ruang {Math.min(roomCurrent + 1, floorMap.rooms.length || 1)}/{floorMap.rooms.length || 1}
+        </span>
+      </div>
+
+      <div
+        className="ui-hp mt-0.5"
+        role="meter"
+        aria-label="HP"
+        aria-valuemin={0}
+        aria-valuemax={max}
+        aria-valuenow={Math.max(0, Math.round(current))}
+      >
+        <span className="ui-hp-tag">HP</span>
+        <span className="ui-hp-track">
+          <span className="ui-hp-fill block" data-level={hpLevel(ratio)} style={{ width: `${ratio * 100}%` }} />
+        </span>
+      </div>
+
+      {armor ? <ShieldBar value={armor.shield} max={armor.shieldMax} /> : null}
+
+      <div className="g-1 mt-1 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1">
+          <EquipSlot label={weapon ? `${weapon.name} +${weapon.power}` : "Tanpa senjata"} icon={weapon ? getItem(weapon.slug)?.icon : undefined} />
+          <EquipSlot label={armor ? `${armor.name} ${armor.shield}/${armor.shieldMax}` : "Tanpa armor"} icon={armor ? getItem(armor.slug)?.icon : undefined} />
+        </span>
+        <span key={points} className="points-pop flex items-center gap-1" aria-label={`${points} koin`}>
+          <img src="/assets/ninja-adventure/items/coin-gold.png" alt="" width={14} height={14} className="ui-icon" />
+          {points}
+        </span>
+      </div>
+
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        aria-label={open ? "Sembunyikan info lantai" : "Tampilkan info lantai"}
-        className="pointer-events-auto flex w-full items-center justify-between gap-2"
+        onClick={onUsePotion}
+        disabled={!canDrink}
+        data-sfx="none"
+        className="ui-menu-item mt-0.5 !min-h-[36px] !pl-1 disabled:opacity-50"
+        aria-label={`Minum ramuan, sisa ${potions}`}
+        title="Minum ramuan (Q)"
       >
-        <span className="font-pixel text-[0.5rem] text-gold">Lantai {floorMap.floorOrder}</span>
-        <span className="flex items-center gap-1.5">
-          <span className="font-pixel text-[0.46rem] text-ash">
-            {roomCurrent + 1}/{floorMap.rooms.length || 0}
-          </span>
-          <span aria-hidden="true" className="font-pixel text-[0.5rem] text-ash">
-            {open ? "▾" : "▸"}
-          </span>
-        </span>
+        <img src="/assets/ninja-adventure/items/potion-life.png" alt="" width={18} height={22} className="ui-icon" />
+        <span>{potionBusy ? "..." : `x${potions}/${POTION_BAG_MAX}`}</span>
+        <span className="ml-auto text-[var(--ui-rust)]">Q</span>
       </button>
-
-      {open ? (
-        <>
-          <div className="mt-1.5 truncate border-t border-ridge/60 pt-1.5 text-[0.7rem] font-bold text-bone">
-            {floorName}
-          </div>
-          <div
-            className="mt-1.5 flex gap-0.5"
-            aria-label={`${resolvedRooms.size} dari ${floorMap.rooms.length} ruang selesai`}
-          >
-            {floorMap.rooms.map((room, index) => (
-              <span
-                key={room.id}
-                className={`h-1.5 flex-1 border border-void ${
-                  resolvedRooms.has(index)
-                    ? "bg-moss"
-                    : index === roomCurrent
-                      ? "bg-gold"
-                      : "bg-ridge/60"
-                }`}
-                aria-hidden="true"
-              />
-            ))}
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-2">
-            {heartsNode}
-            <span key={points} className="points-pop font-pixel text-[0.46rem] text-gold">
-              {points} koin
-            </span>
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="font-pixel text-[0.46rem] uppercase tracking-[0.08em] text-ash">
-              Ramuan {potions}/{POTION_BAG_MAX}
-            </span>
-            <button
-              type="button"
-              onClick={onUsePotion}
-              disabled={!onUsePotion || potions <= 0 || potionBusy}
-              className="pointer-events-auto border border-moss/50 bg-moss/10 px-2 py-0.5 font-pixel text-[0.46rem] uppercase tracking-[0.08em] text-moss disabled:opacity-40"
-            >
-              {potionBusy ? "..." : "Minum (Q)"}
-            </button>
-          </div>
-        </>
-      ) : (
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          {heartsNode}
-          <span key={points} className="points-pop font-pixel text-[0.46rem] text-gold">
-            {points}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
 
-function HpHearts({ hp, hpMax, heartsMax }: { hp: number; hpMax: number; heartsMax: number }) {
+/** Small slot showing what is equipped; empty slots stay as a dim frame. */
+function EquipSlot({ label, icon }: { label: string; icon?: string }) {
   return (
-    <div className="flex gap-1" aria-label={`${hp} dari ${hpMax} HP`}>
-      {Array.from({ length: heartsMax }).map((_, index) => {
-        const ratio = Math.max(0, Math.min(1, (hp - index * HEART_HP) / HEART_HP));
-        return (
-          <span key={index} className="relative inline-flex text-ash/25">
-            <Heart />
-            <span
-              className="absolute inset-0 overflow-hidden text-blood"
-              style={{ width: `${ratio * 100}%` }}
-            >
-              <Heart />
-            </span>
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function Heart() {
-  return (
-    <svg width="14" height="12" viewBox="0 0 14 12" aria-hidden="true" className="dungeon-map">
-      <path
-        d="M1 3 h3 v2 h2 V3 h2 v2 h3 V1 h-2 v1 H9 V1 H5 v1 H4 V1 H1 Z M1 5 v3 h2 v2 h2 v1 h4 v-1 h2 V8 h2 V5 h-3 v2 H11 V5 Z"
-        fill="currentColor"
-      />
-    </svg>
+    <span className="ui-slot h-7 w-7" title={label} aria-label={label} role="img">
+      {icon ? <img src={icon} alt="" width={18} height={18} className="ui-icon h-[18px] w-[18px] object-contain" /> : null}
+    </span>
   );
 }

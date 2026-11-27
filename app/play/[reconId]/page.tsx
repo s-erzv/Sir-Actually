@@ -7,7 +7,8 @@ import { useParams, useRouter } from "next/navigation";
 import { LogoMark } from "@/components/brand/Logo";
 import { PixelSprite } from "@/components/brand/PixelSprite";
 import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
-import EncounterOverlay from "@/components/encounter/EncounterOverlay";
+import EncounterOverlay, { type ArmorState } from "@/components/encounter/EncounterOverlay";
+import type { EquippedWeapon } from "@/lib/combat/shop";
 import GameHud from "@/components/hud/GameHud";
 import Minimap from "@/components/hud/Minimap";
 import TouchControls from "@/components/game/TouchControls";
@@ -169,6 +170,8 @@ export default function PlayPage() {
   const [hp, setHp] = useState(HEARTS_START * HEART_HP);
   const [hpMax, setHpMax] = useState(HEARTS_START * HEART_HP);
   const [potions, setPotions] = useState(0);
+  const [armor, setArmor] = useState<ArmorState | null>(null);
+  const [weapon, setWeapon] = useState<EquippedWeapon | null>(null);
   const [potionBusy, setPotionBusy] = useState(false);
   const potionPending = useRef(false);
   const [shopFloor, setShopFloor] = useState<number | null>(null);
@@ -579,13 +582,20 @@ export default function PlayPage() {
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
-    authJson<{ coins: number; potions: number; hp: number; hpMax: number }>(
-      `/api/run/shop?runId=${runId}`,
-    )
+    authJson<{
+      coins: number;
+      potions: number;
+      hp: number;
+      hpMax: number;
+      weapon: EquippedWeapon | null;
+      armor: ArmorState | null;
+    }>(`/api/run/shop?runId=${runId}`)
       .then((data) => {
         if (cancelled) return;
         setPoints(data.coins);
         setPotions(data.potions);
+        setWeapon(data.weapon);
+        setArmor(data.armor);
         setHp(data.hp);
         setHpMax(data.hpMax);
         setHearts(Math.max(0, Math.ceil(data.hp / HEART_HP)));
@@ -842,7 +852,7 @@ export default function PlayPage() {
               <div>
                 <p className="font-pixel text-[0.54rem] text-ash">RANK EKSPEDISI</p>
                 <p className="mt-1 text-lg font-bold text-bone">
-                  {runResult.pointsTotal} / {runResult.maxPoints} poin
+                  {runResult.pointsTotal} / {runResult.maxPoints} koin
                 </p>
                 <div className="bar-track mt-2">
                   <div
@@ -861,7 +871,7 @@ export default function PlayPage() {
             </div>
           ) : (
             <p className="mt-5 border-2 border-void bg-void/55 p-3 text-sm text-ash">
-              Poin run ini belum tersimpan. Laporan tetap bisa dibuka.
+              Koin run ini belum tersimpan. Laporan tetap bisa dibuka.
             </p>
           )}
           {runResult?.comparison ? (
@@ -954,17 +964,9 @@ export default function PlayPage() {
         potions={potions}
         potionBusy={potionBusy}
         onUsePotion={() => void usePotion()}
+        armor={armor}
+        weapon={weapon}
       />
-
-      <div className="pointer-events-none absolute left-1/2 top-2 z-10 hidden w-[min(44vw,26rem)] -translate-x-1/2 border-2 border-void bg-[#0a0f14]/90 px-3 py-1.5 text-center shadow-[inset_0_0_0_1px_#34424e,4px_4px_0_rgba(0,0,0,0.35)] md:block">
-        <p className="truncate font-pixel text-[0.5rem] uppercase tracking-[0.08em] text-gold">
-          {dungeonTitle || "Dungeon naskah"}
-        </p>
-        <p className="mt-0.5 truncate text-[0.66rem] font-bold text-bone">{floorName}</p>
-        <p className="mt-0.5 text-[0.56rem] font-bold uppercase tracking-[0.08em] text-ash">
-          Uji {activePlan?.monsterCount ?? roomCount} musuh · {roomCount} ruang
-        </p>
-      </div>
 
       {gameSettings.showMinimap ? (
         <Minimap
@@ -1005,6 +1007,8 @@ export default function PlayPage() {
         runId={runId}
         questionBank={questionBank}
         onPointsChange={setPoints}
+        armor={armor}
+        onArmorChange={setArmor}
       />
       {shopFloor !== null ? (
         <ShopModal
@@ -1014,6 +1018,8 @@ export default function PlayPage() {
           onVitals={(state) => {
             setPoints(state.coins);
             setPotions(state.potions);
+            setWeapon(state.weapon);
+            setArmor(state.armor);
             setHp(state.hp);
             setHpMax(state.hpMax);
             setHearts(Math.max(0, Math.ceil(state.hp / HEART_HP)));
@@ -1021,94 +1027,48 @@ export default function PlayPage() {
         />
       ) : null}
       <LandscapeGate />
-      <div className="absolute right-2 top-2 z-10 hidden flex-wrap items-center justify-end gap-1 text-right text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash md:flex">
-        <span className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e]">
-          Lantai {floorIndex + 1}/{plans.length || 1} · {roomCount} ruang
-        </span>
-        <button
-          type="button"
-          onClick={() => bus.emit("camera:zoom", { delta: -0.5 })}
-          className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e] hover:text-gold"
-          aria-label="Perkecil tampilan dungeon"
-        >
-          −
-        </button>
-        <button
-          type="button"
-          onClick={() => bus.emit("camera:zoom", { delta: 0.5 })}
-          className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e] hover:text-gold"
-          aria-label="Perbesar tampilan dungeon"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e] hover:text-gold"
-        >
-          Layar
-        </button>
-        <button
-          type="button"
-          onClick={() => setPaused(true)}
-          className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e] hover:text-gold"
-        >
-          Jeda
-        </button>
-        <Link
-          href={`/findings/${params.reconId}`}
-          className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e] hover:text-gold"
-        >
-          Temuan
-        </Link>
-        <Link
-          href="/dashboard"
-          className="border-2 border-void bg-void/90 px-2 py-1 shadow-[inset_0_0_0_1px_#34424e] hover:text-gold"
-        >
-          Naskah
-        </Link>
-      </div>
-      <p className="absolute bottom-2 left-2 z-10 hidden max-w-[55vw] border-2 border-void bg-void/85 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash shadow-[inset_0_0_0_1px_#34424e] md:block">
-        WASD / panah · scroll zoom · tabrak monster · M suara · Esc jeda
-      </p>
+      <button
+        type="button"
+        data-sfx="uiOpen"
+        onClick={() => setPaused(true)}
+        className="ui-icon-btn absolute top-2 z-10"
+        style={{ right: "calc(max(0.5rem, env(safe-area-inset-right)) + 52px)" }}
+        aria-label="Menu (Esc)"
+        title="Menu (Esc)"
+      >
+        <svg width="20" height="20" viewBox="0 0 8 8" shapeRendering="crispEdges" aria-hidden="true">
+          <path fill="currentColor" d="M1 1h6v1H1zM1 3.5h6v1H1zM1 6h6v1H1z" />
+        </svg>
+      </button>
 
       {roomProgress ? (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 border-2 border-ember/60 bg-[#0a0f14]/90 px-3 py-1 shadow-[3px_3px_0_#05080b]">
-          <p className="font-pixel text-[0.5rem] text-bone">
-            RUANG {roomProgress.roomNumber} · SISA {roomProgress.remaining}/{roomProgress.total} MONSTER
-          </p>
+        <div className="ui-chip font-game g-1 pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 whitespace-nowrap">
+          Sisa {roomProgress.remaining}/{roomProgress.total} monster
         </div>
       ) : null}
 
       {roomProgress === null && loadout && !inEncounter && !showFloorIntro && !runComplete ? (
-        <div className="pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 border-2 border-gold/70 bg-[#0a0f14]/95 px-3 py-1.5 text-center shadow-[4px_4px_0_#05080b]">
-          <p className="font-pixel text-[0.5rem] text-gold">TANGGA TURUN TERBUKA</p>
-          <p className="mt-0.5 text-[0.68rem] leading-5 text-bone">
-            Ada di ruang boss — ikuti tanda <span className="text-gold">↓</span> atau titik emas di peta.
-          </p>
+        <div className="ui-chip font-game g-1 pointer-events-none absolute left-1/2 top-2 z-30 -translate-x-1/2 whitespace-nowrap">
+          Tangga terbuka di ruang boss
         </div>
       ) : null}
 
       {doorOpened ? (
-        <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-emerald-400/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
-          <p className="font-pixel text-[0.52rem] text-emerald-300">PINTU TERBUKA</p>
-          <p className="mt-1 text-[0.72rem] leading-5 text-bone">Jalan ke ruang {doorOpened} sudah terbuka.</p>
+        <div className="ui-chip font-game g-1 game-rise absolute bottom-14 left-1/2 z-30 -translate-x-1/2 whitespace-nowrap" role="status">
+          Pintu ke ruang {doorOpened} terbuka!
         </div>
       ) : null}
 
       {lootNotice ? (
-        <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-gold/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
-          <p className="font-pixel text-[0.52rem] text-gold">JARAHAN</p>
-          <p className="mt-1 text-[0.72rem] leading-5 text-bone">{lootNotice}</p>
+        <div className="ui-chip font-game g-1 game-rise absolute bottom-14 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap" role="status">
+          <img src="/assets/ninja-adventure/items/coin-gold.png" alt="" width={14} height={14} className="ui-icon" />
+          {lootNotice}
         </div>
       ) : null}
 
       {doorNotice ? (
-        <div className="game-rise absolute bottom-12 left-1/2 z-30 -translate-x-1/2 border-2 border-ember/70 bg-[#0a0f14]/95 px-3 py-2 text-center shadow-[4px_4px_0_#05080b]">
-          <p className="font-pixel text-[0.52rem] text-ember">PINTU TERKUNCI</p>
-          <p className="mt-1 text-[0.72rem] leading-5 text-bone">
-            Selesaikan semua monster di ruangan ini dulu untuk membuka pintu berikutnya.
-          </p>
+        <div className="ui-chip font-game g-1 game-rise absolute bottom-14 left-1/2 z-30 -translate-x-1/2 text-center" role="status">
+          Terkunci. Kalahkan semua monster di ruang ini dulu.
         </div>
       ) : null}
 
@@ -1135,12 +1095,14 @@ export default function PlayPage() {
           points={points}
           hearts={hearts}
           heartsMax={heartsForLoadout(loadout.characterSlug)}
+          hp={hp}
+          hpMax={hpMax}
           loadout={loadout}
           playerName={playerName ?? getCharacter(loadout.characterSlug)?.name ?? "Kamu"}
           findingsHref={`/findings/${params.reconId}`}
           onResume={() => setPaused(false)}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenShop={() => setShopFloor(floorIndex + 1)}
+          onToggleFullscreen={toggleFullscreen}
         />
       ) : null}
 

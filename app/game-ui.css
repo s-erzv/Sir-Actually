@@ -886,6 +886,16 @@ body::after,
   }
 }
 
+.battle-foe-intro {
+  animation: battle-foe-in 0.5s steps(6, end) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-foe-intro {
+    animation: none;
+  }
+}
+
 .ui-hp-tag.is-shield {
   background: #2f4f6e;
   color: #bfe3ff;

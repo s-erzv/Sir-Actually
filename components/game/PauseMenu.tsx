@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { CharacterPortrait } from "@/components/brand/Portrait";
-import { getCharacter, getWeapon } from "@/lib/loadout";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getCharacter } from "@/lib/loadout";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import type { Loadout } from "@/lib/loadout";
 import { getShakeMode, setShakeMode, type ShakeMode } from "@/game/feel";
+import GameMenu, { type MenuEntry } from "@/components/ui/GameMenu";
+import { CharacterSprite } from "@/components/ui/SheetSprite";
 
 interface PauseMenuProps {
   dungeonTitle: string;
@@ -14,48 +15,57 @@ interface PauseMenuProps {
   points: number;
   hearts: number;
   heartsMax: number;
+  hp?: number;
+  hpMax?: number;
   loadout: Loadout;
   playerName?: string;
   findingsHref?: string;
   onResume: () => void;
   onOpenSettings?: () => void;
   onOpenShop?: () => void;
+  /** The page's fullscreen toggle (it also locks landscape on phones). */
+  onToggleFullscreen?: () => void;
 }
 
+const SHAKE_LABEL: Record<ShakeMode, string> = { off: "Mati", soft: "Halus", full: "Penuh" };
+const SHAKE_NEXT: Record<ShakeMode, ShakeMode> = { off: "soft", soft: "full", full: "off" };
+
+function toggleFullscreen() {
+  if (typeof document === "undefined") return;
+  if (document.fullscreenElement) {
+    void document.exitFullscreen().catch(() => {});
+    return;
+  }
+  const root = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void>;
+  };
+  const request = root.requestFullscreen?.bind(root) ?? root.webkitRequestFullscreen?.bind(root);
+  void request?.().catch(() => {});
+}
+
+/** START menu: a list on the right, who you are on the left. Esc closes. */
 export default function PauseMenu({
   dungeonTitle,
   floorLabel,
   points,
   hearts,
   heartsMax,
+  hp,
+  hpMax,
   loadout,
   playerName,
   findingsHref,
   onResume,
   onOpenSettings,
   onOpenShop,
+  onToggleFullscreen,
 }: PauseMenuProps) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  const router = useRouter();
   const dialogRef = useFocusTrap<HTMLDivElement>();
   const character = getCharacter(loadout.characterSlug);
-  const weapon = getWeapon(loadout.weaponSlug);
   const [shake, setShake] = useState<ShakeMode>(() => getShakeMode());
 
-  function toggleFullscreen() {
-    if (typeof document === "undefined") return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => {});
-      return;
-    }
-    const root = document.documentElement as HTMLElement & {
-      webkitRequestFullscreen?: () => Promise<void>;
-    };
-    const request = root.requestFullscreen?.bind(root) ?? root.webkitRequestFullscreen?.bind(root);
-    void request?.().catch(() => {});
-  }
-
   useEffect(() => {
-    buttonRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -66,142 +76,54 @@ export default function PauseMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [onResume]);
 
+  const items: MenuEntry[] = [
+    { key: "resume", label: "Lanjutkan", sfx: "uiCancel", onSelect: onResume },
+    ...(onOpenShop ? [{ key: "shop", label: "Toko", aside: `${points} koin`, onSelect: onOpenShop }] : []),
+    ...(findingsHref ? [{ key: "findings", label: "Temuan", href: findingsHref }] : []),
+    { key: "screen", label: "Layar penuh", onSelect: onToggleFullscreen ?? toggleFullscreen },
+    {
+      key: "shake",
+      label: "Guncangan",
+      aside: SHAKE_LABEL[shake],
+      onSelect: () => {
+        const next = SHAKE_NEXT[shake];
+        setShakeMode(next);
+        setShake(next);
+      },
+    },
+    ...(onOpenSettings ? [{ key: "settings", label: "Kontrol", onSelect: onOpenSettings }] : []),
+    { key: "camp", label: "Ke menu", sfx: "uiCancel", onSelect: () => router.push("/dashboard") },
+  ];
+
   return (
     <div
       ref={dialogRef}
-      className="game-fade fixed inset-0 z-[60] grid place-items-center bg-[#05080b]/90 px-4 backdrop-blur-[2px]"
+      className="font-game fixed inset-0 z-[60] flex items-start justify-between gap-3 bg-[#05080b]/55 p-3 pt-16"
       role="dialog"
       aria-modal="true"
-      aria-label="Jeda ekspedisi"
+      aria-label="Jeda"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onResume();
+      }}
     >
-      <div className="game-screen-in w-full max-w-md border-2 border-ridge bg-[#0a0f14] shadow-[8px_8px_0_#05080b]">
-        <div className="flex items-center justify-between border-b-2 border-void bg-tomb px-4 py-2">
-          <span className="font-pixel text-[0.56rem] text-gold">JEDA</span>
-          <span className="text-[0.6rem] font-bold uppercase tracking-[0.08em] text-ash">
-            {floorLabel}
-          </span>
+      <section className="ui-box flex max-w-[22rem] items-center gap-3" aria-label="Pemain">
+        <div className="ui-slot h-16 w-16 shrink-0" aria-hidden="true">
+          <CharacterSprite slug={loadout.characterSlug} facing="down" scale={3} />
         </div>
-
-        <div className="p-5">
-          <div className="flex items-center gap-3 border-b-2 border-void pb-4">
-            <div className="tile-floor grid h-16 w-16 shrink-0 place-items-end justify-items-center border-2 border-void pb-1.5">
-              <CharacterPortrait slug={loadout.characterSlug} size={52} />
-            </div>
-            <div className="min-w-0">
-              <p className="font-pixel text-[0.5rem] text-gold">Rakitan aktif</p>
-              <p className="mt-1 truncate text-sm font-bold text-bone">
-                {playerName ?? character?.name ?? "Penjaga"} · {weapon?.name ?? "Senjata"}
-              </p>
-              <p className="mt-1 text-[0.68rem] text-ash">
-                {hearts}/{heartsMax} Heart · {points} koin
-              </p>
-            </div>
-          </div>
-
-          <p className="mt-4 truncate text-xs uppercase tracking-[0.08em] text-ash">
-            {dungeonTitle}
+        <div className="min-w-0">
+          <p className="g-1 truncate">{playerName ?? character?.name ?? "Pemain"}</p>
+          <p className="g-1 text-[var(--ui-rust)]">
+            HP {hp ?? hearts * 100}/{hpMax ?? heartsMax * 100} · {points} koin
           </p>
-
-          <button
-            ref={buttonRef}
-            type="button"
-            onClick={onResume}
-            className="pixel-button mt-4 w-full border-gold bg-gold text-void hover:bg-bone"
-          >
-            Lanjutkan
-          </button>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
-            >
-              Layar penuh
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              disabled={!onOpenSettings}
-              className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold disabled:opacity-40"
-            >
-              Pengaturan
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenShop}
-            disabled={!onOpenShop}
-            className="pixel-button pixel-button-sm mt-2 w-full border-gold/60 bg-gold/10 text-gold hover:bg-gold hover:text-void disabled:opacity-40"
-          >
-            Toko · {points} koin
-          </button>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {findingsHref ? (
-              <Link
-                href={findingsHref}
-                className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
-              >
-                Temuan
-              </Link>
-            ) : (
-              <span />
-            )}
-            <Link
-              href="/dashboard"
-              className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
-            >
-              Ke kamp
-            </Link>
-          </div>
-          <Link
-            href="/"
-            className="pixel-button pixel-button-sm mt-2 w-full border-ridge bg-tomb/80 text-ash hover:border-blood hover:text-blood"
-          >
-            Keluar dari dungeon
-          </Link>
-
-          <div className="mt-4 border-t-2 border-void pt-3">
-            <p className="text-[0.6rem] font-bold uppercase tracking-[0.08em] text-ash">
-              Guncangan layar
-            </p>
-            <div className="mt-2 grid grid-cols-3 gap-1.5">
-              {(["off", "soft", "full"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => {
-                    setShakeMode(mode);
-                    setShake(mode);
-                  }}
-                  className={`border px-2 py-1 text-[0.6rem] font-bold uppercase tracking-[0.06em] ${
-                    shake === mode
-                      ? "border-gold bg-gold/15 text-gold"
-                      : "border-ridge/60 bg-void/50 text-ash hover:border-gold/60"
-                  }`}
-                >
-                  {mode === "off" ? "Mati" : mode === "soft" ? "Halus" : "Penuh"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <dl className="mt-4 space-y-1.5 border-t-2 border-void pt-3 text-[0.68rem]">
-            <div className="flex justify-between gap-3">
-              <dt className="text-ash">Gerak</dt>
-              <dd className="font-bold text-bone">WASD / panah</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-ash">Hadapi monster</dt>
-              <dd className="font-bold text-bone">Tabrak / sentuh</dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-ash">Jeda</dt>
-              <dd className="font-bold text-bone">Esc</dd>
-            </div>
-          </dl>
+          <p className="g-1 truncate text-[var(--ui-rust)]" title={dungeonTitle}>
+            {floorLabel}
+          </p>
         </div>
-      </div>
+      </section>
+
+      <nav className="ui-box w-[min(16rem,48vw)]" aria-label="Menu jeda">
+        <GameMenu label="Menu jeda" items={items} />
+      </nav>
     </div>
   );
 }
