@@ -65,7 +65,7 @@ const POINT_LABEL: Record<string, string> = {
   monster_won: "Monster",
   treasure: "Harta",
   floor_cleared: "Lantai",
-  no_heart_lost: "Tanpa Heart",
+  no_heart_lost: "HP terjaga",
   flawless: "Flawless",
   streak: "Streak",
   loot: "Loot",
@@ -114,7 +114,7 @@ export default function ReportPage() {
               {payload.run.dungeonTitle ?? "Dungeon naskah"}
             </h1>
             <p className="mt-2 text-sm text-ash">
-              Rank {payload.run.rank ?? "-"} · {payload.run.pointsTotal} poin ·{" "}
+              Rank {payload.run.rank ?? "-"} · {payload.run.pointsTotal} koin ·{" "}
               {payload.report.readiness.complete ? "semua temuan diuji" : "masih ada yang belum diuji"}
             </p>
 
@@ -134,7 +134,7 @@ export default function ReportPage() {
 
             <section className="mt-6 border-2 border-ridge/60 bg-void/45 p-4">
               <h2 className="font-pixel text-[0.56rem] uppercase tracking-[0.1em] text-gold">
-                Rincian poin
+                Rincian koin
               </h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 {Object.entries(payload.pointsByKind ?? {})

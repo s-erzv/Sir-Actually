@@ -73,7 +73,7 @@ export default function HistoryPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-[0.62rem] font-bold uppercase tracking-[0.07em] text-ash">
-                      {run.pointsTotal} poin
+                      {run.pointsTotal} koin
                     </span>
                     <span className="grid h-9 w-9 place-items-center border-2 border-gold/50 bg-gold/10 font-pixel text-sm text-gold">
                       {run.rank ?? "–"}
