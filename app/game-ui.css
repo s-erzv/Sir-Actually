@@ -1,0 +1,533 @@
+/*
+ * Game UI kit. One look for every screen: Ninja Adventure (CC0) 9-slice
+ * boxes and buttons drawn at whole-pixel scale, GBA-style cream dialog boxes on
+ * a flat night backdrop, one pixel font. Loaded after globals.css so the shared
+ * primitives below (pixel-button, pixel-panel, ...) restyle the older pages too.
+ *
+ * Palette comes from the pack's own UI art: ink outline, cream fill, orange
+ * frame. Contrast pairs checked: ink/cream 14.8, ink/flame 5.6, ash/slate 5.1.
+ */
+
+:root {
+  --ui-ink: #141b1b;
+  --ui-cream: #f2eaf1;
+  --ui-paper: #fbf7f0;
+  --ui-orange: #ffad5d;
+  --ui-flame: #f06733;
+  --ui-rust: #965340;
+  --ui-slate: #1f2b33;
+  --ui-night: #121a20;
+  --ui-hp-high: #5fd068;
+  --ui-hp-mid: #f8c838;
+  --ui-hp-low: #f05838;
+  /* One art pixel on screen. Boxes scale up on roomy screens; buttons stay 2x. */
+  --ui-s: 2px;
+  --ui-b: 2px;
+}
+
+@media (min-width: 960px) and (min-height: 600px) {
+  :root {
+    --ui-s: 3px;
+  }
+}
+
+/* ---------------------------------------------------------------- backdrop */
+
+html,
+body {
+  background: var(--ui-night);
+}
+
+body {
+  background-image: none;
+}
+
+/* The old page vignette and CRT lines fought the flat GBA look. */
+body::after,
+.scanlines::before,
+.dungeon-bg::before {
+  display: none;
+}
+
+.dungeon-bg {
+  background-color: var(--ui-night);
+  background-image: none;
+}
+
+/* ---------------------------------------------------------------- type */
+
+.font-game {
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-weight: 400;
+  font-synthesis: none;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* The font's pixel grid is 9px; multiples stay crisp. */
+.g-1 { font-size: 18px; line-height: 1.5; }
+.g-2 { font-size: 27px; line-height: 1.3; }
+.g-3 { font-size: 36px; line-height: 1.2; }
+.g-4 { font-size: 54px; line-height: 1.1; }
+
+@media (max-width: 520px) {
+  .g-3 { font-size: 27px; }
+  .g-4 { font-size: 36px; }
+  .title-logo { font-size: 45px !important; }
+}
+
+/* ---------------------------------------------------------------- boxes */
+
+/* Cream dialog box with orange frame: the main surface. */
+.ui-box {
+  border: calc(8 * var(--ui-s)) solid transparent;
+  border-image: url("/assets/ninja-adventure/ui/dialog.png") 8 fill / calc(8 * var(--ui-s)) stretch;
+  image-rendering: pixelated;
+  background: none;
+  color: var(--ui-ink);
+}
+
+/* Smaller cream box for chips, labels and list rows. */
+.ui-chip {
+  border: calc(6 * var(--ui-b)) solid transparent;
+  border-image: url("/assets/ninja-adventure/ui/choice.png") 6 fill / calc(6 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none;
+  color: var(--ui-ink);
+}
+
+/* Dark slate box for HUD readouts over the dungeon. */
+.ui-dark {
+  border: calc(4 * var(--ui-b)) solid transparent;
+  border-image: url("/assets/ninja-adventure/ui/panel-slate.png") 4 fill / calc(4 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none;
+  color: var(--ui-cream);
+}
+
+/* Inventory slot for item icons. */
+.ui-slot {
+  display: grid;
+  place-items: center;
+  border: calc(3 * var(--ui-b)) solid transparent;
+  border-image: url("/assets/ninja-adventure/ui/wood/inventory_cell.png") 3 fill / calc(3 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+}
+
+.ui-icon {
+  image-rendering: pixelated;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.ui-btn {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  border-style: solid;
+  border-color: transparent;
+  border-width: calc(2 * var(--ui-b)) calc(3 * var(--ui-b));
+  border-image: url("/assets/ninja-adventure/ui/wood/button_normal.png") 2 3 fill /
+    calc(2 * var(--ui-b)) calc(3 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none;
+  padding: 0.2em 1em 0.35em;
+  color: var(--ui-ink);
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  text-decoration: none;
+  text-transform: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-btn:hover {
+  border-image-source: url("/assets/ninja-adventure/ui/wood/button_hover.png");
+}
+
+.ui-btn:active {
+  border-image-source: url("/assets/ninja-adventure/ui/wood/button_pressed.png");
+  padding-top: calc(0.2em + var(--ui-b));
+  padding-bottom: calc(0.35em - var(--ui-b));
+}
+
+.ui-btn:disabled,
+.ui-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  border-image-source: url("/assets/ninja-adventure/ui/wood/button_disabled.png");
+  opacity: 0.6;
+}
+
+/* Quiet secondary action: cream instead of orange. */
+.ui-btn.is-quiet {
+  border-width: calc(6 * var(--ui-b));
+  border-image: url("/assets/ninja-adventure/ui/choice.png") 6 fill / calc(6 * var(--ui-b)) stretch;
+  padding: 0 0.6em 0.1em;
+}
+
+.ui-btn.is-quiet:hover {
+  border-image-source: url("/assets/ninja-adventure/ui/choice.png");
+  filter: brightness(1.06);
+}
+
+.ui-btn:focus-visible,
+.ui-menu-item:focus-visible,
+.ui-icon-btn:focus-visible {
+  outline: var(--ui-b) solid var(--ui-cream);
+  outline-offset: var(--ui-b);
+}
+
+/* Square icon button (volume, menu). */
+.ui-icon-btn {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: calc(4 * var(--ui-b)) solid transparent;
+  border-image: url("/assets/ninja-adventure/ui/panel-slate.png") 4 fill / calc(4 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none;
+  color: var(--ui-cream);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-icon-btn:hover {
+  color: var(--ui-orange);
+}
+
+/* ---------------------------------------------------------------- menus */
+
+/* GBA list menu: the active row gets a ▶ cursor. */
+.ui-menu {
+  display: grid;
+}
+
+.ui-menu-item {
+  position: relative;
+  display: flex;
+  min-height: 44px;
+  width: 100%;
+  align-items: center;
+  gap: 0.6em;
+  border: 0;
+  background: none;
+  padding: 0.1em 0.4em 0.2em 1.6em;
+  color: var(--ui-ink);
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-menu-item::before {
+  content: "";
+  position: absolute;
+  left: 0.3em;
+  top: 50%;
+  width: calc(4 * var(--ui-b));
+  height: calc(7 * var(--ui-b));
+  translate: 0 -50%;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  opacity: 0;
+}
+
+.ui-menu-item:hover::before,
+.ui-menu-item:focus-visible::before,
+.ui-menu-item[data-active="true"]::before {
+  opacity: 1;
+}
+
+.ui-menu-item:focus-visible {
+  outline: none;
+}
+
+.ui-menu-item:disabled,
+.ui-menu-item[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Blinking ▼ that says "press to continue". Stepped; still under reduced motion. */
+.ui-next {
+  display: inline-block;
+  width: calc(7 * var(--ui-b));
+  height: calc(4 * var(--ui-b));
+  background: var(--ui-flame);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  animation: ui-next-bob 0.8s steps(2, end) infinite;
+}
+
+@keyframes ui-next-bob {
+  50% {
+    transform: translateY(var(--ui-b));
+  }
+}
+
+/* ---------------------------------------------------------------- HP bar */
+
+.ui-hp {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.ui-hp-tag {
+  border-radius: 2px;
+  background: var(--ui-rust);
+  padding: 0 0.3em 0.1em;
+  color: var(--ui-orange);
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.ui-hp-track {
+  position: relative;
+  height: calc(4 * var(--ui-b));
+  flex: 1;
+  overflow: hidden;
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: calc(2 * var(--ui-b));
+  background: #3a4846;
+}
+
+.ui-hp-fill {
+  height: 100%;
+  background: var(--ui-hp-high);
+  box-shadow: inset 0 calc(-1 * var(--ui-b)) 0 rgba(0, 0, 0, 0.22);
+  transition: width 700ms steps(14, end);
+}
+
+.ui-hp-fill[data-level="mid"] {
+  background: var(--ui-hp-mid);
+}
+
+.ui-hp-fill[data-level="low"] {
+  background: var(--ui-hp-low);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-hp-fill {
+    transition: none;
+  }
+  .ui-next {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- legacy primitives */
+/* Older pages keep their markup; these rules give them the same look. */
+
+.pixel-button {
+  border-style: solid !important;
+  border-color: transparent !important;
+  border-width: calc(2 * var(--ui-b)) calc(3 * var(--ui-b)) !important;
+  border-image: url("/assets/ninja-adventure/ui/wood/button_normal.png") 2 3 fill /
+    calc(2 * var(--ui-b)) calc(3 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+  color: var(--ui-ink) !important;
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pixel-button:hover {
+  border-image-source: url("/assets/ninja-adventure/ui/wood/button_hover.png");
+}
+
+.pixel-button:active {
+  border-image-source: url("/assets/ninja-adventure/ui/wood/button_pressed.png");
+}
+
+/* Secondary buttons in the old markup (ridge / tomb tones) become cream. */
+.pixel-button[class*="border-ridge"],
+.pixel-button[class*="bg-tomb"],
+.pixel-button[class*="border-ember"],
+.pixel-button[class*="border-blood"] {
+  border-width: calc(6 * var(--ui-b)) !important;
+  border-image: url("/assets/ninja-adventure/ui/choice.png") 6 fill / calc(6 * var(--ui-b)) stretch;
+  padding-top: 0;
+  padding-bottom: 0.1em;
+}
+
+.pixel-panel,
+.pixel-panel-soft,
+.game-screen {
+  border: calc(4 * var(--ui-b)) solid transparent !important;
+  border-image: url("/assets/ninja-adventure/ui/panel-slate.png") 4 fill / calc(4 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+.pixel-panel-gold {
+  border: calc(6 * var(--ui-b)) solid transparent !important;
+  border-image: url("/assets/ninja-adventure/ui/wood/nine_path_panel.png") 6 / calc(6 * var(--ui-b)) stretch;
+  background: var(--ui-slate) padding-box !important;
+}
+
+.game-screen-bar {
+  border-bottom: var(--ui-b) solid var(--ui-ink);
+  background: transparent;
+}
+
+.pixel-input {
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: calc(2 * var(--ui-b));
+  background: var(--ui-paper);
+  box-shadow: inset 0 var(--ui-b) 0 #d9cfc6;
+  color: var(--ui-ink);
+}
+
+.pixel-input::placeholder {
+  color: #6d6a66;
+  opacity: 1;
+}
+
+.pixel-input:focus {
+  border-color: var(--ui-flame);
+  outline: var(--ui-b) solid var(--ui-orange);
+  outline-offset: 0;
+}
+
+.pixel-label {
+  color: var(--ui-cream);
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.eyebrow {
+  color: var(--ui-orange);
+  font-family: var(--font-game), var(--font-display), ui-monospace, monospace;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pixel-chip {
+  border: calc(6 * var(--ui-b)) solid transparent;
+  border-image: url("/assets/ninja-adventure/ui/choice.png") 6 fill / calc(6 * var(--ui-b)) stretch;
+  image-rendering: pixelated;
+  background: none;
+  padding: 0 0.3em;
+  color: var(--ui-ink);
+}
+
+.bar-track {
+  overflow: hidden;
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: calc(2 * var(--ui-b));
+  background: #3a4846;
+}
+
+.bar-fill {
+  background: var(--ui-orange);
+  background-image: none;
+}
+
+/* ---------------------------------------------------------------- slider */
+
+.ui-range {
+  width: 100%;
+  height: 44px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ui-range::-webkit-slider-runnable-track {
+  height: calc(4 * var(--ui-b));
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: calc(2 * var(--ui-b));
+  background: linear-gradient(var(--ui-flame), var(--ui-flame)) 0 / var(--fill, 50%) 100% no-repeat, #3a4846;
+}
+
+.ui-range::-moz-range-track {
+  height: calc(4 * var(--ui-b));
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: calc(2 * var(--ui-b));
+  background: #3a4846;
+}
+
+.ui-range::-moz-range-progress {
+  height: calc(4 * var(--ui-b));
+  background: var(--ui-flame);
+}
+
+.ui-range::-webkit-slider-thumb {
+  width: calc(8 * var(--ui-b));
+  height: calc(10 * var(--ui-b));
+  margin-top: calc(-4 * var(--ui-b));
+  appearance: none;
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: var(--ui-b);
+  background: var(--ui-orange);
+}
+
+.ui-range::-moz-range-thumb {
+  width: calc(8 * var(--ui-b));
+  height: calc(10 * var(--ui-b));
+  border: var(--ui-b) solid var(--ui-ink);
+  border-radius: var(--ui-b);
+  background: var(--ui-orange);
+}
+
+.ui-range:focus-visible {
+  outline: var(--ui-b) solid var(--ui-flame);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- sprites */
+
+.sheet-sprite {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  animation-iteration-count: infinite;
+}
+
+.sheet-x {
+  animation-name: sheet-x;
+}
+
+.sheet-y {
+  animation-name: sheet-y;
+}
+
+@keyframes sheet-x {
+  from { background-position-x: var(--sx0); }
+  to { background-position-x: var(--sx1); }
+}
+
+@keyframes sheet-y {
+  from { background-position-y: var(--sy0); }
+  to { background-position-y: var(--sy1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-x,
+  .sheet-y {
+    animation: none;
+  }
+}
