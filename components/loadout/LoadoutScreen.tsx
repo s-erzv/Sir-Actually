@@ -1,20 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CharacterPortrait } from "@/components/brand/Portrait";
-import { WeaponIcon } from "@/components/loadout/WeaponIcon";
-import QuestPath from "@/components/game/QuestPath";
+import { playSfx } from "@/game/audio";
+import { useMusic } from "@/lib/useMusic";
+import { HEART_HP } from "@/lib/balance";
+import GameMenu from "@/components/ui/GameMenu";
+import { CharacterSprite } from "@/components/ui/SheetSprite";
 import { authJson } from "@/lib/api/client";
 import {
   CHARACTERS,
-  getWeapon,
   isValidLoadout,
   type CharacterSlug,
   type Loadout,
   type WeaponSlug,
 } from "@/lib/loadout";
-import { ARSENALS } from "@/lib/combat/resolve";
-import { WEAPON_POWER } from "@/lib/balance";
 
 interface LoadoutScreenProps {
   onStart: (loadout: Loadout) => void;
@@ -26,6 +25,7 @@ interface CatalogResponse {
 }
 
 export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
+  useMusic("camp");
   const [characterSlug, setCharacterSlug] = useState<CharacterSlug>("arka");
   const [weaponSlug, setWeaponSlug] = useState<WeaponSlug>("pedang_sitasi");
   const [unlocked, setUnlocked] = useState<Set<CharacterSlug>>(
@@ -44,10 +44,6 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const character = CHARACTERS.find((item) => item.slug === characterSlug)!;
-  const loadoutArsenal = ARSENALS[characterSlug] ?? ARSENALS.arka!;
-  const signatureWeapon = getWeapon(weaponSlug);
-  const basicWeaponSlug =
-    character.weaponSlugs.find((slug) => slug !== weaponSlug) ?? loadoutArsenal.basic;
   const targetInfo = unlockTarget
     ? CHARACTERS.find((item) => item.slug === unlockTarget) ?? null
     : null;
@@ -119,280 +115,97 @@ export default function LoadoutScreen({ onStart }: LoadoutScreenProps) {
     [unlocked, characterSlug, weaponSlug],
   );
 
+  const index = CHARACTERS.findIndex((item) => item.slug === characterSlug);
+
+  function step(delta: number) {
+    const next = CHARACTERS[(index + delta + CHARACTERS.length) % CHARACTERS.length]!;
+    playSfx("uiMove");
+    setCharacterSlug(next.slug);
+    setWeaponSlug(next.weaponSlugs[0]!);
+  }
+
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (unlockTarget) return;
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      step(event.key === "ArrowRight" ? 1 : -1);
+    }
+  }
+
+  const locked = !unlocked.has(characterSlug);
+
   return (
-    <main className="dungeon-bg scanlines min-h-screen px-4 py-8 sm:px-6">
-      <div className="mx-auto w-full max-w-4xl">
-        <QuestPath current="loadout" className="mb-6" />
+    <main className="font-game flex min-h-[100dvh] flex-col items-center justify-center gap-3 px-4 py-16" onKeyDown={onKeyDown}>
+      <h1 className="g-2 text-[var(--ui-cream)]" style={{ textShadow: "3px 3px 0 var(--ui-ink)" }}>
+        Pilih karakter
+      </h1>
 
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow">Pos 04 · Persiapan</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-bone sm:text-4xl">
-              Pilih penjaga.
-            </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-ash">
-              Karakter mengubah cara kamu bertahan. Senjata dipilih otomatis dari
-              jawabanmu, bukan dari menu.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="pixel-chip border-gold/40 text-gold">
-              {catalogLoading ? "Memuat poin..." : `${pointsBalance} poin`}
-            </span>
-            <span className="pixel-chip">{character.hearts} Heart awal</span>
-          </div>
-        </div>
-
-        {catalogError ? (
-          <p className="mt-4 border border-blood/40 bg-blood/10 p-2 text-xs text-blood">
-            {catalogError}
-          </p>
-        ) : null}
-
-        <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="group" aria-label="Pilih karakter">
-          {CHARACTERS.map((item) => {
-            const active = item.slug === characterSlug;
-            const isUnlocked = unlocked.has(item.slug);
-            const locked = !isUnlocked;
-            return (
-              <button
-                key={item.slug}
-                type="button"
-                onClick={() => chooseCharacter(item.slug)}
-                aria-pressed={active}
-                aria-disabled={locked}
-                className={`group relative overflow-hidden border-2 p-0 text-left transition ${
-                  active
-                    ? "border-gold bg-gold/10 shadow-[4px_4px_0_#05080b,0_0_24px_rgba(233,184,93,0.14)]"
-                    : locked
-                      ? "border-ridge/60 bg-[#090d12] hover:border-blood/60"
-                      : "border-ridge bg-[#0c141d] hover:border-gold/70"
-                }`}
-              >
-                <div className="tile-floor relative flex h-32 items-end justify-center border-b-2 border-void">
-                  <span className="pointer-events-none absolute inset-x-0 top-0 h-5 wall-stone" />
-                  <span className="absolute bottom-7 h-3 w-16 bg-black/50 blur-[1px]" aria-hidden="true" />
-                  <CharacterPortrait
-                    slug={item.slug}
-                    size={96}
-                    className={`relative -mb-1 drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] transition-transform duration-200 ${
-                      locked ? "grayscale opacity-35" : active ? "-translate-y-1" : "group-hover:-translate-y-1"
-                    }`}
-                  />
-                  <span className="absolute left-2 top-2 font-pixel text-[0.52rem] text-ash">
-                    {String(CHARACTERS.indexOf(item) + 1).padStart(2, "0")}
-                  </span>
-                  {locked ? (
-                    <span className="absolute inset-0 grid place-items-center bg-[#05080b]/55">
-                      <span className="border-2 border-blood/60 bg-void/90 px-2 py-1 font-pixel text-[0.5rem] text-blood">
-                        TERKUNCI · {item.unlockCost} POIN
-                      </span>
-                    </span>
-                  ) : active ? (
-                    <span className="absolute right-2 top-2 border border-gold bg-void/90 px-1.5 py-0.5 font-pixel text-[0.46rem] text-gold">
-                      DIPILIH
-                    </span>
-                  ) : null}
-                </div>
-                <div className="p-3">
-                  <p className="font-pixel text-[0.5rem] text-gold">{item.title}</p>
-                  <h2 className="mt-1 text-lg font-bold leading-none text-bone">{item.name}</h2>
-                  <p className="mt-1 text-[0.66rem] uppercase tracking-[0.07em] text-ash">
-                    {item.role}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <span className="flex gap-1" aria-label={`${item.hearts} Heart`}>
-                      {Array.from({ length: item.hearts }).map((_, index) => (
-                        <span key={index} className="h-2.5 w-2.5 bg-blood" aria-hidden="true" />
-                      ))}
-                    </span>
-                    <span className="text-[0.62rem] font-bold text-ash">
-                      {locked ? `${item.unlockCost} poin` : `${item.hearts} Heart`}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <section className="pixel-panel p-4 sm:p-5">
-            <div className="flex items-start gap-4 border-b-2 border-void pb-4">
-              <div className="tile-floor grid h-20 w-20 shrink-0 place-items-end justify-items-center border-2 border-void pb-2">
-                <CharacterPortrait slug={character.slug} size={62} />
-              </div>
-              <div className="min-w-0">
-                <p className="font-pixel text-[0.52rem] text-gold">{character.title}</p>
-                <h2 className="mt-1 text-xl font-bold text-bone">{character.name}</h2>
-                <p className="mt-1 text-[0.78rem] leading-5 text-ash">{character.passive}</p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-2">
-              <p className="font-pixel text-[0.56rem] text-gold">Arsenal otomatis</p>
-              <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash/70">
-                Andalan harus dibuka jawaban
-              </span>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Pilih senjata andalan">
-              {character.weaponSlugs.map((slug) => {
-                const weapon = getWeapon(slug);
-                const selected = slug === weaponSlug;
-                return (
-                  <button
-                    key={slug}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setWeaponSlug(slug)}
-                    className={`border-2 p-3 text-left transition ${
-                      selected
-                        ? "border-gold bg-gold/10 shadow-[3px_3px_0_#05080b]"
-                        : "border-ridge/60 bg-void/40 hover:border-gold/60"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className={`grid h-11 w-11 place-items-center border-2 ${selected ? "border-gold/60 bg-gold/10 text-gold" : "border-ridge/60 bg-void/50 text-ash"}`}>
-                        <WeaponIcon slug={slug} size={28} />
-                      </span>
-                      <span className={`font-pixel text-[0.46rem] ${selected ? "text-gold" : "text-ash"}`}>
-                        {selected ? "ANDALAN" : "PILIH"}
-                      </span>
-                    </div>
-                    <h3 className="mt-2 text-sm font-bold text-bone">{weapon?.name ?? slug}</h3>
-                    <p className="mt-1 font-pixel text-[0.44rem] text-ash">
-                      {selected ? `DAYA ${WEAPON_POWER.signature}` : `DAYA ${WEAPON_POWER.basic}`}
-                    </p>
-                    <p className="mt-1 text-[0.7rem] leading-5 text-ash">
-                      {selected
-                        ? weapon?.condition ?? "Keluar jika jawaban memenuhi syaratnya."
-                        : "Jadi serangan dasar; selalu bisa dipakai."}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-3 text-[0.7rem] leading-5 text-ash/75">
-              Pilih satu sebagai senjata andalan. Senjata satunya jadi serangan dasar.
-              Server tetap memilih kapan andalan keluar, sesuai isi jawabanmu.
-            </p>
-          </section>
-
-          <aside className="pixel-panel-gold pixel-panel flex flex-col p-4 sm:p-5">
-            <p className="font-pixel text-[0.56rem] text-gold">Rakitan ekspedisi</p>
-
-            <dl className="mt-4 space-y-3 border-y-2 border-void py-4">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash">
-                  Karakter
-                </dt>
-                <dd className="text-sm font-bold text-bone">{character.name}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash">
-                  Senjata
-                </dt>
-                <dd className="flex items-center gap-1.5 text-sm font-bold text-gold">
-                  <WeaponIcon slug={weaponSlug} size={16} />
-                  {signatureWeapon?.name ?? weaponSlug}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash">
-                  Heart
-                </dt>
-                <dd className="flex items-center gap-1.5 text-sm font-bold text-blood">
-                  <span aria-hidden="true">♥</span> {character.hearts}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-[0.68rem] font-bold uppercase tracking-[0.08em] text-ash">
-                  Poin
-                </dt>
-                <dd className="font-pixel text-[0.56rem] text-gold">{pointsBalance}</dd>
-              </div>
-            </dl>
-
-            <p className="mt-4 text-[0.74rem] leading-5 text-ash">
-              Senjata hanya mengubah damage. Penilaian jawaban tetap memakai rubrik
-              yang sama untuk semua pemain.
-            </p>
-
-            <div className="mt-auto pt-5">
-              <button
-                type="button"
-                onClick={() => onStart({ characterSlug, weaponSlug })}
-                disabled={!canStart}
-                className="pixel-button w-full border-gold bg-gold px-5 text-void hover:bg-bone disabled:opacity-50"
-              >
-                Turun ke dungeon <span aria-hidden="true">↓</span>
-              </button>
-              <p className="mt-3 text-center text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash/70">
-                Loadout terkunci selama run
-              </p>
-            </div>
-          </aside>
-        </div>
+      <div className="flex items-end gap-2 sm:gap-4" role="radiogroup" aria-label="Karakter">
+        {CHARACTERS.map((item) => {
+          const active = item.slug === characterSlug;
+          return (
+            <button
+              key={item.slug}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={item.name}
+              data-sfx="uiMove"
+              onClick={() => {
+                setCharacterSlug(item.slug);
+                setWeaponSlug(item.weaponSlugs[0]!);
+              }}
+              className={`ui-slot cursor-pointer ${active ? "h-24 w-24 sm:h-28 sm:w-28" : "h-16 w-16 opacity-70 hover:opacity-100"} ${unlocked.has(item.slug) ? "" : "grayscale"}`}
+            >
+              <CharacterSprite slug={item.slug} facing="down" scale={active ? 5 : 3} walking={active} />
+            </button>
+          );
+        })}
       </div>
 
-      {targetInfo ? (
-        <div
-          className="game-fade fixed inset-0 z-50 grid place-items-center bg-[#05080b]/90 px-4 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Buka karakter ${targetInfo.name}`}
-        >
-          <div className="game-screen-in w-full max-w-sm border-2 border-gold bg-[#0a0f14] p-5 shadow-[8px_8px_0_#05080b]">
-            <p className="font-pixel text-[0.56rem] text-gold">KARAKTER TERKUNCI</p>
-            <div className="mt-3 flex items-center gap-3">
-              <div className="tile-floor grid h-16 w-16 shrink-0 place-items-end justify-items-center border-2 border-void pb-1.5">
-                <CharacterPortrait slug={targetInfo.slug} size={50} />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-bone">{targetInfo.name}</h2>
-                <p className="text-[0.7rem] uppercase tracking-[0.08em] text-ash">
-                  {targetInfo.title}
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-[0.78rem] leading-5 text-ash">{targetInfo.passive}</p>
-            <div className="mt-4 flex items-center justify-between border-y-2 border-void py-2 text-sm">
-              <span className="text-ash">Harga buka</span>
-              <span className="font-pixel text-gold">{targetInfo.unlockCost} poin</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm">
-              <span className="text-ash">Poin kamu</span>
-              <span className={`font-pixel ${pointsBalance >= targetInfo.unlockCost ? "text-moss" : "text-blood"}`}>
-                {pointsBalance}
-              </span>
-            </div>
-            {unlockError ? (
-              <p className="mt-3 border border-blood/40 bg-blood/10 p-2 text-xs text-blood">
-                {unlockError}
-              </p>
-            ) : null}
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setUnlockTarget(null)}
-                disabled={unlockBusy}
-                className="pixel-button pixel-button-sm border-ridge bg-tomb/80 text-bone hover:border-gold hover:text-gold"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => void unlockCharacter()}
-                disabled={unlockBusy || pointsBalance < targetInfo.unlockCost}
-                className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
-              >
-                {unlockBusy ? "Membuka..." : "Buka"}
-              </button>
-            </div>
-          </div>
+      <section className="ui-box w-full max-w-[30rem]" aria-live="polite">
+        <div className="g-1 flex items-baseline justify-between gap-2">
+          <span className="g-2">{character.name}</span>
+          <span>HP {character.hearts * HEART_HP}</span>
         </div>
-      ) : null}
+        <p className="g-1 text-[var(--ui-rust)]">{character.title}</p>
+        <p className="g-1 mt-1">{character.passive}</p>
+        {catalogError ? <p className="g-1 mt-1 text-[#a3341f]">{catalogError}</p> : null}
+      </section>
+
+      {unlockTarget && targetInfo ? (
+        <section className="ui-box w-full max-w-[30rem]" role="alertdialog" aria-label="Buka karakter">
+          <p className="g-1">
+            Buka {targetInfo.name} dengan {targetInfo.unlockCost} koin? Kamu punya {pointsBalance}.
+          </p>
+          {unlockError ? <p className="g-1 text-[#a3341f]">{unlockError}</p> : null}
+          <GameMenu
+            key="unlock"
+            label="Buka karakter"
+            columns={2}
+            items={[
+              { key: "no", label: "Tidak", sfx: "uiCancel", onSelect: () => setUnlockTarget(null) },
+              {
+                key: "yes",
+                label: unlockBusy ? "Membuka..." : "Ya, buka",
+                disabled: unlockBusy || pointsBalance < targetInfo.unlockCost,
+                onSelect: () => void unlockCharacter(),
+              },
+            ]}
+          />
+        </section>
+      ) : (
+        <button
+          type="button"
+          autoFocus
+          disabled={catalogLoading}
+          onClick={() => (locked ? chooseCharacter(characterSlug) : canStart && onStart({ characterSlug, weaponSlug }))}
+          className="ui-btn min-w-[14rem]"
+        >
+          {catalogLoading ? "Memuat..." : locked ? `Buka ${character.name}` : `Pilih ${character.name}`}
+        </button>
+      )}
+      <p className="g-1 text-[var(--ui-cream)] opacity-60">Kiri / kanan: ganti karakter</p>
     </main>
   );
 }
