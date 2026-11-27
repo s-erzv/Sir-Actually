@@ -14,15 +14,14 @@ import { COMPREHENSION } from "@/lib/domain/types";
 import type { GeneratedQuestion } from "@/lib/encounter/schema";
 import { HEART_HP, MAX_ANSWER_LENGTH, MIN_ANSWER_LENGTH } from "@/lib/balance";
 import { monsterLevel, monsterStats } from "@/lib/combat/monsterStats";
-import { getWeapon, type Loadout } from "@/lib/loadout";
+import type { Loadout } from "@/lib/loadout";
 import { getMonsterDisplayName } from "@/lib/monsters";
 import { authJson } from "@/lib/api/client";
-import { PixelSprite } from "@/components/brand/PixelSprite";
-import { CharacterPortrait, MonsterPortrait } from "@/components/brand/Portrait";
-import HeartDisplay from "./HeartDisplay";
-import HpBar from "./HpBar";
+import GameMenu, { type MenuEntry } from "@/components/ui/GameMenu";
+import { CharacterSprite, MonsterSprite } from "@/components/ui/SheetSprite";
 import ScoreBreakdown from "./ScoreBreakdown";
 import AdviceModal from "./AdviceModal";
+import { BattleInfo, TypedText, battleLines, shortMonsterName } from "./BattleScene";
 
 type EncounterData = GameEvents["encounter:start"];
 
@@ -89,6 +88,16 @@ interface EncounterOverlayProps {
   questionBank?: Record<string, GeneratedQuestion[]>;
   onPointsChange: (points: number) => void;
   onHpChange?: (hp: number, hpMax: number) => void;
+  /** Equipped armor; the battle shows its shield under HP. */
+  armor?: ArmorState | null;
+  onArmorChange?: (armor: ArmorState | null) => void;
+}
+
+export interface ArmorState {
+  slug: string;
+  name: string;
+  shield: number;
+  shieldMax: number;
 }
 
 export default function EncounterOverlay({
@@ -102,6 +111,8 @@ export default function EncounterOverlay({
   questionBank,
   onPointsChange,
   onHpChange,
+  armor = null,
+  onArmorChange,
 }: EncounterOverlayProps) {
   const [state, setState] = useState<EncounterRuntimeState | null>(null);
   const [answer, setAnswer] = useState("");
@@ -114,6 +125,10 @@ export default function EncounterOverlay({
   const [indexInfo, setIndexInfo] = useState<{ floor: number; section: string } | null>(null);
   const [indexLoading, setIndexLoading] = useState(false);
   const [attackPhase, setAttackPhase] = useState<"idle" | "attack" | "waiting" | "hit">("idle");
+  /** What the dialog box shows while the player picks a command. */
+  const [view, setView] = useState<"menu" | "answer" | "hint" | "quote" | "objection">("menu");
+  const [lineIndex, setLineIndex] = useState(0);
+  const [showDetail, setShowDetail] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -326,23 +341,26 @@ export default function EncounterOverlay({
       setAttackPhase("idle");
       void syncEncounterState(data);
       if (!first) void requestQuestion(data, [], []);
-      requestAnimationFrame(() => textareaRef.current?.focus());
     };
 
     bus.on("encounter:start", onStart);
     return () => bus.off("encounter:start", onStart);
   }, [requestQuestion, questionBank, syncEncounterState, hearts, heartsMax]);
 
-  // Short landscape screens make the story column scroll; keep the live part
-  // (answer composer, then the result) inside the visible area.
+  // A new question returns to the command menu; a result starts at line one.
   useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel || panel.scrollHeight <= panel.clientHeight) return;
-    panel.scrollTo({
-      top: state?.showBreakdown ? panel.scrollHeight : 0,
-      behavior: "smooth",
-    });
-  }, [state?.question, state?.showBreakdown]);
+    setView("menu");
+  }, [state?.question]);
+
+  useEffect(() => {
+    if (!state?.showBreakdown) return;
+    setLineIndex(0);
+    setShowDetail(false);
+  }, [state?.showBreakdown, state?.questionsAsked]);
+
+  useEffect(() => {
+    if (view === "answer") requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [view]);
 
   // ── Resolve encounter (close overlay, emit bus event) ────────────────────
 
@@ -365,7 +383,7 @@ export default function EncounterOverlay({
   const handleSubmit = useCallback(async () => {
     if (!state || submitting || !state.question || answer.trim().length === 0) return;
     if (answer.trim().length < MIN_ANSWER_LENGTH) {
-      setAnswerError("Tulis dulu — minimal 12 karakter. Jawaban pendek tidak memotong Heart.");
+      setAnswerError("Tulis dulu — minimal 12 karakter. Jawaban pendek tidak memotong HP.");
       return;
     }
     setSubmitting(true);
@@ -388,6 +406,7 @@ export default function EncounterOverlay({
         combat: CombatOutcome;
         hp: number;
         hpMax: number;
+        armor: ArmorState | null;
         monsterLevel: number;
         monsterHpMax: number;
       }>("/api/encounter/answer", {
@@ -434,6 +453,7 @@ export default function EncounterOverlay({
       });
       onHeartsChange(data.newHearts);
       onHpChange?.(data.hp, data.hpMax);
+      onArmorChange?.(data.armor ?? null);
       onPointsChange(data.pointsTotal);
 
       setState((prev) =>
@@ -475,7 +495,7 @@ export default function EncounterOverlay({
       setSubmitting(false);
       setAnswerError(err instanceof Error ? err.message : "Gagal menilai jawaban.");
     }
-  }, [state, answer, submitting, hearts, onHeartsChange, onHpChange, researchMapId, loadout, runId, onPointsChange]);
+  }, [state, answer, submitting, hearts, onHeartsChange, onHpChange, onArmorChange, researchMapId, loadout, runId, onPointsChange]);
 
   // ── Continue after score breakdown ────────────────────────────────────────
 
@@ -690,533 +710,292 @@ export default function EncounterOverlay({
     );
   }
 
-  return (
-    <div className="comic-overlay game-fade fixed inset-0 z-50 flex flex-col justify-end">
-      <div
-        role="dialog"
-        aria-label="Pertarungan"
-        className={`comic-dock game-screen-in max-h-[100dvh] w-full overflow-y-auto border-t-4 bg-[#0a0f14] shadow-[0_-8px_0_rgba(0,0,0,0.35)] ${
-          isBoss ? "border-gold" : "border-ridge"
-        }`}
+  const playerLabel = playerName ?? loadout.characterSlug;
+  const monsterName = shortMonsterName(bossName);
+  const busy = submitting || attackPhase !== "idle";
+  const lines =
+    showBreakdown && lastEvaluation
+      ? battleLines({
+          playerName: playerLabel,
+          monsterName,
+          status,
+          evaluation: lastEvaluation,
+          combat: state.combat,
+          pointsAwarded: state.lastPointsAwarded,
+          lootAwarded: state.lastLootAwarded,
+          lootKind: state.lastLootKind,
+        })
+      : [];
+  const lastLine = lineIndex >= lines.length - 1;
+  const continueLabel =
+    status === "won" ? "Selesai" : status === "lost" ? "Lihat nasihat" : status === "conceded" ? "Lanjut" : "Lanjut";
+  const questionReady = Boolean(state.question) && !state.questionLoading && !state.questionError;
+  const canAct = status === "active" && !busy && !showBreakdown && questionReady;
+  const comprehension = weaknessType === COMPREHENSION;
+  const indexAvailable = loadout.characterSlug === "mira" && !indexUsedFloors.includes(state.encounter.floor);
+
+  const commands: MenuEntry[] = [
+    { key: "attack", label: "Serang", onSelect: () => setView("answer") },
+    {
+      key: "hint",
+      label: "Petunjuk",
+      onSelect: () => {
+        setView("hint");
+        if (!(hint && hint.question === state.question)) void handleHint();
+      },
+    },
+    { key: "quote", label: "Kutipan", onSelect: () => setView("quote") },
+    {
+      key: "object",
+      label: "Keberatan",
+      disabled: comprehension,
+      onSelect: () => setView("objection"),
+    },
+  ];
+
+  const advance = () => {
+    if (!lastLine) setLineIndex((index) => index + 1);
+  };
+
+  let dialog: React.ReactNode;
+  let menu: React.ReactNode = null;
+
+  if (showBreakdown && lastEvaluation) {
+    if (showDetail) {
+      dialog = (
+        <div className="max-h-[38vh] overflow-y-auto pr-1 font-body text-[0.95rem] leading-6">
+          <ScoreBreakdown
+            evaluation={lastEvaluation}
+            weaknessType={weaknessType}
+            targetCriterionIds={lastEvaluation.targetCriterionIds ?? state.targetCriterionIds}
+          />
+        </div>
+      );
+      menu = (
+        <GameMenu
+          key="detail"
+          label="Tutup nilai"
+          items={[{ key: "close", label: "Tutup", sfx: "uiCancel", onSelect: () => setShowDetail(false) }]}
+        />
+      );
+    } else {
+      dialog = (
+        <button
+          type="button"
+          className="battle-line g-1 w-full text-left"
+          onClick={advance}
+          data-sfx={lastLine ? "none" : "uiMove"}
+          aria-label={lastLine ? undefined : "Lanjut"}
+        >
+          <TypedText key={`${state.questionsAsked}-${lineIndex}`} text={lines[lineIndex] ?? ""} />
+          {!lastLine ? <span className="ui-next ml-2 align-middle" aria-hidden="true" /> : null}
+        </button>
+      );
+      menu = lastLine ? (
+        <GameMenu
+          key={`after-${state.questionsAsked}`}
+          label="Setelah serangan"
+          items={[
+            { key: "next", label: continueLabel, onSelect: handleContinue },
+            { key: "detail", label: "Lihat nilai", sfx: "uiOpen", onSelect: () => setShowDetail(true) },
+          ]}
+        />
+      ) : null;
+    }
+  } else if (busy) {
+    dialog = (
+      <p className="g-1" aria-live="polite">
+        <TypedText
+          text={
+            attackPhase === "waiting"
+              ? `${monsterName} menimbang buktimu...`
+              : `${playerLabel} menyerang!`
+          }
+        />
+      </p>
+    );
+  } else if (status !== "active") {
+    dialog = <p className="g-1">Pertarungan selesai.</p>;
+    menu = (
+      <GameMenu key="ended" label="Lanjut" items={[{ key: "next", label: "Lanjut", onSelect: handleContinue }]} />
+    );
+  } else if (view === "answer") {
+    dialog = (
+      <form
+        className="flex h-full flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSubmit();
+        }}
       >
-        <div className="comic-strip-bar flex items-center justify-between gap-3 px-3 py-2">
-          <span className="font-pixel text-[0.54rem] text-gold">
-            PERTARUNGAN · LANTAI {encounter.floor} ·{" "}
-            {weaknessType === COMPREHENSION ? "LORONG" : `RUANG ${encounter.room + 1}`}
+        <p className="g-1 line-clamp-2 text-[var(--ui-rust)]">{state.question}</p>
+        <textarea
+          ref={textareaRef}
+          value={answer}
+          maxLength={MAX_ANSWER_LENGTH}
+          onChange={(e) => setAnswer(e.target.value)}
+          onKeyDown={(event) => {
+            handleKeyDown(event);
+            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+              event.preventDefault();
+              void handleSubmit();
+            }
+            if (event.key === "Escape") setView("menu");
+          }}
+          rows={3}
+          placeholder="Jawab dengan bukti dari naskahmu..."
+          className="pixel-input min-h-[5.5rem] flex-1 resize-none font-body"
+          aria-label="Jawabanmu"
+        />
+        {answerError ? (
+          <p role="alert" className="g-1 text-[#a3341f]">
+            {answerError}
+          </p>
+        ) : null}
+        <div className="flex items-center justify-between gap-2">
+          <span className="g-1 text-[var(--ui-rust)]">
+            {answer.length}/{MAX_ANSWER_LENGTH}
           </span>
-          <span className="text-[0.58rem] font-bold uppercase tracking-[0.08em] text-ash">
-            {statusLabel(status)} · Tingkat {level}
+          <span className="flex gap-2">
+            <button type="button" data-sfx="uiCancel" className="ui-btn is-quiet" onClick={() => setView("menu")}>
+              Batal
+            </button>
+            <button type="submit" data-sfx="none" className="ui-btn" disabled={answer.trim().length === 0}>
+              Serang
+            </button>
           </span>
         </div>
+      </form>
+    );
+  } else if (view === "hint") {
+    dialog = (
+      <p className="g-1">
+        {hintLoading ? (
+          "Mencari maksud pertanyaan..."
+        ) : hintError ? (
+          <span className="text-[#a3341f]">{hintError}</span>
+        ) : hint && hint.question === state.question ? (
+          <TypedText text={hint.text} />
+        ) : (
+          "..."
+        )}
+      </p>
+    );
+    menu = (
+      <GameMenu key="hint" label="Petunjuk" items={[{ key: "back", label: "Kembali", sfx: "uiCancel", onSelect: () => setView("menu") }]} />
+    );
+  } else if (view === "quote") {
+    dialog = (
+      <div className="g-1 max-h-[32vh] overflow-y-auto">
+        <p className="text-[var(--ui-rust)]">Kutipan yang diserang:</p>
+        <p className="font-body text-[0.98rem] leading-6">&ldquo;{evidenceQuote || "Tidak ada kutipan."}&rdquo;</p>
+        {indexInfo && indexInfo.floor === state.encounter.floor ? (
+          <p className="mt-1">
+            {indexInfo.section && indexInfo.section !== "tanpa bagian"
+              ? `Ada di bagian: ${indexInfo.section}`
+              : "Naskahmu belum punya judul bagian di sekitar kutipan ini."}
+          </p>
+        ) : null}
+      </div>
+    );
+    menu = (
+      <GameMenu
+        key="quote"
+        label="Kutipan"
+        items={[
+          ...(indexAvailable
+            ? [{ key: "index", label: indexLoading ? "Mencari..." : "Cari bagian", disabled: indexLoading, onSelect: () => void handleIndex() }]
+            : []),
+          { key: "back", label: "Kembali", sfx: "uiCancel" as const, onSelect: () => setView("menu") },
+        ]}
+      />
+    );
+  } else if (view === "objection") {
+    dialog = (
+      <p className="g-1">
+        Tandai temuan ini salah? Monster pergi tanpa koin. HP aman.
+        {answerError ? <span className="mt-1 block text-[#a3341f]">{answerError}</span> : null}
+      </p>
+    );
+    menu = (
+      <GameMenu
+        key="objection"
+        label="Keberatan"
+        items={[
+          { key: "no", label: "Tidak", sfx: "uiCancel", onSelect: () => setView("menu") },
+          { key: "yes", label: "Ya, keberatan", onSelect: () => void handleObjection() },
+        ]}
+      />
+    );
+  } else {
+    dialog = state.questionLoading ? (
+      <p className="g-1">
+        <TypedText text={`${monsterName} menyusun pertanyaan...`} />
+      </p>
+    ) : state.questionError ? (
+      <div className="g-1">
+        <p className="text-[#a3341f]">{state.questionError}</p>
+        <button
+          type="button"
+          onClick={() => void requestQuestion(state.encounter, state.previousQuestions, state.previousAttackTypes)}
+          className="ui-btn is-quiet mt-2"
+        >
+          Coba lagi
+        </button>
+      </div>
+    ) : (
+      <p className="g-1">
+        <span className="text-[var(--ui-rust)]">{monsterName}: </span>
+        <TypedText text={state.question ?? "..."} />
+      </p>
+    );
+    menu = canAct ? <GameMenu key={`cmd-${state.question}`} label="Perintah" columns={2} items={commands} /> : null;
+  }
 
-        <div className="comic-grid grid gap-0 sm:grid-cols-[0.9fr_1.1fr]">
-          <aside className="comic-panel comic-panel-monster relative border-b-2 border-void p-3 sm:border-b-0 sm:border-r-2">
-            <div className="comic-halftone" aria-hidden="true" />
+  const foeState =
+    status === "won" ? "is-dead" : attackPhase === "hit" ? (lastEvaluation?.damage ? "is-hit" : "is-miss") : "";
 
-            {evidenceQuote ? (
-              <p className="comic-caption relative z-10">
-                <span>Kutipan yang diserang</span>
-                “{evidenceQuote}”
-              </p>
-            ) : null}
-
-            <div className={`comic-arena relative z-10 h-40 overflow-hidden border-2 border-void ${attackPhase === "hit" ? "is-hit" : ""}`}>
-              <div className="comic-sky" aria-hidden="true" />
-              <span className="absolute left-2 top-2 z-20 font-pixel text-[0.46rem] text-moss">KAMU</span>
-              <span className="absolute right-2 top-2 z-20 font-pixel text-[0.46rem] text-blood">
-                {weaknessType === COMPREHENSION ? "PENGHUNI" : isBoss ? "BOSS" : "ANTEK"} · Lv {level}
-              </span>
-
-              {attackPhase === "attack" || attackPhase === "hit" ? (
-                <div className="comic-speed-lines" aria-hidden="true" />
-              ) : null}
-
-              <div className={`comic-player absolute bottom-3 left-[11%] ${attackPhase === "attack" ? "is-attacking" : ""}`}>
-                <CharacterPortrait
-                  slug={loadout.characterSlug}
-                  size={isBoss ? 78 : 68}
-                  className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
-                />
-              </div>
-
-              <div className={`comic-monster absolute bottom-3 right-[9%] ${attackPhase === "hit" ? (lastEvaluation?.damage === 0 ? "is-miss" : "is-hit") : ""} ${status === "won" ? "is-dead" : ""}`}>
-                <MonsterPortrait
-                  slug={encounter.bossSlug}
-                  isBoss={isBoss}
-                  size={isBoss ? 116 : 92}
-                  className="drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]"
-                />
-                <span className={`comic-nameplate ${isBoss ? "is-boss" : ""}`}>{bossName}</span>
-              </div>
-
-              {attackPhase === "attack" ? (
-                <>
-                  <span className="comic-slash" aria-hidden="true" />
-                  <span className="comic-slash is-second" aria-hidden="true" />
-                </>
-              ) : null}
-
-              {attackPhase === "hit" && lastEvaluation ? (
-                <>
-                  <span
-                    key={`word-${state.questionsAsked}`}
-                    className={`comic-impact-word ${lastEvaluation.damage > 0 ? "" : "is-miss"}`}
-                    aria-hidden="true"
-                  >
-                    {lastEvaluation.damage <= 0
-                      ? "MELESET!"
-                      : state.combat?.attackStyle === "bow"
-                        ? "TEMBAK!"
-                        : state.combat?.attackStyle === "axe"
-                          ? "TEBAS GANDA!"
-                          : state.combat?.attackStyle === "shield"
-                            ? "HANTAM!"
-                            : "TEBAS!"}
-                  </span>
-                  <span
-                    key={`damage-${lastEvaluation.damage}-${state.questionsAsked}`}
-                    className={`comic-damage ${lastEvaluation.damage > 0 ? "is-hit" : ""}`}
-                    aria-hidden="true"
-                  >
-                    {lastEvaluation.damage > 0 ? `−${lastEvaluation.damage}` : "0"}
-                  </span>
-                </>
-              ) : null}
-            </div>
-
-            <div className="relative z-10 mt-2">
-              <HpBar hp={hp} hpMax={hpMax} />
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1" aria-label={`Serangan ${state.questionsAsked}`}>
-                  {Array.from({ length: state.maxQuestions }).map((_, index) => (
-                    <span
-                      key={index}
-                      className="turn-pip"
-                      data-used={index < state.questionsAsked}
-                      aria-hidden="true"
-                    />
-                  ))}
-                </div>
-                <span className="text-[0.54rem] font-bold uppercase tracking-[0.08em] text-ash">
-                  Serangan {state.questionsAsked}/{state.maxQuestions}
-                </span>
-              </div>
-              <div className="mt-2">
-                <HeartDisplay hearts={hearts} heartsMax={heartsMax} hp={state.playerHp} hpMax={state.playerHpMax} />
-              </div>
-            </div>
-
-          </aside>
-
-          <section ref={panelRef} className="comic-panel comic-panel-player relative p-3 sm:p-4">
-                        <div className="comic-bubble-wrap relative z-10 mb-3">
-              <div className="comic-bubble is-monster-speech" aria-live="polite">
-                <div className="mb-2 flex items-start justify-between gap-2 border-b-2 border-[#2c2114]/25 pb-1.5">
-                  <span className="font-pixel text-[0.46rem] uppercase tracking-[0.1em] text-[#6b4b1e]">
-                    {showBreakdown && lastEvaluation ? "Monster menjawab" : `${bossName.split(" — ")[0]} menyerang`}
-                  </span>
-                  {!showBreakdown ? (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {loadout.characterSlug === "mira" &&
-                      !indexUsedFloors.includes(state.encounter.floor) ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleIndex()}
-                          disabled={indexLoading}
-                          className="comic-mini-button text-[#2f6f68]"
-                          aria-label="Tampilkan label bagian bukti"
-                        >
-                          {indexLoading ? "Membaca..." : "Indeks"}
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => void handleHint()}
-                        disabled={hintLoading}
-                        className="comic-mini-button"
-                        aria-label="Jelaskan maksud pertanyaan"
-                      >
-                        <BulbIcon />
-                        {hintLoading ? "Menerjemahkan..." : "Petunjuk"}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-
-                {showBreakdown && lastEvaluation ? (
-                  <p className="comic-line text-[0.92rem] leading-6 text-[#2b2318]">
-                    {status === "won"
-                      ? "Kuh... bukti itu terlalu tajam. Klaimku runtuh."
-                      : lastEvaluation.damage === 0
-                        ? "Kosong. Tidak ada bukti yang menusukku."
-                        : state.combat && state.combat.counterDamage > 0
-                          ? "Jawabanmu goyah. Rasakan balasanku!"
-                          : state.combat?.shielded
-                            ? "Tameng itu menahan seranganku..."
-                            : `Ugh! ${lastEvaluation.damage} damage... jawaban itu kena.`}
-                  </p>
-                ) : state.questionLoading ? (
-                  <p className="comic-line flex items-center gap-2 text-[0.88rem] text-[#4a3a25]">
-                    <span className="comic-typing" aria-hidden="true">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                    Penguji menyusun serangan...
-                  </p>
-                ) : state.questionError ? (
-                  <div>
-                    <p className="comic-line text-[0.82rem] leading-5 text-[#7a2d1e]">{state.questionError}</p>
-                    <button
-                      onClick={() => void requestQuestion(state.encounter, state.previousQuestions, state.previousAttackTypes)}
-                      className="comic-mini-button mt-2"
-                    >
-                      Coba lagi
-                    </button>
-                  </div>
-                ) : (
-                  <p className="comic-line text-[0.95rem] leading-6 text-[#2b2318]">
-                    {state.question ?? "..."}
-                  </p>
-                )}
-
-                {hintError ? (
-                  <p className="mt-2 border-l-2 border-[#8a3a2a]/60 pl-2 text-[0.72rem] leading-5 text-[#7a2d1e]">
-                    {hintError}
-                  </p>
-                ) : null}
-
-                {hint && hint.question === state.question ? (
-                  <div className="mt-2 border-l-2 border-[#b8792c]/60 bg-[#e3d0a6]/55 py-1.5 pl-2">
-                    <p className="font-pixel text-[0.44rem] uppercase tracking-[0.1em] text-[#6b4b1e]">
-                      Maksud pertanyaan
-                    </p>
-                    <p className="mt-1 text-[0.76rem] leading-5 text-[#4a3a25]">{hint.text}</p>
-                  </div>
-                ) : null}
-
-                {indexInfo && indexInfo.floor === state.encounter.floor ? (
-                  <div className="mt-2 border-l-2 border-[#2f6f68]/60 bg-[#d7ece8]/55 py-1.5 pl-2">
-                    <p className="font-pixel text-[0.44rem] uppercase tracking-[0.1em] text-[#2f6f68]">
-                      Indeks Mira · lokasi bukti
-                    </p>
-                    <p className="mt-1 text-[0.76rem] leading-5 text-[#4a3a25]">
-                      {indexInfo.section && indexInfo.section !== "tanpa bagian"
-                        ? `Bukti ini ada di bagian: ${indexInfo.section}`
-                        : "Naskahmu belum punya judul bagian di sekitar bukti ini."}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="comic-player-head relative z-10 mb-3 flex items-center gap-2 border-b-2 border-void pb-2">
-              <CharacterPortrait slug={loadout.characterSlug} size={38} />
-              <div>
-                <p className="font-pixel text-[0.44rem] uppercase tracking-[0.12em] text-moss">Kamu</p>
-                <p className="text-sm font-bold leading-5 text-bone">
-                  {playerName ?? loadout.characterSlug}
-                </p>
-              </div>
-            </div>
-
-            {state.lastAnswer && (showBreakdown || submitting) ? (
-              <div className="comic-bubble is-player mb-3">
-                <p className="font-pixel text-[0.44rem] uppercase tracking-[0.1em] text-[#33474f]">
-                  Jawabanmu
-                </p>
-                <p className="comic-line mt-1 text-[0.84rem] leading-5 text-[#223035]">
-                  “{state.lastAnswer}”
-                </p>
-              </div>
-            ) : null}
-
-            {showBreakdown && lastEvaluation ? (
-              <div className="game-rise mt-4 border-2 border-void bg-void/55 p-3 shadow-[inset_0_0_0_1px_#34424e]">
-                <div className="mb-2 flex items-center justify-between gap-2 border-b border-ridge/40 pb-2">
-                  <span className="font-pixel text-[0.5rem] uppercase tracking-[0.1em] text-gold">
-                    {status === "won"
-                      ? "Monster tumbang"
-                      : status === "lost"
-                        ? "HP habis"
-                        : status === "conceded"
-                          ? "Monster bertahan"
-                          : "Hasil serangan"}
-                  </span>
-                  <span className={`font-pixel text-[0.6rem] ${lastEvaluation.damage > 0 ? "text-blood" : "text-ash"}`}>
-                    {lastEvaluation.damage > 0 ? `−${lastEvaluation.damage} HP` : "0 DAMAGE"}
-                  </span>
-                </div>
-
-                <div className="mb-2 grid grid-cols-3 gap-1.5">
-                  <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
-                    <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Damage</span>
-                    <span className={`mt-0.5 block font-pixel text-sm ${lastEvaluation.damage > 0 ? "text-blood" : "text-ash"}`}>
-                      {lastEvaluation.damage}
-                    </span>
-                  </span>
-                  <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
-                    <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Skor</span>
-                    <span className="mt-0.5 block font-pixel text-sm text-gold">
-                      {lastEvaluation.scoreMax > 0
-                        ? `${Math.round((lastEvaluation.scoreTotal / lastEvaluation.scoreMax) * 100)}%`
-                        : "0%"}
-                    </span>
-                  </span>
-                  <span className="border border-ridge/50 bg-void/50 px-2 py-1.5 text-center">
-                    <span className="block text-[0.48rem] font-bold uppercase tracking-[0.08em] text-ash">Heart</span>
-                    <span className={`mt-0.5 block font-pixel text-sm ${lastEvaluation.heartLost ? "text-blood" : "text-moss"}`}>
-                      {lastEvaluation.heartLost ? "−1" : "aman"}
-                    </span>
-                  </span>
-                </div>
-
-                {state.combat ? (
-                  <div className="mb-2 border border-ridge/50 bg-void/45 px-2 py-1.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em]">
-                      <span className="text-ash">Mutu jawaban</span>
-                      <span className="text-gold">
-                        Q{state.combat.quality} · {state.combat.qualityLabel}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em]">
-                      <span className="text-ash">Senjata</span>
-                      <span className={state.combat.weaponKind === "signature" ? "text-ember" : "text-bone"}>
-                        {state.combat.weaponName} · {state.combat.weaponKind === "signature" ? "andalan" : "dasar"}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em]">
-                      <span className="text-ash">Balasan monster</span>
-                      <span className={state.combat.counterDamage > 0 ? "text-blood" : "text-moss"}>
-                        {state.combat.shielded ? "ditahan tameng" : state.combat.counterDamage > 0 ? `-${state.combat.counterDamage} HP` : "tidak ada"}
-                      </span>
-                    </div>
-                  </div>
-                ) : null}
-
-                {lastEvaluation.heartLost ? (
-                  <p className="mb-2 border border-blood/30 bg-blood/10 px-2 py-1 text-[0.66rem] leading-5 text-blood">
-                    Heart berkurang karena jawaban tidak menjawab pertanyaan yang diajukan.
-                  </p>
-                ) : null}
-                {state.lastWeapon ? (
-                  <p className="mb-2 flex items-center justify-between gap-2 border-b border-ridge/40 pb-2 text-[0.58rem] font-bold uppercase tracking-[0.08em]">
-                    <span className="text-ash">Senjata otomatis</span>
-                    <span className="text-gold">
-                      {getWeapon(state.lastWeapon)?.name ?? state.lastWeapon}
-                    </span>
-                  </p>
-                ) : null}
-                <ScoreBreakdown
-                  evaluation={lastEvaluation}
-                  weaknessType={weaknessType}
-                  targetCriterionIds={lastEvaluation.targetCriterionIds ?? state.targetCriterionIds}
-                />
-
-                {state.lastPointsAwarded > 0 ? (
-                  <div className="reward-burst relative mt-3 overflow-hidden border-2 border-gold/70 bg-gold/10 p-3 text-center">
-                    <span className="reward-spark reward-spark-a" aria-hidden="true" />
-                    <span className="reward-spark reward-spark-b" aria-hidden="true" />
-                    <span className="reward-spark reward-spark-c" aria-hidden="true" />
-                    <p className="font-pixel text-[0.5rem] uppercase tracking-[0.14em] text-gold">
-                      Harta karun
-                    </p>
-                    {state.lastLootKind === "zonk" ? (
-                      <>
-                        <div className="mt-1 flex items-center justify-center gap-2">
-                          <PixelSprite kind="chest" size={34} className="grayscale opacity-40" />
-                          <span className="zonk-shake font-pixel text-xl font-bold text-ash">
-                            ZONK
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash/70">
-                          Peti kosong. Nggak ada bonus poin.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="mt-1 flex items-center justify-center gap-2">
-                          <PixelSprite kind="chest" size={34} />
-                          <span className="reward-amount font-pixel text-2xl font-bold text-gold">
-                            +{state.lastLootAwarded} POIN
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.08em] text-ash">
-                          Bonus {state.lastLootKind === "gem" ? "permata" : "koin"}
-                        </p>
-                      </>
-                    )}
-                    <p className="mt-2 border-t border-gold/20 pt-2 text-[0.6rem] font-bold uppercase tracking-[0.08em] text-ash">
-                      Hadiah tempur +{state.lastPointsAwarded} poin · Total {state.lastPointsTotal}
-                    </p>
-                  </div>
-                ) : null}
-
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <span className="text-[0.6rem] font-bold uppercase tracking-[0.08em] text-ash">
-                    {lastEvaluation.heartLost ? "Heart berkurang" : "Heart aman"}
-                  </span>
-                  <button
-                    onClick={handleContinue}
-                    className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
-                  >
-                    {status === "won"
-                      ? "Selesai"
-                      : status === "conceded"
-                        ? "Lanjut"
-                        : status === "lost"
-                          ? "Lihat nasihat"
-                          : "Pertanyaan berikutnya"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {!showBreakdown && status === "active" && (submitting || attackPhase !== "idle") ? (
-              <div className="mt-4 border-2 border-gold/40 bg-gold/5 p-4 text-center">
-                <p className="font-pixel text-[0.55rem] text-gold">
-                  {attackPhase === "attack"
-                    ? "KAMU MENYERANG"
-                    : attackPhase === "hit"
-                      ? "HANTAMAN MASUK"
-                      : "AI MENIMBANG BUKTI"}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-ash">
-                  {attackPhase === "waiting"
-                    ? "Penguji menghitung dukungan bukti. Jangan tutup layar."
-                    : "Tunggu hasil serangan..."}
-                </p>
-                <div className="bar-track mt-3 overflow-hidden">
-                  <div className="entry-load-fill" />
-                </div>
-              </div>
-            ) : null}
-
-            {!showBreakdown && status !== "active" && attackPhase === "idle" && !submitting ? (
-              <div className="mt-4 border-2 border-gold/50 bg-gold/5 p-3 text-center">
-                <p className="font-pixel text-[0.5rem] uppercase tracking-[0.1em] text-gold">
-                  {status === "won"
-                    ? "MONSTER TUMBANG"
-                    : status === "lost"
-                      ? "HP HABIS"
-                      : "PERTARUNGAN SELESAI"}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-ash">
-                  Pertarungan ini sudah selesai. Lanjutkan ekspedisi.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleContinue}
-                  className="pixel-button pixel-button-sm mt-3 border-gold bg-gold text-void hover:bg-bone"
-                >
-                  Lanjut
-                </button>
-              </div>
-            ) : null}
-
-            {!showBreakdown && status === "active" && attackPhase === "idle" && !submitting ? (
-              <div className="sticky bottom-0 z-20 -mx-3 mt-4 border-t-2 border-void bg-[#0d1218] px-3 pb-3 pt-2 sm:-mx-4 sm:px-4 sm:pb-4">
-                <div className="comic-chips mt-4 grid grid-cols-3 gap-1.5" aria-hidden="true">
-                  <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
-                    Klaim
-                  </span>
-                  <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
-                    Bukti
-                  </span>
-                  <span className="border border-ridge/60 bg-void/50 px-2 py-1 text-center text-[0.56rem] font-bold uppercase tracking-[0.06em] text-ash">
-                    Batas
-                  </span>
-                </div>
-
-                <textarea
-                  ref={textareaRef}
-                  value={answer}
-                  maxLength={MAX_ANSWER_LENGTH}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  rows={4}
-                  placeholder="Serang dengan bukti dari naskah..."
-                  className="comic-answer pixel-input mt-2 resize-none"
-                  aria-label="Jawabanmu"
-                />
-
-                <div className="comic-counter mt-2 flex items-center justify-between gap-2 text-[0.6rem] font-bold uppercase tracking-[0.07em] text-ash/70">
-                  <span>Bukti lebih kuat daripada gaya bahasa</span>
-                  <span>{answer.length}/{MAX_ANSWER_LENGTH}</span>
-                </div>
-
-                {answerError ? (
-                  <p className="mt-3 text-sm leading-6 text-ember">{answerError}</p>
-                ) : null}
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  {weaknessType !== COMPREHENSION ? (
-                    <button
-                      onClick={handleObjection}
-                      className="pixel-button pixel-button-sm border-ember/60 bg-ember/10 text-ember hover:bg-ember hover:text-void"
-                      title="Tandai temuan ini salah. Tidak memotong Heart."
-                    >
-                      Objection!
-                    </button>
-                  ) : (
-                    <span />
-                  )}
-                  <button
-                    onClick={handleSubmit}
-                    disabled={
-                      answer.trim().length === 0 ||
-                      submitting ||
-                      !state.question ||
-                      state.questionLoading ||
-                      Boolean(state.questionError)
-                    }
-                    className="pixel-button pixel-button-sm border-gold bg-gold text-void hover:bg-bone"
-                  >
-                    {submitting ? "Menilai..." : "Serang ⚔"}
-                  </button>
-                </div>
-                <p className="comic-helper mt-2 text-[0.6rem] leading-4 text-ash/70">
-                  Minimal {MIN_ANSWER_LENGTH} karakter. Jawaban terlalu pendek tidak memotong Heart.
-                </p>
-              </div>
-            ) : null}
-
-            {!showBreakdown && status === "won" ? (
-              <p className="mt-4 border-2 border-moss/50 bg-moss/10 p-3 text-sm font-bold text-moss">
-                Monster tumbang. Ruang terbuka.
-              </p>
-            ) : null}
-          </section>
+  return (
+    <div className="battle font-game fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`Pertarungan melawan ${monsterName}`}>
+      <div className={`battle-arena ${isBoss ? "is-boss" : ""} ${attackPhase === "hit" && state.combat?.counterDamage ? "is-shaking" : ""}`}>
+        <BattleInfo
+          className="battle-foe-info"
+          name={monsterName}
+          level={level}
+          hp={hp}
+          hpMax={state.monsterHpMax || hpMax}
+          pips={{ used: state.questionsAsked, max: state.maxQuestions }}
+        />
+        <div className="battle-platform is-foe" aria-hidden="true" />
+        <div className={`battle-foe ${foeState}`}>
+          <MonsterSprite slug={encounter.bossSlug} height={isBoss ? 168 : 112} label={monsterName} />
+          {attackPhase === "hit" && lastEvaluation ? (
+            <span key={`dmg-${state.questionsAsked}`} className={`battle-damage g-2 ${lastEvaluation.damage > 0 ? "" : "is-miss"}`} aria-hidden="true">
+              {lastEvaluation.damage > 0 ? `-${lastEvaluation.damage}` : "Meleset"}
+            </span>
+          ) : null}
         </div>
+
+        <div className="battle-platform is-hero" aria-hidden="true" />
+        <div className={`battle-hero ${attackPhase === "attack" || attackPhase === "hit" ? "is-attacking" : ""}`}>
+          <CharacterSprite slug={loadout.characterSlug} facing="up" scale={7} walking={false} label={playerLabel} />
+        </div>
+        <BattleInfo
+          className="battle-hero-info"
+          name={playerLabel}
+          hp={state.playerHp}
+          hpMax={state.playerHpMax}
+          showNumbers
+          shield={armor ? { value: armor.shield, max: armor.shieldMax } : null}
+        />
+      </div>
+
+      <div className="battle-console">
+        <section ref={panelRef} className="ui-box battle-dialog" aria-live="polite">
+          {dialog}
+        </section>
+        {menu ? <nav className="ui-box battle-menu">{menu}</nav> : null}
       </div>
     </div>
   );
-}
-
-function BulbIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M8 1.5a4 4 0 0 0-2.5 7.1c.4.35.65.85.65 1.4v.5h3.7v-.5c0-.55.25-1.05.65-1.4A4 4 0 0 0 8 1.5Z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <path d="M6.4 12.2h3.2M6.9 14h2.2" stroke="currentColor" strokeWidth="1.4" />
-    </svg>
-  );
-}
-
-function statusTone(status: EncounterStatus): string {
-  if (status === "won") return "text-moss";
-  if (status === "lost") return "text-blood";
-  if (status === "conceded" || status === "disputed") return "text-gold";
-  return "text-ash";
-}
-
-function statusLabel(status: EncounterStatus): string {
-  if (status === "won") return "Menang";
-  if (status === "lost") return "Kalah";
-  if (status === "conceded") return "Selesai";
-  if (status === "disputed") return "Sengketa";
-  return "Aktif";
 }

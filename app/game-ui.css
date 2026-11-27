@@ -659,3 +659,238 @@ body::after,
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------- battle */
+/* Handheld battle layout: foe top-right on a platform, hero's back bottom-left,
+   an info box for each, dialog and commands along the bottom. */
+
+.battle {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--ui-night);
+  color: var(--ui-ink);
+}
+
+.battle-arena {
+  position: relative;
+  overflow: hidden;
+  /* Dungeon wall above the horizon, flagstone floor below. */
+  background:
+    linear-gradient(to bottom, #222d36 0 44%, #1a232b 44% 46%, #34403a 46% 100%);
+}
+
+.battle-arena.is-boss {
+  background:
+    linear-gradient(to bottom, #2e2230 0 44%, #1e1720 44% 46%, #3e3438 46% 100%);
+}
+
+.battle-arena.is-shaking {
+  animation: battle-shake 0.3s steps(6, end);
+}
+
+.battle-platform {
+  position: absolute;
+  height: 9%;
+  border-radius: 50%;
+  background: #4c5a4f;
+  box-shadow: inset 0 -6px 0 #3a463d, 0 0 0 3px #26302a;
+}
+
+.battle-platform.is-foe {
+  right: 8%;
+  top: 46%;
+  width: 34%;
+}
+
+.battle-platform.is-hero {
+  left: 4%;
+  bottom: -2%;
+  width: 40%;
+}
+
+.battle-foe {
+  position: absolute;
+  right: 25%;
+  top: 51%;
+  translate: 50% -100%;
+  animation: battle-foe-in 0.45s steps(6, end) both;
+}
+
+.battle-hero {
+  position: absolute;
+  left: 24%;
+  bottom: 1%;
+  translate: -50% 0;
+  animation: battle-hero-in 0.45s steps(6, end) both;
+}
+
+.battle-foe-info {
+  position: absolute;
+  left: 3%;
+  top: 6%;
+}
+
+.battle-hero-info {
+  position: absolute;
+  right: 3%;
+  bottom: 7%;
+}
+
+.battle-hero.is-attacking {
+  animation: battle-lunge 0.36s steps(4, end);
+}
+
+.battle-foe.is-hit {
+  animation: battle-blink 0.5s steps(1, end) 2;
+}
+
+.battle-foe.is-miss {
+  animation: battle-dodge 0.4s steps(4, end);
+}
+
+.battle-foe.is-dead {
+  animation: battle-faint 0.6s steps(6, end) forwards;
+}
+
+.battle-damage {
+  position: absolute;
+  left: 50%;
+  top: -8%;
+  translate: -50% 0;
+  color: var(--ui-cream);
+  text-shadow: 3px 3px 0 var(--ui-ink);
+  white-space: nowrap;
+  animation: battle-rise 0.8s steps(8, end) forwards;
+}
+
+.battle-damage.is-miss {
+  color: #b9c4d0;
+}
+
+.battle-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ui-night);
+}
+
+.battle-dialog {
+  min-height: 7.5rem;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.battle-menu {
+  min-width: 15rem;
+}
+
+.battle-line {
+  display: block;
+  min-height: 3em;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Portrait phones stack the menu under the dialog. */
+@media (max-width: 640px) {
+  .battle-console {
+    grid-template-columns: 1fr;
+  }
+  .battle-menu {
+    min-width: 0;
+  }
+}
+
+/* Landscape phones: keep the menu beside the dialog, shrink the stage. */
+@media (max-height: 480px) {
+  .battle-dialog {
+    min-height: 4.5rem;
+    max-height: 40vh;
+  }
+  .battle-menu {
+    min-width: 12rem;
+  }
+  .battle-foe,
+  .battle-hero {
+    scale: 0.6;
+  }
+  .battle-foe {
+    transform-origin: bottom center;
+  }
+  .battle-hero {
+    transform-origin: bottom left;
+  }
+  .battle-foe-info,
+  .battle-hero-info {
+    scale: 0.85;
+  }
+  .battle-foe-info {
+    transform-origin: top left;
+  }
+  .battle-hero-info {
+    transform-origin: bottom right;
+  }
+}
+
+@keyframes battle-foe-in {
+  from { transform: translateX(60vw); }
+}
+
+@keyframes battle-hero-in {
+  from { transform: translateX(-60vw); }
+}
+
+@keyframes battle-lunge {
+  50% { transform: translate(18px, -18px); }
+}
+
+@keyframes battle-blink {
+  50% { opacity: 0; }
+}
+
+@keyframes battle-dodge {
+  50% { transform: translateX(22px); }
+}
+
+@keyframes battle-faint {
+  to { transform: translateY(40%); opacity: 0; }
+}
+
+@keyframes battle-rise {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-36px); opacity: 0; }
+}
+
+@keyframes battle-shake {
+  25% { transform: translate(-4px, 2px); }
+  50% { transform: translate(4px, -2px); }
+  75% { transform: translate(-2px, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-foe,
+  .battle-hero,
+  .battle-arena.is-shaking,
+  .battle-hero.is-attacking,
+  .battle-foe.is-miss,
+  .battle-damage {
+    animation: none;
+  }
+  .battle-foe.is-dead {
+    animation: none;
+    opacity: 0.3;
+  }
+}
+
+.ui-hp-tag.is-shield {
+  background: #2f4f6e;
+  color: #bfe3ff;
+}
+
+.ui-hp-fill[data-level="shield"] {
+  background: #5fb8f0;
+}
