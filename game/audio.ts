@@ -1,82 +1,236 @@
 /**
- * Dungeon audio. Music and impact SFX come from the CC0 Ninja Adventure pack;
- * footsteps, doors, and other small cues stay procedural so there is no load
- * cost. HTMLAudio playback that browsers block is retried on the first gesture.
+ * Game audio: two groups the player controls (music, sfx) plus mute.
+ *
+ * Music and file SFX come from the CC0 Ninja Adventure pack. Footsteps, doors
+ * and other tiny cues stay procedural so there is no load cost. Slider values
+ * are 0..1 and are squared before they become gain, so the whole travel is
+ * audible. Browsers block playback until a gesture; blocked music is retried on
+ * the first pointer or key press.
  */
 
-let ctx: AudioContext | null = null;
-let noiseBuffer: AudioBuffer | null = null;
-let ambience: { stop: () => void } | null = null;
-let stepFlip = false;
-let muted = false;
+export type MusicTrack =
+  | "title"
+  | "camp"
+  | "dungeon"
+  | "crypt"
+  | "fight"
+  | "boss"
+  | "victory";
 
-export type MusicTrack = "dungeon" | "fight" | "crypt";
+export type Sfx =
+  | "step" | "doorOpen" | "doorLocked" | "encounter" | "win" | "lose" | "hit" | "pickup"
+  | "miss" | "hurt"
+  | "uiAccept" | "uiCancel" | "uiMove" | "uiOpen"
+  | "coin" | "powerup" | "levelup" | "victory" | "gameover" | "alert";
 
-const MUSIC_FILES: Record<MusicTrack, string> = {
-  dungeon: "/assets/ninja-adventure/audio/music/dungeon.m4a",
-  fight: "/assets/ninja-adventure/audio/music/fight.m4a",
-  crypt: "/assets/ninja-adventure/audio/music/crypt.m4a",
+export interface AudioSettings {
+  music: number;
+  sfx: number;
+  muted: boolean;
+}
+
+const BASE = "/assets/ninja-adventure/audio";
+
+/** Ogg first; m4a only where a transcode exists (older Safari). */
+const MUSIC_FILES: Record<MusicTrack, { ogg: string; m4a: string; gain: number }> = {
+  title: { ogg: `${BASE}/music/title.ogg`, m4a: `${BASE}/music/dungeon.m4a`, gain: 0.55 },
+  camp: { ogg: `${BASE}/music/camp.ogg`, m4a: `${BASE}/music/dungeon.m4a`, gain: 0.5 },
+  dungeon: { ogg: `${BASE}/music/dungeon.ogg`, m4a: `${BASE}/music/dungeon.m4a`, gain: 0.45 },
+  crypt: { ogg: `${BASE}/music/crypt.ogg`, m4a: `${BASE}/music/crypt.m4a`, gain: 0.45 },
+  fight: { ogg: `${BASE}/music/fight.ogg`, m4a: `${BASE}/music/fight.m4a`, gain: 0.45 },
+  boss: { ogg: `${BASE}/music/boss.ogg`, m4a: `${BASE}/music/fight.m4a`, gain: 0.5 },
+  victory: { ogg: `${BASE}/music/victory.ogg`, m4a: `${BASE}/music/dungeon.m4a`, gain: 0.5 },
 };
 
 const SFX_FILES: Partial<Record<Sfx, { src: string; volume: number }>> = {
-  hit: { src: "/assets/ninja-adventure/audio/sfx/slash.wav", volume: 0.5 },
-  miss: { src: "/assets/ninja-adventure/audio/sfx/whoosh.wav", volume: 0.35 },
-  hurt: { src: "/assets/ninja-adventure/audio/sfx/hurt.wav", volume: 0.55 },
-  win: { src: "/assets/ninja-adventure/audio/sfx/win.wav", volume: 0.45 },
-  lose: { src: "/assets/ninja-adventure/audio/sfx/lose.wav", volume: 0.45 },
-  pickup: { src: "/assets/ninja-adventure/audio/sfx/pickup.wav", volume: 0.4 },
+  hit: { src: `${BASE}/sfx/slash.wav`, volume: 0.5 },
+  miss: { src: `${BASE}/sfx/whoosh.wav`, volume: 0.35 },
+  hurt: { src: `${BASE}/sfx/hurt.wav`, volume: 0.55 },
+  win: { src: `${BASE}/sfx/win.wav`, volume: 0.45 },
+  lose: { src: `${BASE}/sfx/lose.wav`, volume: 0.45 },
+  pickup: { src: `${BASE}/sfx/pickup.wav`, volume: 0.4 },
+  uiAccept: { src: `${BASE}/sfx/ui-accept.wav`, volume: 0.45 },
+  uiCancel: { src: `${BASE}/sfx/ui-cancel.wav`, volume: 0.45 },
+  uiMove: { src: `${BASE}/sfx/ui-move.wav`, volume: 0.3 },
+  uiOpen: { src: `${BASE}/sfx/ui-open.wav`, volume: 0.4 },
+  coin: { src: `${BASE}/sfx/coin.wav`, volume: 0.45 },
+  powerup: { src: `${BASE}/sfx/powerup.wav`, volume: 0.45 },
+  levelup: { src: `${BASE}/sfx/jingle-levelup.wav`, volume: 0.5 },
+  victory: { src: `${BASE}/sfx/jingle-victory.wav`, volume: 0.5 },
+  gameover: { src: `${BASE}/sfx/jingle-gameover.wav`, volume: 0.5 },
+  alert: { src: `${BASE}/sfx/alert.wav`, volume: 0.4 },
 };
+
+const STORAGE_KEY = "sa-audio";
+const DEFAULTS: AudioSettings = { music: 0.6, sfx: 0.8, muted: false };
+
+let settings: AudioSettings = { ...DEFAULTS };
+const listeners = new Set<(value: AudioSettings) => void>();
+
+try {
+  if (typeof localStorage !== "undefined") {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<AudioSettings> | null;
+    if (saved) settings = { ...DEFAULTS, ...saved };
+    else if (localStorage.getItem("sa-muted") === "1") settings.muted = true;
+  }
+} catch {
+  /* storage blocked or corrupt: keep defaults */
+}
+
+function clamp01(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+}
+
+/** Slider 0..1 to linear gain; 0 or muted is silence. */
+function groupGain(group: "music" | "sfx"): number {
+  if (settings.muted) return 0;
+  const value = clamp01(settings[group]);
+  return value * value;
+}
+
+function save(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    /* ignore */
+  }
+  const snapshot = { ...settings };
+  listeners.forEach((listener) => listener(snapshot));
+}
+
+export function getAudioSettings(): AudioSettings {
+  return { ...settings };
+}
+
+export function subscribeAudio(listener: (value: AudioSettings) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function setMusicVolume(value: number): void {
+  settings = { ...settings, music: clamp01(value) };
+  applyMusicVolume();
+  ensureMusicPlaying();
+  if (ambienceGain) ambienceGain.gain.value = groupGain("music") * 0.06;
+  save();
+}
+
+export function setSfxVolume(value: number): void {
+  settings = { ...settings, sfx: clamp01(value) };
+  if (sfxBus) sfxBus.gain.value = groupGain("sfx");
+  save();
+}
+
+export function setMuted(next: boolean): void {
+  settings = { ...settings, muted: next };
+  applyMusicVolume();
+  if (sfxBus) sfxBus.gain.value = groupGain("sfx");
+  if (ambienceGain) ambienceGain.gain.value = groupGain("music") * 0.06;
+  ensureMusicPlaying();
+  save();
+}
+
+export function isMuted(): boolean {
+  return settings.muted;
+}
+
+export function toggleMute(): boolean {
+  setMuted(!settings.muted);
+  return settings.muted;
+}
+
+// ---------------------------------------------------------------------------
+// Music
+// ---------------------------------------------------------------------------
 
 let music: HTMLAudioElement | null = null;
 let musicTrack: MusicTrack | null = null;
-let musicUnlockBound = false;
+let fadeTimer: number | null = null;
+let unlockBound = false;
+let oggSupport: boolean | null = null;
 
-try {
-  muted = typeof localStorage !== "undefined" && localStorage.getItem("sa-muted") === "1";
-} catch { /* storage blocked */ }
-
-function playAudioFile(src: string, volume: number, loop = false): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const element = new Audio(src);
-    element.volume = volume;
-    element.loop = loop;
-    void element.play().catch(() => undefined);
-    return true;
-  } catch {
-    return false;
+function canPlayOgg(): boolean {
+  if (oggSupport === null) {
+    try {
+      oggSupport = new Audio().canPlayType('audio/ogg; codecs="vorbis"') !== "";
+    } catch {
+      oggSupport = false;
+    }
   }
+  return oggSupport;
 }
 
-/** Dungeon score. A blocked play() is retried on the first user gesture. */
+function trackVolume(track: MusicTrack): number {
+  return MUSIC_FILES[track].gain * groupGain("music");
+}
+
+function applyMusicVolume(): void {
+  if (music && musicTrack) music.volume = trackVolume(musicTrack);
+}
+
+function bindUnlock(): void {
+  if (unlockBound || typeof window === "undefined") return;
+  unlockBound = true;
+  const unlock = () => {
+    unlockBound = false;
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    void audioContext()?.resume().catch(() => undefined);
+    if (music && music.paused && groupGain("music") > 0) void music.play().catch(() => undefined);
+  };
+  window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
+}
+
+function ensureMusicPlaying(): void {
+  if (!music) return;
+  if (groupGain("music") === 0) {
+    music.pause();
+    return;
+  }
+  if (music.paused) void music.play().catch(() => bindUnlock());
+}
+
+/** Switch the score. The same track keeps playing; a new one fades in. */
 export function startMusic(track: MusicTrack): void {
   if (typeof window === "undefined") return;
-  if (muted) return;
-  if (musicTrack === track && music && !music.paused) return;
+  if (musicTrack === track && music) {
+    ensureMusicPlaying();
+    return;
+  }
   stopMusic();
-  const element = new Audio(MUSIC_FILES[track]);
+  const file = MUSIC_FILES[track];
+  const element = new Audio(canPlayOgg() ? file.ogg : file.m4a);
   element.loop = true;
-  element.volume = 0.28;
+  element.preload = "auto";
+  element.volume = 0;
   music = element;
   musicTrack = track;
-  void element.play().catch(() => {
-    if (musicUnlockBound) return;
-    musicUnlockBound = true;
-    const unlock = () => {
-      musicUnlockBound = false;
-      if (music && !muted) void music.play().catch(() => undefined);
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
-    };
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
-  });
+  if (groupGain("music") === 0) return;
+  // Short fade-in so a track change never pops.
+  let step = 0;
+  fadeTimer = window.setInterval(() => {
+    step += 1;
+    if (music !== element) return;
+    element.volume = Math.min(trackVolume(track), (trackVolume(track) * step) / 8);
+    if (step >= 8 && fadeTimer !== null) {
+      window.clearInterval(fadeTimer);
+      fadeTimer = null;
+    }
+  }, 40);
+  void element.play().catch(() => bindUnlock());
 }
 
 export function stopMusic(): void {
+  if (fadeTimer !== null) {
+    window.clearInterval(fadeTimer);
+    fadeTimer = null;
+  }
   if (!music) return;
   music.pause();
-  music.currentTime = 0;
+  music.removeAttribute("src");
   music = null;
   musicTrack = null;
 }
@@ -85,17 +239,75 @@ export function currentMusic(): MusicTrack | null {
   return musicTrack;
 }
 
-function audio(): AudioContext | null {
+// ---------------------------------------------------------------------------
+// SFX: decoded buffers through one gain node (low latency, overlap-safe)
+// ---------------------------------------------------------------------------
+
+let ctx: AudioContext | null = null;
+let sfxBus: GainNode | null = null;
+let noiseBuffer: AudioBuffer | null = null;
+const buffers = new Map<string, AudioBuffer | "loading" | "failed">();
+let stepFlip = false;
+
+function audioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   try {
     if (!ctx || ctx.state === "closed") {
       ctx = new AudioContext();
+      sfxBus = ctx.createGain();
+      sfxBus.gain.value = groupGain("sfx");
+      sfxBus.connect(ctx.destination);
       noiseBuffer = null;
+      buffers.clear();
     }
-    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+    if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
     return ctx;
   } catch {
     return null;
+  }
+}
+
+function loadBuffer(c: AudioContext, src: string): void {
+  if (buffers.has(src)) return;
+  buffers.set(src, "loading");
+  fetch(src)
+    .then((response) => response.arrayBuffer())
+    .then((data) => c.decodeAudioData(data))
+    .then((buffer) => buffers.set(src, buffer))
+    .catch(() => buffers.set(src, "failed"));
+}
+
+/** Fetch and decode file SFX ahead of the first click. */
+export function preloadSfx(): void {
+  const c = audioContext();
+  if (!c) return;
+  Object.values(SFX_FILES).forEach((file) => {
+    if (file) loadBuffer(c, file.src);
+  });
+}
+
+function playFile(file: { src: string; volume: number }): boolean {
+  const c = audioContext();
+  if (!c || !sfxBus) return false;
+  const buffer = buffers.get(file.src);
+  if (buffer instanceof AudioBuffer) {
+    const source = c.createBufferSource();
+    const gain = c.createGain();
+    source.buffer = buffer;
+    gain.gain.value = file.volume;
+    source.connect(gain).connect(sfxBus);
+    source.start();
+    return true;
+  }
+  if (buffer === undefined) loadBuffer(c, file.src);
+  // Not decoded yet: a one-off element so the first click still sounds.
+  try {
+    const element = new Audio(file.src);
+    element.volume = file.volume * groupGain("sfx");
+    void element.play().catch(() => undefined);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -108,18 +320,20 @@ function noise(c: AudioContext): AudioBuffer {
 }
 
 function tone(c: AudioContext, freq: number, start: number, dur: number, vol: number, type: OscillatorType = "square"): void {
+  if (!sfxBus) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = type;
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(vol, start);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-  osc.connect(gain).connect(c.destination);
+  osc.connect(gain).connect(sfxBus);
   osc.start(start);
   osc.stop(start + dur + 0.02);
 }
 
 function burst(c: AudioContext, start: number, dur: number, vol: number, freq: number, type: BiquadFilterType = "lowpass"): void {
+  if (!sfxBus) return;
   const src = c.createBufferSource();
   const filter = c.createBiquadFilter();
   const gain = c.createGain();
@@ -128,20 +342,16 @@ function burst(c: AudioContext, start: number, dur: number, vol: number, freq: n
   filter.frequency.value = freq;
   gain.gain.setValueAtTime(vol, start);
   gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-  src.connect(filter).connect(gain).connect(c.destination);
+  src.connect(filter).connect(gain).connect(sfxBus);
   src.start(start, Math.random() * 0.5);
   src.stop(start + dur + 0.02);
 }
 
-export type Sfx =
-  | "step" | "doorOpen" | "doorLocked" | "encounter" | "win" | "lose" | "hit" | "pickup"
-  | "miss" | "hurt";
-
 export function playSfx(name: Sfx): void {
-  if (muted) return;
+  if (groupGain("sfx") === 0) return;
   const file = SFX_FILES[name];
-  if (file && playAudioFile(file.src, file.volume)) return;
-  const c = audio();
+  if (file && playFile(file)) return;
+  const c = audioContext();
   if (!c) return;
   const t = c.currentTime;
   switch (name) {
@@ -162,40 +372,26 @@ export function playSfx(name: Sfx): void {
       tone(c, 196, t, 0.25, 0.06, "sawtooth");
       tone(c, 185, t + 0.12, 0.35, 0.06, "sawtooth");
       break;
-    case "win":
-      [523, 659, 784, 1047].forEach((f, i) => tone(c, f, t + i * 0.08, 0.16, 0.05));
-      break;
-    case "lose":
-      [330, 247, 196].forEach((f, i) => tone(c, f, t + i * 0.12, 0.2, 0.05, "triangle"));
-      break;
-    case "hit": // sharp slash, then the body of the blow
-      burst(c, t, 0.05, 0.16, 5200, "highpass");
-      burst(c, t + 0.02, 0.14, 0.24, 1500, "bandpass");
-      tone(c, 150, t + 0.02, 0.12, 0.09, "square");
-      tone(c, 75, t + 0.03, 0.16, 0.09, "sine");
-      break;
-    case "miss": // blade through air
-      burst(c, t, 0.14, 0.09, 2600, "highpass");
-      break;
-    case "hurt": // low thud + falling tone
-      burst(c, t, 0.16, 0.22, 500);
-      tone(c, 220, t, 0.18, 0.08, "sawtooth");
-      tone(c, 110, t + 0.06, 0.22, 0.08, "triangle");
-      break;
-    case "pickup":
-      [880, 1320].forEach((f, i) => tone(c, f, t + i * 0.06, 0.12, 0.045, "sine"));
+    default:
       break;
   }
 }
 
-/** Low cave drone with slow wobble, plus an occasional distant drip. */
+// ---------------------------------------------------------------------------
+// Ambience: low cave drone under the dungeon music (music group)
+// ---------------------------------------------------------------------------
+
+let ambience: { stop: () => void } | null = null;
+let ambienceGain: GainNode | null = null;
+
 export function startAmbience(): void {
   if (ambience) return;
-  const c = audio();
+  const c = audioContext();
   if (!c) return;
   const master = c.createGain();
-  master.gain.value = muted ? 0 : 0.035;
+  master.gain.value = groupGain("music") * 0.06;
   master.connect(c.destination);
+  ambienceGain = master;
   const oscs = [55, 82.4].map((f) => {
     const osc = c.createOscillator();
     osc.type = "sine";
@@ -204,15 +400,8 @@ export function startAmbience(): void {
     osc.start();
     return osc;
   });
-  const lfo = c.createOscillator();
-  const lfoGain = c.createGain();
-  lfo.frequency.value = 0.12;
-  lfoGain.gain.value = 0.015;
-  lfo.connect(lfoGain).connect(master.gain);
-  lfo.start();
-
   const drip = window.setInterval(() => {
-    if (muted || !ctx) return;
+    if (!ctx || groupGain("sfx") === 0) return;
     tone(ctx, 1400 + Math.random() * 600, ctx.currentTime, 0.09, 0.025, "sine");
   }, 5000 + Math.random() * 4000);
 
@@ -220,29 +409,13 @@ export function startAmbience(): void {
     stop: () => {
       window.clearInterval(drip);
       oscs.forEach((o) => o.stop());
-      lfo.stop();
       master.disconnect();
       ambience = null;
+      ambienceGain = null;
     },
   };
 }
 
 export function stopAmbience(): void {
   ambience?.stop();
-}
-
-export function isMuted(): boolean {
-  return muted;
-}
-
-export function toggleMute(): boolean {
-  muted = !muted;
-  try { localStorage.setItem("sa-muted", muted ? "1" : "0"); } catch { /* ignore */ }
-  if (muted) {
-    stopAmbience();
-    stopMusic();
-  } else {
-    startAmbience();
-  }
-  return muted;
 }

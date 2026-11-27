@@ -823,10 +823,10 @@ export class DungeonScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   private listenBus(): void {
-    const onEncounterStart = () => {
+    const onEncounterStart = ({ isBoss }: { isBoss?: boolean }) => {
       this.encounterActive = true;
       playSfx("encounter");
-      startMusic("fight");
+      startMusic(isBoss ? "boss" : "fight");
     };
 
     const onEncounterEnd = ({ encounterId, result }: { encounterId: string; result: "won" | "conceded" | "disputed" | "fled" }) => {
@@ -921,7 +921,7 @@ export class DungeonScene extends Phaser.Scene {
     };
 
     const onPotionUsed = ({ healed }: { healed: number }) => {
-      playSfx("pickup");
+      playSfx("powerup");
       const glow = this.add
         .image(this.player.sprite.x, this.player.sprite.y, "glow")
         .setBlendMode(Phaser.BlendModes.ADD)

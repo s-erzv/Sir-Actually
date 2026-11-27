@@ -36,6 +36,9 @@ export default function PhaserGame({ floorMap, characterSlug, resolvedKeys }: Ph
         pixelArt: true,
         antialias: false,
         roundPixels: true,
+        // All sound goes through game/audio.ts; Phaser's own AudioContext only
+        // threw "closed AudioContext" errors after the game was destroyed.
+        audio: { noAudio: true },
         scene: [BootScene, DungeonScene, LibraryScene, ThroneScene],
         scale: {
           mode: Phaser.Scale.RESIZE,
