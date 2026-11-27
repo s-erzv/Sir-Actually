@@ -88,3 +88,17 @@ and license. Only CC0 (Creative Commons Zero) assets are used.
     (`Player` attack styles, monster hits).
   - `public/assets/ninja-adventure/audio/music/` and `audio/sfx/` — floor/fight music
     and sound effects (`game/audio.ts`).
+
+## Ninja Adventure Asset Pack: full release (UI, items, audio, font)
+
+- **Author**: Pixel-Boy and AAA
+- **Source**: https://pixel-boy.itch.io/ninja-adventure-asset-pack ("Ninja Adventure - Asset Pack.zip", downloaded 2026-11-27)
+- **License**: CC0 1.0 (stated on the itch.io page)
+- **Files**:
+  - `ninja-adventure/ui/dialog.png`, `choice.png`, `faceset.png`, `arrow.png`, `fog.png`, `spark.png`, `wood/*`: dialog boxes and the "Theme Wood" 9-slices used by `app/game-ui.css`. `ui/panel-slate.png` is `wood/nine_path_bg.png` recoloured to slate for text contrast.
+  - `ninja-adventure/items/*` (potions, scrolls, coins, chests, keys) and `items/armor-*.png` (from `Ui/Skill Icon/Items & Weapon`): shop, HUD and loot icons.
+  - `ninja-adventure/weapons/*.png`: weapon icons (`Items/Weapons/*/Sprite.png`).
+  - `ninja-adventure/npc/merchant.png`, `merchant-face.png`: the floor merchant (`Actor/Character/OldMan`).
+  - `ninja-adventure/audio/music/*.ogg`: title (1 - Adventure Begin), camp (5 - Peaceful), dungeon (21 - Dungeon), crypt (40 - Crypt), fight (17 - Fight), boss (10 - Dark Castle), victory (15 - Credit Theme).
+  - `ninja-adventure/audio/sfx/ui-*.wav`, `coin.wav`, `powerup.wav`, `alert.wav`, `jingle-*.wav`: menu sounds and jingles.
+  - `app/fonts/NinjaAdventureSA.ttf`: `Ui/Font/NormalFont.ttf` with the space widened to 4 px and a straight lowercase "i" redrawn.
