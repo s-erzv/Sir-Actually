@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { checkCompleteness, COMPLETENESS_LABELS } from "@/lib/manuscript/completeness";
+import { checkCompleteness } from "@/lib/manuscript/completeness";
 
 export async function POST(
   request: NextRequest,
@@ -30,29 +30,20 @@ export async function POST(
     const completeness = checkCompleteness({
       sourceText: map.source_text,
       stage: manuscript.stage,
-      minReferences: manuscript.min_references,
     });
 
-    const [{ count: citationCount }, { count: claimCount }] = await Promise.all([
-      admin
-        .from("citations")
-        .select("id", { count: "exact", head: true })
-        .eq("research_map_id", id)
-        .eq("is_injected", false),
-      admin
-        .from("claims")
-        .select("id", { count: "exact", head: true })
-        .eq("research_map_id", id),
-    ]);
+    // Missing sections and an empty bibliography no longer block; a map
+    // still needs at least one claim to become a dungeon.
+    const { count: claimCount } = await admin
+      .from("claims")
+      .select("id", { count: "exact", head: true })
+      .eq("research_map_id", id);
 
-    if (completeness.missing.length > 0 || (citationCount ?? 0) === 0 || (claimCount ?? 0) === 0) {
+    if ((claimCount ?? 0) === 0) {
       return NextResponse.json(
         {
           error: "Research Map belum bisa dikonfirmasi.",
-          missing: [
-            ...completeness.missing.map((key) => COMPLETENESS_LABELS[key] ?? key),
-            ...((claimCount ?? 0) === 0 ? ["Minimal satu klaim Research Map"] : []),
-          ],
+          missing: ["Minimal satu klaim Research Map"],
           completeness,
         },
         { status: 422 },

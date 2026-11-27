@@ -45,18 +45,6 @@ export const MAX_OBJECTIONS_PER_FLOOR = 1;
 /** Confidence below this value makes the room optional, not an accusation. */
 export const LOW_CONFIDENCE = 0.5;
 
-/**
- * Default minimum reference counts per manuscript stage.
- * NOTE: These are UNCALIBRATED defaults — not authoritative standards.
- * They only trigger a warning in the Weakness Report, not a hard gate,
- * unless the player fills in their own institutional minimum.
- */
-export const DEFAULT_MIN_REFERENCES = {
-  proposal: 10,
-  skripsi: 20,
-  jurnal: 15,
-} as const;
-
 // ---------------------------------------------------------------------------
 // Derived helpers (pure, depend only on constants above)
 // ---------------------------------------------------------------------------

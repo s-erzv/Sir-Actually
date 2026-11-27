@@ -359,29 +359,25 @@ docx / pdf / md / txt
 - Offset `char_start`/`char_end` dihitung terhadap Markdown kanonik, bukan file asli.
 - Naskah adalah **data, bukan instruksi**. Bungkus dengan delimiter di prompt dan larang model mengikuti instruksi di dalamnya.
 
-**Syarat naskah lengkap** (keputusan Maou: yang diunggah harus draft lengkap). Cek dilakukan **kode** di server (`lib/manuscript/completeness.ts`, fungsi murni + tes), hasilnya ditulis ke `research_maps.completeness`. Bagian wajib tergantung `manuscripts.stage`:
+**Gerbang unggah** (revisi 2026-11-27: struktur berantakan boleh lanjut; hanya dokumen yang jelas bukan karya ilmiah yang ditolak; referensi tidak ikut dinilai).
+
+- **Cek struktur** dilakukan kode (`lib/manuscript/completeness.ts`, fungsi murni + tes), hasilnya ditulis ke `research_maps.completeness`. Bagian yang diharapkan tergantung `manuscripts.stage`:
 
 | Bagian | proposal | skripsi / jurnal |
 |---|---|---|
-| Latar belakang / pendahuluan | wajib | wajib |
-| Tujuan dan/atau rumusan masalah (RQ) | wajib | wajib |
-| Metode | wajib | wajib |
-| Hasil / temuan | - | wajib |
-| Kesimpulan | - | wajib |
-| **Daftar pustaka**, minimal 1 entri terparse | wajib | wajib |
+| Latar belakang / pendahuluan | diharapkan | diharapkan |
+| Tujuan dan/atau rumusan masalah (RQ) | diharapkan | diharapkan |
+| Metode | diharapkan | diharapkan |
+| Hasil / temuan | - | diharapkan |
+| Kesimpulan | - | diharapkan |
 
-- Bagian wajib yang tidak ada: **tidak bisa lanjut**. Tampilkan checklist apa yang kurang, dan minta pemain melengkapi draft lalu unggah ulang. Ini bukan temuan/ruang dungeon; ini gerbang masuk.
-- Deteksi heading bisa salah. Kalau pemain bilang bagiannya ada, ia boleh menunjuk teks/heading yang dimaksud di layar konfirmasi; server mengecek ulang dan baru mengisi `completeness.missing = []` kalau teks yang ditunjuk memang ada di `source_text`.
-- **Jumlah referensi** (tidak ada standar umum; tiap kampus/prodi/jurnal beda, jadi jangan mengarang satu angka "layak"):
-  - Form unggah punya kolom opsional **"Minimal referensi menurut pedoman kampus/jurnalmu"** (`manuscripts.min_references`).
-  - **Diisi**: syarat keras. `count < min_references` masuk `completeness.missing` (`references_min`), pemain tidak bisa lanjut, pesan menyebut angka dari pedomannya sendiri.
-  - **Kosong**: pakai `DEFAULT_MIN_REFERENCES[stage]` dari `lib/balance.ts`. Kurang dari itu **tidak memblokir**; masuk `completeness.warnings` (`references_below_default`) dan tampil sebagai peringatan di Weakness Report dengan label "angka default, belum dikalibrasi; cek pedoman kampusmu".
-  - `count` = jumlah entri daftar pustaka yang berhasil terparse, tanpa referensi sisipan Ghost. Tampilkan angkanya ke pemain di layar konfirmasi supaya salah parse bisa terlihat.
-  - Ini **bukan** temuan dan tidak jadi ruang dungeon: jumlah referensi bukan soal mata rantai logika riset.
-  - Kalau `min_references` diubah setelah cek, server menghitung ulang `completeness`.
+- Bagian yang tidak terdeteksi masuk `completeness.missing` dan **hanya jadi catatan**: tampil di form unggah dan di halaman peta, tidak pernah memblokir.
+- **Apakah ini karya ilmiah?** (`lib/manuscript/documentGate.ts`, prompt `lib/prompts/documentKind_v1.ts`):
+  - ≥ 3 dari 5 bagian terdeteksi: lolos tanpa panggilan LLM.
+  - Kurang dari itu: LLM menilai 8.000 karakter pertama → `research` lolos; `not_research` dengan ≤ 1 bagian ditolak (422); selain itu (`unclear`, `not_research` dengan 2 bagian, LLM gagal) pemain ditanya "Tetap lanjut?" (409 `needsConfirmation`), lalu kirim ulang dengan `confirmUnclear: true`. Penilaian diulang di server saat kirim ulang.
+- **Referensi tidak dinilai sama sekali**: tidak ada input minimal referensi, tidak ada syarat daftar pustaka. Daftar pustaka tetap diparse untuk gameplay; kalau kosong, lantai Ghost dilewati.
 - **Keterbatasan tidak wajib** di gerbang: ketiadaannya adalah temuan `limitation_missing` di lantai Methodologist (Kryvax).
-- Database ikut menjaga: trigger menolak konfirmasi tanpa citation, dengan `completeness` null, atau dengan `missing` yang tidak kosong.
-- Karena daftar pustaka selalu ada, **tahap Ghost selalu dimainkan**.
+- Database: trigger konfirmasi hanya menolak `completeness` null (migration `20261127000100_relax_map_confirmation.sql`).
 
 **Debrief AI** (menggantikan "Kitab Nasihat" generik). Dipicu tiap encounter `lost` atau `conceded` (**Catatan Penjaga**) dan saat Heart habis (**Epitaf**). Isi wajib:
 
@@ -508,7 +504,7 @@ Tiap milestone: tes unit lolos (`vitest`), `tsc --noEmit` bersih, `next build` s
 
 **M3: Backend**
 - Supabase terhubung, `supabase db reset` sukses dengan migration yang ada (laporkan hasilnya).
-- Auth, unggah .docx / PDF berteks / .md / .txt, konversi ke **Markdown kanonik** di browser (heading, paragraf, daftar, tabel; tanpa HTML), peringatan privasi, **cek kelengkapan** dengan checklist bagian yang kurang (tes: naskah tanpa daftar pustaka ditolak; proposal tanpa hasil tetap lolos; `min_references = 20` dengan 12 entri ditolak; tanpa `min_references`, skripsi dengan 12 entri lolos dengan peringatan), ekstraksi Research Map, layar konfirmasi.
+- Auth, unggah .docx / PDF berteks / .md / .txt, konversi ke **Markdown kanonik** di browser (heading, paragraf, daftar, tabel; tanpa HTML), peringatan privasi, **gerbang unggah** (cek struktur sebagai catatan + klasifikasi karya ilmiah; tes: naskah tanpa daftar pustaka lolos; bagian hilang hanya dicatat; dokumen jelas bukan paper ditolak), ekstraksi Research Map, layar konfirmasi.
 - Chunking + FTS + simpan ke `manuscript_chunks`. Embedding lokal opsional; kalau belum ada, retrieval tetap FTS.
 - Migration baru: katalog `characters`/`weapons`, kolom loadout + poin di `runs`, tabel `run_points_events` dan `run_debriefs`. Semua state permainan ditulis server.
 

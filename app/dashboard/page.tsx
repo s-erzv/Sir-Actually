@@ -15,7 +15,6 @@ interface ManuscriptRow {
   stage: keyof typeof STAGE_LABELS;
   language: "id" | "en";
   field: string | null;
-  min_references: number | null;
   created_at: string;
   findingCount: number;
   map: {
@@ -439,7 +438,6 @@ function ManuscriptCard({
             </h2>
             <p className="mt-1 text-[0.7rem] font-bold uppercase tracking-[0.06em] text-ash/75">
               Ditambahkan {created}
-              {manuscript.min_references ? ` · min. ${manuscript.min_references} referensi` : ""}
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.66rem] font-bold uppercase tracking-[0.07em]">

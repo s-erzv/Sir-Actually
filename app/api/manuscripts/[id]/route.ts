@@ -13,7 +13,7 @@ export async function GET(
 
     const { data: manuscript, error } = await admin
       .from("manuscripts")
-      .select("id, title, field, language, stage, min_references, owner_id, deleted_at")
+      .select("id, title, field, language, stage, owner_id, deleted_at")
       .eq("id", id)
       .maybeSingle();
     if (error) throw new ApiError(error.message, 500);
@@ -28,7 +28,6 @@ export async function GET(
         field: manuscript.field,
         language: manuscript.language,
         stage: manuscript.stage,
-        minReferences: manuscript.min_references,
       },
     });
   } catch (error) {

@@ -9,7 +9,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const { data: manuscripts, error } = await admin
       .from("manuscripts")
-      .select("id, title, stage, language, field, min_references, created_at")
+      .select("id, title, stage, language, field, created_at")
       .eq("owner_id", user.id)
       .is("deleted_at", null)
       .order("created_at", { ascending: false });

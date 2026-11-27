@@ -27,7 +27,6 @@ export default function UploadPage() {
   const [field, setField] = useState("");
   const [stage, setStage] = useState<"proposal" | "skripsi" | "jurnal">("skripsi");
   const [language, setLanguage] = useState<"id" | "en">("id");
-  const [minReferences, setMinReferences] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [showFullMarkdown, setShowFullMarkdown] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -36,6 +35,7 @@ export default function UploadPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
+  const [unclearReason, setUnclearReason] = useState<string | null>(null);
   const [reviseFrom, setReviseFrom] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,7 +48,6 @@ export default function UploadPage() {
         field: string | null;
         language: "id" | "en";
         stage: "proposal" | "skripsi" | "jurnal";
-        minReferences: number | null;
       };
     }>(`/api/manuscripts/${id}`)
       .then(({ manuscript }) => {
@@ -56,7 +55,6 @@ export default function UploadPage() {
         setField(manuscript.field ?? "");
         setLanguage(manuscript.language);
         setStage(manuscript.stage);
-        setMinReferences(manuscript.minReferences ? String(manuscript.minReferences) : "");
       })
       .catch(() => {
         // Revision metadata is optional; upload still works as a new manuscript.
@@ -82,6 +80,8 @@ export default function UploadPage() {
   async function pickFile(file: File | null) {
     if (!file) return;
     setError(null);
+    setMissing([]);
+    setUnclearReason(null);
     setExtracting(true);
     setShowFullMarkdown(false);
     setFileName(file.name);
@@ -105,9 +105,14 @@ export default function UploadPage() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    await upload(false);
+  }
+
+  async function upload(confirmUnclear: boolean) {
     setBusy(true);
     setError(null);
     setMissing([]);
+    setUnclearReason(null);
     try {
       if (!privacyAccepted) {
         throw new Error("Centang persetujuan pengiriman naskah ke penyedia LLM.");
@@ -122,16 +127,23 @@ export default function UploadPage() {
           field: field.trim() || null,
           language,
           stage,
-          minReferences: minReferences.trim() ? Number(minReferences) : null,
           sourceText,
           ...(reviseFrom ? { manuscriptId: reviseFrom } : {}),
+          ...(confirmUnclear ? { confirmUnclear: true } : {}),
         }),
       });
       router.push(`/map/${payload.researchMapId}`);
     } catch (err) {
-      const body = (err as { body?: { missing?: string[] } }).body;
+      const body = (
+        err as { body?: { missing?: string[]; reason?: string; needsConfirmation?: boolean } }
+      ).body;
       if (body?.missing?.length) setMissing(body.missing);
-      setError(err instanceof Error ? err.message : "Gagal mengunggah naskah.");
+      if (body?.needsConfirmation) {
+        setUnclearReason(body.reason ?? "Struktur naskah sulit dikenali.");
+      } else {
+        const message = err instanceof Error ? err.message : "Gagal mengunggah naskah.";
+        setError(body?.reason ? `${message} ${body.reason}` : message);
+      }
     } finally {
       setBusy(false);
     }
@@ -214,7 +226,7 @@ export default function UploadPage() {
                 />
               </label>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <label className="block">
                   <span className="pixel-label">Bidang</span>
                   <input
@@ -246,18 +258,6 @@ export default function UploadPage() {
                     <option value="id">Indonesia</option>
                     <option value="en">Inggris</option>
                   </select>
-                </label>
-                <label className="block">
-                  <span className="pixel-label">Minimal referensi</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={minReferences}
-                    onChange={(event) => setMinReferences(event.target.value)}
-                    placeholder="opsional"
-                    className="pixel-input"
-                  />
                 </label>
               </div>
 
@@ -338,14 +338,38 @@ export default function UploadPage() {
               {error ? (
                 <p className="border border-blood/40 bg-blood/10 p-3 text-sm text-blood">{error}</p>
               ) : null}
-              {missing.length > 0 ? (
-                <div className="border border-ember/40 bg-ember/10 p-3 text-xs text-ember">
-                  <p className="font-bold uppercase tracking-[0.12em]">Bagian yang kurang:</p>
-                  <ul className="mt-2 list-disc space-y-1 pl-5">
-                    {missing.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
+              {unclearReason || missing.length > 0 ? (
+                <div className="border border-ember/40 bg-ember/10 p-3 text-xs text-ember" role="status">
+                  {unclearReason ? (
+                    <>
+                      <p className="font-bold uppercase tracking-[0.12em]">
+                        Dokumen kurang jelas sebagai naskah ilmiah
+                      </p>
+                      <p className="mt-2 leading-5">{unclearReason}</p>
+                    </>
+                  ) : null}
+                  {missing.length > 0 ? (
+                    <>
+                      <p className={`font-bold uppercase tracking-[0.12em] ${unclearReason ? "mt-3" : ""}`}>
+                        Bagian yang tidak terdeteksi:
+                      </p>
+                      <ul className="mt-2 list-disc space-y-1 pl-5">
+                        {missing.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
+                  {unclearReason ? (
+                    <button
+                      type="button"
+                      onClick={() => void upload(true)}
+                      disabled={busy}
+                      className="pixel-button mt-3 w-full border-ember text-ember hover:bg-ember hover:text-void"
+                    >
+                      Tetap lanjut
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -376,8 +400,8 @@ export default function UploadPage() {
               </div>
               <ul className="mt-3 space-y-2 text-[0.8rem] leading-5 text-ash">
                 <li>PDF hasil scan tanpa teks tidak bisa dibaca.</li>
-                <li>Naskah kurang bagian akan ditolak sebelum AI dipanggil.</li>
-                <li>Jumlah referensi di bawah pedoman hanya peringatan.</li>
+                <li>Struktur berantakan tetap bisa lanjut; bagian yang tak terdeteksi hanya dicatat.</li>
+                <li>Dokumen yang jelas bukan karya ilmiah akan ditolak.</li>
               </ul>
             </div>
 

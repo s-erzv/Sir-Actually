@@ -31,36 +31,32 @@ ${REFERENCES}
 `;
 
 describe("checkCompleteness", () => {
-  it("menolak naskah tanpa daftar pustaka", () => {
+  it("tidak menilai daftar pustaka sama sekali", () => {
     const result = checkCompleteness({
       sourceText: "Pendahuluan\nTujuan\nMetode",
       stage: "proposal",
-      minReferences: null,
     });
-    expect(result.complete).toBe(false);
-    expect(result.missing).toContain("references");
+    expect(result.complete).toBe(true);
+    expect(result.missing).toEqual([]);
+    expect(result.sectionsFound).toBe(3);
   });
 
   it("meloloskan proposal tanpa hasil dan kesimpulan", () => {
     const result = checkCompleteness({
       sourceText: PROPOSAL,
       stage: "proposal",
-      minReferences: null,
     });
     expect(result.complete).toBe(true);
     expect(result.missing).toEqual([]);
   });
 
-  it("menolak skripsi yang kurang dari min_references pilihan pengguna", () => {
+  it("mencatat bagian skripsi yang tidak terdeteksi", () => {
     const result = checkCompleteness({
       sourceText: PROPOSAL,
       stage: "skripsi",
-      minReferences: 20,
     });
     expect(result.complete).toBe(false);
-    expect(result.missing).toContain("references_min");
-    expect(result.missing).toContain("results");
-    expect(result.missing).toContain("conclusion");
+    expect(result.missing).toEqual(["results", "conclusion"]);
   });
 
   it("menerima heading bernomor gaya PDF", () => {
@@ -87,10 +83,9 @@ Daftar Pustaka
     const result = checkCompleteness({
       sourceText: text,
       stage: "jurnal",
-      minReferences: null,
     });
     expect(result.missing).toEqual([]);
-    expect(result.referenceCount).toBe(1);
+    expect(result.sectionsFound).toBe(5);
   });
 
   it("menerima heading English RESEARCH METHODS dan tujuan berbentuk kalimat", () => {
@@ -114,24 +109,12 @@ REFERENCES
     const result = checkCompleteness({
       sourceText: text,
       stage: "jurnal",
-      minReferences: null,
     });
     expect(result.sections.method).toBe(true);
     expect(result.sections.objectives).toBe(true);
     expect(result.missing).toEqual([]);
   });
 
-  it("memberi peringatan default tanpa memblokir skripsi 12 referensi", () => {
-    const text = `${PROPOSAL}\nHasil\nTemuan utama.\n\nKesimpulan\nLiterasi cukup baik.`;
-    const result = checkCompleteness({
-      sourceText: text,
-      stage: "skripsi",
-      minReferences: null,
-    });
-    expect(result.complete).toBe(true);
-    expect(result.warnings).toContain("references_below_default");
-    expect(result.referenceCount).toBe(12);
-  });
 });
 
 describe("parseBibliography", () => {

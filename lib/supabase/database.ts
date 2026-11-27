@@ -26,13 +26,13 @@ export type VerificationStatus =
   | "needs_review";
 
 export interface Completeness {
+  /** True when every section the stage expects was found. Informational only. */
   complete: boolean;
+  /** Expected sections the heading scan did not find. Never blocks. */
   missing: string[];
-  warnings: string[];
   sections: Record<string, boolean>;
-  referenceCount: number;
-  minReferences: number;
-  minReferencesSource: "user" | "default";
+  /** How many of the five known sections were found, any stage. */
+  sectionsFound: number;
   checkedAt: string;
 }
 

@@ -1,5 +1,4 @@
 import type { Completeness, ManuscriptStage } from "@/lib/supabase/database";
-import { DEFAULT_MIN_REFERENCES } from "@/lib/balance";
 
 /**
  * PDF text extraction commonly yields section headings such as
@@ -111,12 +110,17 @@ export function requiredSections(stage: ManuscriptStage): string[] {
 export interface CompletenessInput {
   sourceText: string;
   stage: ManuscriptStage;
-  minReferences: number | null;
 }
 
 const OBJECTIVE_SENTENCE =
   /\b(?:tujuan\s+penelitian\s+ini\s+adalah|pertanyaan\s+penelitian(?:nya)?\s+adalah|rumusan\s+masalah(?:nya)?\s+adalah|(?:this|the\s+present|the\s+current)\s+(?:study|research|paper|article|review)\b[^.!?]{0,120}\b(?:aims?|seeks?|attempts?|investigates?|examines?|explores?|maps?|bridges?|presents?|is\s+to|sets?\s+out\s+to)\b|(?:the\s+)?(?:aim|purpose|objective)s?\s+of\s+(?:this|the)\s+(?:study|research|paper|article|review)\b)/i;
 
+/**
+ * Structure report only; it never blocks an upload. `missing` lists the
+ * sections the stage expects but the heading scan did not find. Whether the
+ * document is a paper at all is decided by `lib/manuscript/documentGate.ts`.
+ * References play no part here.
+ */
 export function checkCompleteness(input: CompletenessInput): Completeness {
   const sections: Record<string, boolean> = {};
   for (const [key, pattern] of Object.entries(SECTION_PATTERNS)) {
@@ -125,30 +129,13 @@ export function checkCompleteness(input: CompletenessInput): Completeness {
   // Journals often state the objective in a sentence instead of a heading.
   if (!sections.objectives) sections.objectives = OBJECTIVE_SENTENCE.test(input.sourceText);
 
-  const bibliography = parseBibliography(input.sourceText);
-  const referenceCount = bibliography.entries.length;
   const missing = requiredSections(input.stage).filter((key) => !sections[key]);
-  if (!bibliography.sectionFound || referenceCount === 0) missing.push("references");
-
-  const fallback = DEFAULT_MIN_REFERENCES[input.stage];
-  const minReferences = input.minReferences ?? fallback;
-  const minReferencesSource = input.minReferences === null ? "default" : "user";
-  const warnings: string[] = [];
-
-  if (input.minReferences !== null && referenceCount < input.minReferences) {
-    missing.push("references_min");
-  } else if (input.minReferences === null && referenceCount < fallback) {
-    warnings.push("references_below_default");
-  }
 
   return {
     complete: missing.length === 0,
     missing,
-    warnings,
     sections,
-    referenceCount,
-    minReferences,
-    minReferencesSource,
+    sectionsFound: Object.values(sections).filter(Boolean).length,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -159,7 +146,4 @@ export const COMPLETENESS_LABELS: Record<string, string> = {
   method: "Metode",
   results: "Hasil / temuan",
   conclusion: "Kesimpulan",
-  references: "Daftar pustaka (minimal 1 entri terparse)",
-  references_min: "Jumlah referensi memenuhi pedoman yang kamu isi",
-  references_below_default: "Jumlah referensi di bawah angka default (peringatan saja)",
 };

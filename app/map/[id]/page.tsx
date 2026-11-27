@@ -9,6 +9,7 @@ import DungeonMapPreview from "@/components/game/DungeonMapPreview";
 import ReconOverlay from "@/components/manuscript/ReconOverlay";
 import { authJson } from "@/lib/api/client";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { COMPLETENESS_LABELS } from "@/lib/manuscript/completeness";
 import { buildFloorPlan, getDungeonTier, WEAKNESS_DIMENSION } from "@/game/map/buildFloorPlan";
 import type { FindingStub, WeaknessType } from "@/lib/domain/types";
 
@@ -22,6 +23,7 @@ interface MapPayload {
     id: string;
     version: number;
     status: "draft" | "confirmed";
+    completeness: { missing?: string[] } | null;
   };
   citations: Array<{ id: string }>;
   recon: { id: string; status: string } | null;
@@ -183,6 +185,10 @@ export default function MapPage() {
   );
   const tier = useMemo(() => getDungeonTier(stubs), [stubs]);
   const reconId = payload?.recon?.id ?? null;
+  // Older maps may still list reference keys; only section labels are shown.
+  const missingSections = (payload?.map.completeness?.missing ?? [])
+    .map((key) => COMPLETENESS_LABELS[key])
+    .filter(Boolean);
 
   if (error) {
     return (
@@ -241,6 +247,14 @@ export default function MapPage() {
 
       <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
         <QuestPath current="loadout" className="mb-6" />
+        {missingSections.length > 0 ? (
+          <div className="mb-6 border border-ember/40 bg-ember/10 p-3 text-xs leading-5 text-ember" role="status">
+            <p className="font-bold uppercase tracking-[0.12em]">Struktur naskah kurang jelas</p>
+            <p className="mt-1">
+              Bagian ini tidak terdeteksi: {missingSections.join(", ")}. Dungeon tetap bisa dimainkan.
+            </p>
+          </div>
+        ) : null}
         <DungeonMapPreview
           title={payload.manuscript.title}
           tier={tier}

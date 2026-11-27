@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser, apiErrorResponse, ApiError } from "@/lib/api/auth";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { checkCompleteness, COMPLETENESS_LABELS } from "@/lib/manuscript/completeness";
+import { classifyDocument, decideGate, needsClassification } from "@/lib/manuscript/documentGate";
 import { extractResearchMap } from "@/lib/manuscript/researchMap";
 import { chunkManuscript } from "@/lib/manuscript/chunk";
 import { embedTexts } from "@/lib/embed";
@@ -15,10 +16,11 @@ const BODY_SCHEMA = z.object({
   field: z.string().trim().max(200).optional().nullable(),
   language: z.enum(["id", "en"]).default("id"),
   stage: z.enum(["proposal", "skripsi", "jurnal"]),
-  minReferences: z.number().int().min(1).max(500).nullable(),
   sourceText: z.string().min(300).max(800_000),
   /** Present when uploading a revised version of an existing manuscript. */
   manuscriptId: z.string().uuid().optional(),
+  /** Player chose "tetap lanjut" after an unclear-document prompt. */
+  confirmUnclear: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -36,22 +38,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const completeness = checkCompleteness({
       sourceText: body.sourceText,
       stage: body.stage,
-      minReferences: body.minReferences,
     });
+    const missing = completeness.missing.map((key) => COMPLETENESS_LABELS[key] ?? key);
 
-    if (!completeness.complete) {
-      const missing = completeness.missing.map((key) => COMPLETENESS_LABELS[key] ?? key);
+    const provider = getLLMProviderForExtraction();
+
+    // Missing sections never block; only a document that is not a paper does.
+    const verdict = needsClassification(completeness.sectionsFound)
+      ? await classifyDocument(provider, body.sourceText)
+      : null;
+    const gate = decideGate(completeness.sectionsFound, verdict);
+    if (gate.action === "reject") {
       return NextResponse.json(
         {
-          error: "Naskah belum lengkap. Lengkapi bagian yang kurang lalu unggah ulang.",
-          completeness,
+          error: "Dokumen ini sepertinya bukan naskah karya ilmiah.",
+          reason: gate.verdict.reason,
           missing,
         },
         { status: 422 },
       );
     }
-
-    const provider = getLLMProviderForExtraction();
+    if (gate.action === "confirm" && !body.confirmUnclear) {
+      return NextResponse.json(
+        {
+          error: "Dokumen ini kurang jelas sebagai naskah karya ilmiah.",
+          needsConfirmation: true,
+          reason: gate.verdict?.reason ?? "Struktur naskah sulit dikenali.",
+          missing,
+        },
+        { status: 409 },
+      );
+    }
     const chunks = chunkManuscript(body.sourceText);
 
     // Extraction and embedding are independent; run them together so wall
@@ -112,7 +129,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           field: body.field ?? null,
           language: body.language,
           stage: body.stage,
-          min_references: body.minReferences,
         })
         .eq("id", manuscriptId);
       if (updateError) throw new ApiError(updateError.message, 500);
@@ -134,7 +150,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           field: body.field ?? null,
           language: body.language,
           stage: body.stage,
-          min_references: body.minReferences,
         })
         .select("id")
         .single();
