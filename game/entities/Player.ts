@@ -45,6 +45,7 @@ export class Player {
   private held: Direction[] = [];
   private queued: { dir: Direction; at: number } | null = null;
   private lastMonsters: Monster[] = [];
+  private merchantTile: { x: number; y: number } | null = null;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: {
@@ -115,6 +116,11 @@ export class Player {
     bus.on("game:resume", () => { this.inputLocked = false; });
   }
 
+  /** The floor merchant blocks one tile; bumping into it opens the shop. */
+  setMerchant(tile: { x: number; y: number } | null): void {
+    this.merchantTile = tile;
+  }
+
   getTile(): { x: number; y: number } {
     return { x: this.tileX, y: this.tileY };
   }
@@ -169,6 +175,11 @@ export class Player {
           playSfx("doorLocked");
         }
       }
+      return;
+    }
+
+    if (this.merchantTile && this.merchantTile.x === nx && this.merchantTile.y === ny) {
+      bus.emit("shop:open", { floor: this.floorMap.floorOrder });
       return;
     }
 

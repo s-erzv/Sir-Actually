@@ -64,8 +64,8 @@ export type GameEvents = {
     /** The exchange emptied a whole Heart. */
     heartLost?: boolean;
   };
-  /** Phaser → React: player stepped on the treasure chest of a beaten boss. */
-  "treasure:open": { floor: number };
+  /** Phaser → React: player talked to this floor's merchant. */
+  "shop:open": { floor: number };
   /** React → Phaser: a potion was drunk; play the heal effect. */
   "potion:used": { healed: number };
   /** Phaser → React: player reached the stairs and every monster is resolved. */

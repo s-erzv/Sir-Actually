@@ -86,9 +86,7 @@ export class DungeonScene extends Phaser.Scene {
   private worldPaused = false;
   private lastPlayerTileKey = "";
   private darkness: Phaser.GameObjects.Image | null = null;
-  private chest: Phaser.GameObjects.Image | null = null;
-  private chestTile: { x: number; y: number } | null = null;
-  private chestOpened = false;
+  private merchant: Phaser.GameObjects.Sprite | null = null;
   private stairsMarker: Phaser.GameObjects.Container | null = null;
   private descending = false;
 
@@ -371,9 +369,7 @@ export class DungeonScene extends Phaser.Scene {
     }
     // Floors with no minions (Ghost/Throne) must open the boss gate immediately.
     this.unlockBossDoorIfCleared(false);
-    if (this.monsters.some((monster) => monster.isBoss && monster.resolved)) {
-      this.spawnBossChest();
-    }
+    this.spawnMerchant();
   }
 
   /** The boss door stays shut until every minion on the floor is resolved. */
@@ -656,51 +652,31 @@ export class DungeonScene extends Phaser.Scene {
     });
   }
 
-  /** The boss's own tile becomes the treasure chest once it falls. */
-  private spawnBossChest(): void {
-    if (this.chest || this.chestOpened) return;
-    const bossRoom = this.floorMap.rooms.find((room) => room.isBoss);
-    if (!bossRoom) return;
-    const tile = bossRoom.monsterSpawn;
-    this.chestTile = { x: tile.x, y: tile.y };
-    this.chest = this.add
-      .image(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.y * TILE_SIZE + TILE_SIZE / 2, "item-chest")
-      .setDepth(8)
-      .setScale(1.7);
-    this.add
-      .image(tile.x * TILE_SIZE + TILE_SIZE / 2, tile.y * TILE_SIZE + TILE_SIZE / 2, "glow-small")
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setTint(0xe9b85d)
-      .setAlpha(0.55)
-      .setDisplaySize(TILE_SIZE * 3, TILE_SIZE * 3)
-      .setDepth(7);
-    this.tweens.add({
-      targets: this.chest,
-      y: this.chest.y - 3,
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
-  }
-
-  private openChestAt(tile: { x: number; y: number }): void {
-    if (!this.chest || !this.chestTile || this.chestOpened) return;
-    if (tile.x !== this.chestTile.x || tile.y !== this.chestTile.y) return;
-    this.chestOpened = true;
-    playSfx("pickup");
-    this.tweens.add({
-      targets: this.chest,
-      y: this.chest.y - 10,
-      alpha: 0,
-      duration: 260,
-      ease: "Sine.easeOut",
-      onComplete: () => {
-        this.chest?.destroy();
-        this.chest = null;
-      },
-    });
-    bus.emit("treasure:open", { floor: this.floorMap.floorOrder });
+  /**
+   * The floor merchant stands a couple of tiles from the player's spawn, on
+   * plain floor that no monster or loot uses. Bumping into them opens the shop.
+   */
+  private spawnMerchant(): void {
+    if (this.merchant || !this.textures.exists("merchant")) return;
+    const taken = new Set(lootSpotsForFloor(this.floorMap).map((spot) => `${spot.x},${spot.y}`));
+    for (const monster of this.monsters) taken.add(`${monster.tileX},${monster.tileY}`);
+    const { x: px, y: py } = this.floorMap.playerSpawn;
+    const offsets = [
+      [2, 0], [-2, 0], [0, -2], [0, 2], [2, -1], [-2, -1], [2, 1], [-2, 1],
+      [1, -2], [-1, -2], [1, 2], [-1, 2], [3, 0], [-3, 0], [0, -3], [0, 3],
+    ] as const;
+    for (const [dx, dy] of offsets) {
+      const x = px + dx;
+      const y = py + dy;
+      if (this.floorMap.tiles[y]?.[x] !== TileCode.FLOOR || taken.has(`${x},${y}`)) continue;
+      const cx = x * TILE_SIZE + TILE_SIZE / 2;
+      const cy = y * TILE_SIZE + TILE_SIZE / 2;
+      this.merchant = this.add.sprite(cx, cy, "merchant", 0).setDepth(9);
+      const marker = this.add.image(cx, cy - TILE_SIZE, "shop-coin").setDepth(12);
+      this.tweens.add({ targets: marker, y: marker.y - 3, duration: 700, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+      this.player.setMerchant({ x, y });
+      return;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -837,7 +813,6 @@ export class DungeonScene extends Phaser.Scene {
       monster.markResolved(result);
       if (result === "won") {
         shakeCamera(this.cameras.main, monster.isBoss ? 200 : 120, monster.isBoss ? 0.002 : 0.0012);
-        if (monster.isBoss) this.spawnBossChest();
       }
 
       startMusic(this.floorMusic());
@@ -1051,10 +1026,6 @@ export class DungeonScene extends Phaser.Scene {
     this.unlockBossDoorIfCleared(false);
     this.emitRoomProgress();
 
-    this.chest?.destroy();
-    this.chest = null;
-    this.chestTile = null;
-    this.chestOpened = false;
     this.stairsMarker?.destroy();
     this.stairsMarker = null;
     this.descending = false;
@@ -1084,7 +1055,6 @@ export class DungeonScene extends Phaser.Scene {
     this.emitPlayerTile();
     if (!this.encounterActive && !this.worldPaused) {
       this.collectLootAt(this.player.getTile());
-      this.openChestAt(this.player.getTile());
     }
     if (this.encounterActive || this.worldPaused) return;
 

@@ -599,9 +599,9 @@ export default function PlayPage() {
   }, [runId]);
 
   useEffect(() => {
-    const onTreasure = ({ floor }: { floor: number }) => setShopFloor(floor);
-    bus.on("treasure:open", onTreasure);
-    return () => bus.off("treasure:open", onTreasure);
+    const onShop = ({ floor }: { floor: number }) => setShopFloor(floor);
+    bus.on("shop:open", onShop);
+    return () => bus.off("shop:open", onShop);
   }, []);
 
   const usePotion = useCallback(async () => {
@@ -724,7 +724,7 @@ export default function PlayPage() {
   const roomCount = useMemo(() => floorMap?.rooms.length ?? 0, [floorMap]);
   const activePlan = plans[floorIndex];
   const floorName = activePlan ? (FLOOR_NAMES[activePlan.dimension] ?? "Lantai") : "Lantai";
-  const motionLocked = showFloorIntro || paused || entryPhase !== "idle";
+  const motionLocked = showFloorIntro || paused || shopFloor !== null || entryPhase !== "idle";
 
   useEffect(() => {
     const onStart = () => setInEncounter(true);

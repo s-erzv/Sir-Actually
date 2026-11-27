@@ -83,6 +83,11 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
+    this.load.spritesheet("merchant", "/assets/ninja-adventure/npc/merchant.png", {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
+    this.load.image("shop-coin", "/assets/ninja-adventure/items/coin-gold.png");
     this.load.spritesheet("fx-cut", "/assets/ninja-adventure/fx/cut.png", {
       frameWidth: 32,
       frameHeight: 32,
