@@ -66,3 +66,11 @@ File milik B: `components/**`, `app/**/page.tsx`, `app/layout.tsx`, `app/globals
 - Batas LLM OpenRouter: lihat `LLM_MAX_CONCURRENCY`; 429 beruntun berarti turunkan angkanya.
 - Hasil terukur yang perlu dijaga: Recon ±7 dtk, Judge lolos 30/30 uji kalibrasi.
 - Future work (target jurnal SINTA/Scopus, dsb.) ada di `docs/FUTURE-WORK.md`, bukan bagian tugas ini.
+
+## Rombak UI/UX dan sistem item (2026-11-27)
+
+- **Gaya UI**: `app/game-ui.css` (kotak dialog krem, tombol kayu, menu ▶, bar HP/shield GBA) dari Ninja Adventure CC0. Class lama (`pixel-button`, `pixel-panel`, ...) ikut ditimpa di file itu. Font game `--font-game` (`app/fonts/NinjaAdventureSA.ttf`).
+- **Audio**: `game/audio.ts` punya grup musik + efek + bisu (localStorage `sa-audio`); ikon volume `components/ui/SoundDock.tsx` di semua halaman, juga bunyi klik global (`data-sfx="none"` untuk menonaktifkan). Musik per layar via `lib/useMusic.ts`.
+- **Layar**: title `/` (landing lama di `/tentang`), login, menu utama (`/dashboard`), upload, pilih karakter, HUD, menu jeda, toko, intro lantai, battle (`components/encounter/BattleScene.tsx`). Pratinjau tanpa login: `/dev/battle` (`?boss=1`), `/dev/dungeon`.
+- **Gameplay**: satu bar HP (Heart tidak ditampilkan; `runs.hearts_left` tetap menyimpan HP). Satu mata uang: koin. Serangan = 30 + 14 kalau pakai bukti naskah + senjata, dikali mutu jawaban, + skill karakter. Senjata dan armor dibeli di pedagang tiap lantai (`lib/combat/items.ts`, `stockForFloor`) dan langsung terpasang; armor memberi shield yang menahan serangan balik dulu lalu hancur. Semua lewat event `run_points_events` (`equip`, `armor_absorb`), tanpa migration.
+- **Gerak**: tombol arah terbaru menang dan tap saat melangkah di-buffer 160 ms (`game/entities/heldDirections.ts`).
