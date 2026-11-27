@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Logo } from "@/components/brand/Logo";
-import { PixelSprite } from "@/components/brand/PixelSprite";
-import QuestPath from "@/components/game/QuestPath";
 import ReadingOverlay from "@/components/manuscript/ReadingOverlay";
+import { useMusic } from "@/lib/useMusic";
 import { authJson } from "@/lib/api/client";
 import { extractManuscriptText } from "@/lib/manuscript/extract";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
@@ -22,6 +20,7 @@ interface UploadResponse {
 
 export default function UploadPage() {
   const router = useRouter();
+  useMusic("camp");
   const [ready, setReady] = useState(false);
   const [title, setTitle] = useState("");
   const [field, setField] = useState("");
@@ -151,294 +150,162 @@ export default function UploadPage() {
 
   if (!ready) {
     return (
-      <main className="dungeon-bg scanlines grid min-h-screen place-items-center">
-        <div className="flex items-center gap-3 text-sm text-ash">
-          <span className="h-2 w-2 animate-flicker bg-gold" />
+      <main className="font-game grid min-h-[100dvh] place-items-center px-4">
+        <p className="ui-box g-1" role="status">
           Membuka gerbang...
-        </div>
+        </p>
       </main>
     );
   }
 
   const textReady = sourceText.length >= 300;
-  const progress = Math.min(100, Math.round((sourceText.length / 800_000) * 100));
+  const canSubmit = textReady && title.trim().length >= 3 && privacyAccepted && !busy && !extracting;
 
   return (
-    <main className="dungeon-bg scanlines min-h-screen">
+    <main className="font-game flex min-h-[100dvh] items-center justify-center px-4 py-16">
       {busy ? <ReadingOverlay fileName={fileName} /> : null}
 
-      <header className="border-b-2 border-void bg-void/90">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-3 sm:px-8">
-          <Link href="/dashboard" className="hover:opacity-90">
-            <Logo />
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-[0.7rem] font-bold uppercase tracking-[0.08em] text-ash hover:text-gold"
-          >
-            Kembali ke arsip
-          </Link>
-        </div>
-      </header>
+      <Link href="/dashboard" data-sfx="uiCancel" className="ui-btn is-quiet absolute left-3 top-3">
+        Kembali
+      </Link>
 
-      <div className="mx-auto w-full max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
-        <QuestPath current="manuscript" className="mb-8" />
+      <form onSubmit={submit} className="ui-box w-full max-w-[36rem] space-y-3" aria-labelledby="upload-title">
+        <h1 id="upload-title" className="g-2">
+          {reviseFrom ? "Unggah revisi" : "Naskah baru"}
+        </h1>
 
-        <div className="max-w-2xl">
-          <p className="eyebrow">Pos 01 · Forge naskah</p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-bone sm:text-5xl">
-            Tempa naskah
-            <br />
-            <span className="text-gold">jadi dungeon.</span>
-          </h1>
-          {reviseFrom ? (
-            <p className="mt-3 border-l-4 border-gold bg-gold/10 px-3 py-2 text-sm leading-6 text-ash">
-              Mode revisi: unggah versi baru. Versi lama tetap tersimpan dan run baru
-              memakai Research Map versi berikutnya.
-            </p>
-          ) : null}
-          <p className="mt-4 max-w-xl text-[0.95rem] leading-7 text-ash">
-            Naskah dibaca di browser. Teks dikirim ke server dan penyedia LLM untuk
-            ekstraksi Research Map. Jangan unggah naskah yang tidak boleh diproses
-            pihak ketiga.
-          </p>
-        </div>
+        <label
+          className={`ui-chip block cursor-pointer text-center ${extracting ? "opacity-70" : ""}`}
+          aria-busy={extracting}
+        >
+          <input
+            type="file"
+            accept=".docx,.pdf,.txt,.md"
+            onChange={(event) => void pickFile(event.target.files?.[0] ?? null)}
+            className="sr-only"
+          />
+          <img
+            src="/assets/ninja-adventure/items/scroll.png"
+            alt=""
+            width={48}
+            height={48}
+            className="ui-icon mx-auto"
+          />
+          <span className="g-1 mt-1 block">
+            {extracting
+              ? "Membaca file..."
+              : fileName
+                ? fileName
+                : "Pilih file naskah"}
+          </span>
+          <span className="g-1 block text-[var(--ui-rust)]">
+            {fileName && !extracting
+              ? textReady
+                ? `${sourceText.length.toLocaleString("id-ID")} karakter`
+                : "Teks terlalu pendek"
+              : "DOCX, PDF berteks, TXT, MD"}
+          </span>
+        </label>
 
-        <form onSubmit={submit} className="mt-8 grid gap-6 lg:grid-cols-[1.18fr_0.82fr]">
-          <section className="pixel-panel p-4 sm:p-6">
-            <div className="flex items-center justify-between border-b-2 border-void pb-4">
-              <div>
-                <p className="font-pixel text-[0.6rem] text-gold">Input naskah</p>
-                <h2 className="mt-2 text-xl font-bold text-bone">Data manuskrip</h2>
-              </div>
-              <span className="pixel-chip border-gold/30 text-gold">Ruang 01 / 03</span>
-            </div>
+        <label className="block">
+          <span className="g-1 block">Judul</span>
+          <input
+            required
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Judul naskah"
+            className="pixel-input mt-1"
+          />
+        </label>
 
-            <div className="mt-5 space-y-4">
-              <label className="block">
-                <span className="pixel-label">Judul</span>
-                <input
-                  required
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Judul naskah"
-                  className="pixel-input"
-                />
-              </label>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                <label className="block">
-                  <span className="pixel-label">Bidang</span>
-                  <input
-                    value={field}
-                    onChange={(event) => setField(event.target.value)}
-                    placeholder="mis. pendidikan"
-                    className="pixel-input"
-                  />
-                </label>
-                <label className="block">
-                  <span className="pixel-label">Tahap</span>
-                  <select
-                    value={stage}
-                    onChange={(event) => setStage(event.target.value as typeof stage)}
-                    className="pixel-input"
-                  >
-                    <option value="proposal">Proposal</option>
-                    <option value="skripsi">Skripsi</option>
-                    <option value="jurnal">Artikel jurnal</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="pixel-label">Bahasa naskah</span>
-                  <select
-                    value={language}
-                    onChange={(event) => setLanguage(event.target.value as typeof language)}
-                    className="pixel-input"
-                  >
-                    <option value="id">Indonesia</option>
-                    <option value="en">Inggris</option>
-                  </select>
-                </label>
-              </div>
-
-              <div>
-                <span className="pixel-label">File naskah</span>
-                <label className="group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden border-2 border-dashed border-ridge bg-[#0a0f14] px-4 py-8 text-center transition-colors hover:border-gold/70 hover:bg-[#111920]">
-                  <input
-                    type="file"
-                    accept=".docx,.pdf,.txt,.md"
-                    onChange={(event) => void pickFile(event.target.files?.[0] ?? null)}
-                    className="sr-only"
-                  />
-                  <PixelSprite kind="scroll" size={58} className="animate-bob" />
-                  <span className="mt-3 text-sm font-bold text-bone">
-                    {extracting ? "Mengonversi naskah..." : "Pilih atau jatuhkan naskah"}
-                  </span>
-                  <span className="mt-1 text-[0.66rem] font-bold uppercase tracking-[0.07em] text-ash">
-                    DOCX · PDF berteks · TXT · MD → Markdown · maks. 15 MB
-                  </span>
-                </label>
-              </div>
-
-              <div className="border-2 border-void bg-tomb/50 p-3 text-xs leading-5 text-ash">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    {extracting
-                      ? "Membaca file..."
-                      : fileName
-                        ? `${fileName} · ${sourceText.length.toLocaleString("id-ID")} karakter`
-                        : "Belum ada file."}
-                  </span>
-                  <span className={textReady ? "text-moss" : "text-ash"}>
-                    {textReady ? "Siap ditempa" : "Butuh ≥ 300 karakter"}
-                  </span>
-                </div>
-                <div className="bar-track mt-2">
-                  <div className="bar-fill" style={{ width: `${Math.max(2, progress)}%` }} />
-                </div>
-                {sourceText ? (
-                  <details className="mt-3">
-                    <summary className="cursor-pointer text-[0.72rem] uppercase tracking-[0.14em] text-ash hover:text-gold">
-                      Lihat Markdown kanonik
-                    </summary>
-                    <p className="mt-2 text-[0.62rem] leading-4 text-ash/60">
-                      {showFullMarkdown
-                        ? `Menampilkan seluruh ${sourceText.length.toLocaleString("id-ID")} karakter.`
-                        : `Pratinjau ${Math.min(4000, sourceText.length).toLocaleString("id-ID")} karakter pertama dari ${sourceText.length.toLocaleString("id-ID")}. Naskah lengkap tetap tersimpan dan dikirim ke analisis.`}
-                    </p>
-                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[0.8rem] leading-5 text-ash/80">
-                      {showFullMarkdown ? sourceText : sourceText.slice(0, 4000)}
-                    </pre>
-                    {sourceText.length > 4000 ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowFullMarkdown((value) => !value)}
-                        className="mt-2 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-gold hover:text-bone"
-                      >
-                        {showFullMarkdown ? "Ringkas pratinjau" : "Tampilkan seluruh markdown"}
-                      </button>
-                    ) : null}
-                  </details>
-                ) : null}
-              </div>
-
-              <label className="flex items-start gap-3 border border-ridge/60 bg-void/40 p-3 text-xs leading-5 text-ash">
-                <input
-                  type="checkbox"
-                  checked={privacyAccepted}
-                  onChange={(event) => setPrivacyAccepted(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[#f0c05a]"
-                />
-                <span>
-                  Saya paham teks naskah dikirim ke penyedia LLM yang dikonfigurasi dan
-                  disimpan di Supabase.
-                </span>
-              </label>
-
-              {error ? (
-                <p className="border border-blood/40 bg-blood/10 p-3 text-sm text-blood">{error}</p>
-              ) : null}
-              {unclearReason || missing.length > 0 ? (
-                <div className="border border-ember/40 bg-ember/10 p-3 text-xs text-ember" role="status">
-                  {unclearReason ? (
-                    <>
-                      <p className="font-bold uppercase tracking-[0.12em]">
-                        Dokumen kurang jelas sebagai naskah ilmiah
-                      </p>
-                      <p className="mt-2 leading-5">{unclearReason}</p>
-                    </>
-                  ) : null}
-                  {missing.length > 0 ? (
-                    <>
-                      <p className={`font-bold uppercase tracking-[0.12em] ${unclearReason ? "mt-3" : ""}`}>
-                        Bagian yang tidak terdeteksi:
-                      </p>
-                      <ul className="mt-2 list-disc space-y-1 pl-5">
-                        {missing.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </>
-                  ) : null}
-                  {unclearReason ? (
-                    <button
-                      type="button"
-                      onClick={() => void upload(true)}
-                      disabled={busy}
-                      className="pixel-button mt-3 w-full border-ember text-ember hover:bg-ember hover:text-void"
-                    >
-                      Tetap lanjut
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
+        <fieldset>
+          <legend className="g-1">Jenis naskah</legend>
+          <div className="mt-1 grid grid-cols-3 gap-2">
+            {(
+              [
+                ["proposal", "Proposal"],
+                ["skripsi", "Skripsi"],
+                ["jurnal", "Jurnal"],
+              ] as const
+            ).map(([value, label]) => (
               <button
-                type="submit"
-                disabled={busy || extracting || !textReady}
-                className="pixel-button w-full border-gold bg-gold text-void hover:bg-bone"
+                key={value}
+                type="button"
+                aria-pressed={stage === value}
+                onClick={() => setStage(value)}
+                className={`ui-btn ${stage === value ? "" : "is-quiet"}`}
               >
-                {busy ? "AI membaca naskah..." : "Ekstrak Research Map"}
+                {label}
               </button>
-            </div>
-          </section>
+            ))}
+          </div>
+        </fieldset>
 
-          <aside className="space-y-4">
-            <div className="pixel-panel-soft p-4">
-              <p className="font-pixel text-[0.6rem] text-gold">Yang terjadi</p>
-              <ol className="mt-4 space-y-4">
-                <RitualStep n="01" title="Baca" body="Teks diekstrak lokal, lalu dikirim ke LLM." />
-                <RitualStep n="02" title="Petakan" body="Klaim dan daftar pustaka dipisah." />
-                <RitualStep n="03" title="Kunci" body="Peta dikunci otomatis; langsung jadi dungeon." />
-              </ol>
-            </div>
+        <details className="g-1">
+          <summary className="cursor-pointer text-[var(--ui-rust)]">Lainnya</summary>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="g-1 block">Bidang</span>
+              <input
+                value={field}
+                onChange={(event) => setField(event.target.value)}
+                placeholder="mis. pendidikan"
+                className="pixel-input mt-1"
+              />
+            </label>
+            <label className="block">
+              <span className="g-1 block">Bahasa</span>
+              <select
+                value={language}
+                onChange={(event) => setLanguage(event.target.value as typeof language)}
+                className="pixel-input mt-1"
+              >
+                <option value="id">Indonesia</option>
+                <option value="en">Inggris</option>
+              </select>
+            </label>
+          </div>
+        </details>
 
-            <div className="pixel-panel-soft p-4">
-              <div className="flex items-center justify-between border-b-2 border-void pb-3">
-                <span className="font-pixel text-[0.58rem] text-ash">Peringatan</span>
-                <span className="font-pixel text-[0.7rem] text-ember">!</span>
-              </div>
-              <ul className="mt-3 space-y-2 text-[0.8rem] leading-5 text-ash">
-                <li>PDF hasil scan tanpa teks tidak bisa dibaca.</li>
-                <li>Struktur berantakan tetap bisa lanjut; bagian yang tak terdeteksi hanya dicatat.</li>
-                <li>Dokumen yang jelas bukan karya ilmiah akan ditolak.</li>
-              </ul>
-            </div>
+        <label className="g-1 flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={privacyAccepted}
+            onChange={(event) => setPrivacyAccepted(event.target.checked)}
+            className="mt-1 h-5 w-5 shrink-0 accent-[#f06733]"
+          />
+          <span>Teks naskah dikirim ke AI untuk dianalisis dan disimpan di akunmu.</span>
+        </label>
 
-            <div className="border-2 border-void bg-gold/10 p-4 shadow-[inset_0_0_0_1px_#8f6a2f]">
-              <p className="font-pixel text-[0.6rem] text-gold">Checklist</p>
-              <ul className="mt-3 space-y-2 text-[0.8rem] text-ash">
-                <Check ok={title.trim().length >= 3} label="Judul terisi" />
-                <Check ok={textReady} label="Teks naskah siap" />
-                <Check ok={privacyAccepted} label="Persetujuan LLM" />
-              </ul>
-            </div>
-          </aside>
-        </form>
-      </div>
+        {error ? (
+          <p role="alert" className="g-1 text-[#a3341f]">
+            {error}
+          </p>
+        ) : null}
+
+        {unclearReason || missing.length > 0 ? (
+          <div className="ui-chip g-1" role="status">
+            {unclearReason ? (
+              <>
+                <p>Dokumen ini kurang jelas sebagai naskah ilmiah.</p>
+                <p className="text-[var(--ui-rust)]">{unclearReason}</p>
+              </>
+            ) : null}
+            {missing.length > 0 ? (
+              <p className={unclearReason ? "mt-2" : ""}>Tidak terdeteksi: {missing.join(", ")}</p>
+            ) : null}
+            {unclearReason ? (
+              <button type="button" onClick={() => void upload(true)} disabled={busy} className="ui-btn mt-2 w-full">
+                Tetap lanjut
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <button type="submit" disabled={!canSubmit} className="ui-btn w-full">
+          {busy ? "AI membaca naskah..." : "Mulai"}
+        </button>
+      </form>
     </main>
-  );
-}
-
-function RitualStep({ n, title, body }: { n: string; title: string; body: string }) {
-  return (
-    <li className="flex gap-3">
-      <span className="grid h-6 w-6 shrink-0 place-items-center border border-ridge bg-void/60 text-[0.66rem] font-bold text-gold">
-        {n}
-      </span>
-      <div>
-        <p className="text-xs font-bold text-bone">{title}</p>
-        <p className="mt-0.5 text-[0.72rem] leading-4 text-ash">{body}</p>
-      </div>
-    </li>
-  );
-}
-
-function Check({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <li className="flex items-center gap-2">
-      <span className={`h-2 w-2 ${ok ? "bg-moss" : "bg-ridge"}`} />
-      <span className={ok ? "text-bone" : "text-ash/60"}>{label}</span>
-    </li>
   );
 }
