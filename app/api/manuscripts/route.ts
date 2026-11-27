@@ -28,7 +28,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!hasRealLLM()) {
       throw new ApiError(
-        "LLM belum dikonfigurasi. Isi LLM_PROVIDER, LLM_MODEL, dan LLM_API_KEY di .env.local.",
+        "LLM belum dikonfigurasi. Isi OPENROUTER_API_KEY di .env.",
         503,
       );
     }

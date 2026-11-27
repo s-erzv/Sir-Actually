@@ -15,7 +15,7 @@ Inti produk yang tidak boleh hilang: setiap serangan adalah **jawaban atas perta
 - Jawaban pendek: `MIN_ANSWER_LENGTH`/`MAX_ANSWER_LENGTH` di `lib/balance.ts`; answer route mengirim `tooShort` (tanpa damage/serangan balik), UI memblokir < 12 karakter.
 - Laporan: penghuni tidak masuk peta kelemahan; `/api/run/report` mengembalikan `comprehension { passed, total }` dan halaman laporan menampilkan "Uji pemahaman".
 - HUD: tombol ramuan `Q` + toast jarahan. Tes cabang penghuni ada di `lib/encounter/generate.test.ts`; suite live `claim_explained` ditambahkan.
-- Labirin: `game/map/labyrinth.ts`. Judge v2, Recon 4 spesialis, model default `glm-5-3-flash`.
+- Labirin: `game/map/labyrinth.ts`. Judge v2, Recon 4 spesialis, model default `deepseek/deepseek-v4.1-flash-1017` (OpenRouter, Pearl Research).
 - Aset Ninja Adventure (CC0) sudah dipasang: karakter, potret, monster, boss, musik, SFX. Zip sumber ada di root proyek (di-gitignore).
 - Data uji dibuat di akun uji: naskah "Uji E2E Media Sosial dan Prestasi" (`/map/ebf658f4-e9cb-4778-9af7-e7f91ef1028f`) dan satu run aktif (`de05feb8-835b-4ce5-949f-6ebb051d803a`). Hapus lewat UI/DB kalau tidak diperlukan.
 
@@ -63,6 +63,6 @@ File milik B: `components/**`, `app/**/page.tsx`, `app/layout.tsx`, `app/globals
 - Satu dev server sudah jalan di `localhost:3000` (milik pengguna); jangan dimatikan.
 - Browser dipakai bersama: satu pekerja saja yang memegang Playwright pada satu waktu. Simpan tangkapan layar di `.playwright-mcp/` dan hapus sendiri (dua file log lama di folder itu ikut git, jangan dihapus).
 - Jangan menulis angka balance di luar `lib/balance.ts`. Klien tidak pernah mengirim HP, damage, mutu, atau koin.
-- Batas LLM Kagiro: lihat `LLM_MAX_CONCURRENCY`; 429 beruntun berarti turunkan angkanya.
+- Batas LLM OpenRouter: lihat `LLM_MAX_CONCURRENCY`; 429 beruntun berarti turunkan angkanya.
 - Hasil terukur yang perlu dijaga: Recon ±7 dtk, Judge lolos 30/30 uji kalibrasi.
 - Future work (target jurnal SINTA/Scopus, dsb.) ada di `docs/FUTURE-WORK.md`, bukan bagian tugas ini.

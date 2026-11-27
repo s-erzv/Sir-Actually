@@ -5,16 +5,28 @@ export function requireEnv(name: string): string {
 }
 
 export interface LLMConfig {
-  provider: "anthropic" | "openai" | "gemini" | "kagiro";
+  provider: "anthropic" | "openai" | "gemini" | "openrouter";
   model: string;
   apiKey: string;
   baseUrl?: string;
 }
 
+/** DeepSeek V4.1 Flash 1017: text + image input, JSON mode, 1M context. */
+export const OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash-1017";
+/** OpenRouter provider slug every request is pinned to (no fallback). */
+export const OPENROUTER_DEFAULT_PROVIDER = "pearl-research";
+
 export function getLLMConfig(): LLMConfig {
-  const provider = (process.env.LLM_PROVIDER ?? "gemini") as LLMConfig["provider"];
-  if (!["anthropic", "openai", "gemini", "kagiro"].includes(provider)) {
+  const provider = (process.env.LLM_PROVIDER || "openrouter") as LLMConfig["provider"];
+  if (!["anthropic", "openai", "gemini", "openrouter"].includes(provider)) {
     throw new Error(`Unsupported LLM_PROVIDER: ${provider}`);
+  }
+  if (provider === "openrouter") {
+    return {
+      provider,
+      model: process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
+      apiKey: requireEnv("OPENROUTER_API_KEY"),
+    };
   }
   return {
     provider,

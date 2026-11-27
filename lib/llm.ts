@@ -1,13 +1,19 @@
 /**
  * Provider-agnostic LLM boundary. Server only.
  *
- * Supported providers: anthropic, openai, gemini, kagiro (OpenAI-compatible).
- * Configure with LLM_PROVIDER / LLM_MODEL / LLM_API_KEY in .env.local.
+ * Supported providers: openrouter (default, OpenAI-compatible), anthropic,
+ * openai, gemini. OpenRouter needs only OPENROUTER_API_KEY in .env; model and
+ * pinned upstream provider default to DeepSeek V4.1 Flash 1017 on Pearl Research.
  */
 
 import type { JudgeRawOutput, RubricCriterion } from "@/lib/domain/types";
 import { JudgeOutputSchema } from "@/lib/encounter/schema";
-import { getLLMConfig, type LLMConfig } from "@/lib/env";
+import {
+  getLLMConfig,
+  OPENROUTER_DEFAULT_MODEL,
+  OPENROUTER_DEFAULT_PROVIDER,
+  type LLMConfig,
+} from "@/lib/env";
 import { JUDGE_SYSTEM, buildJudgePrompt } from "@/lib/prompts/judge_v1";
 import { QUESTIONER_SYSTEM, buildQuestionPrompt } from "@/lib/prompts/questioner_v1";
 import { assertDailyBudget, recordLlmUsage } from "@/lib/llmUsage";
@@ -35,19 +41,15 @@ export interface QuestionInput {
   monsterLevel?: 1 | 2 | 3;
 }
 
-/**
- * Default for latency-sensitive work (reading the manuscript, judging).
- * Measured 2026-11-16 on one Recon specialist prompt: glm-5-3-flash 7 s,
- * deepseek-v4-flash 19-28 s, at roughly the same credit cost once reasoning
- * tokens are counted.
- */
-export const FAST_MODEL = "glm-5-3-flash";
+/** Default for latency-sensitive work (reading the manuscript, judging). */
+export const FAST_MODEL = OPENROUTER_DEFAULT_MODEL;
 
 /**
- * Kagiro model per monster. Every slot defaults to the fast model; a slower or
- * pricier model is opt-in per monster via LLM_MODEL_<SLUG>.
+ * OpenRouter model per monster. Every slot defaults to the fast model; another
+ * model is opt-in per monster via LLM_MODEL_<SLUG> (an OpenRouter model id that
+ * the pinned provider also serves, or the request fails: fallbacks are off).
  */
-export const KAGIRO_BOSS_MODELS: Record<string, string> = {
+export const BOSS_MODELS: Record<string, string> = {
   // Floor slugs
   "boss-floor-1": FAST_MODEL,
   "boss-floor-2": FAST_MODEL,
@@ -79,8 +81,8 @@ export function resolveBossModel(bossSlug?: string | null): string | undefined {
   const slug = bossSlug.toLowerCase();
   const override = process.env[`LLM_MODEL_${slug.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`];
   if (override) return override;
-  if (KAGIRO_BOSS_MODELS[slug]) return KAGIRO_BOSS_MODELS[slug];
-  if (slug.startsWith("minion")) return KAGIRO_BOSS_MODELS.minion;
+  if (BOSS_MODELS[slug]) return BOSS_MODELS[slug];
+  if (slug.startsWith("minion")) return BOSS_MODELS.minion;
   return undefined;
 }
 
@@ -240,8 +242,8 @@ class FetchLLMProvider implements LLMProvider {
       return content.filter((part) => part.type === "text").map((part) => part.text ?? "").join("");
     }
 
-    if (provider === "openai" || provider === "kagiro") {
-      const apiBase = baseUrl ?? (provider === "kagiro" ? "https://api.kagiro.net" : "https://api.openai.com");
+    if (provider === "openai" || provider === "openrouter") {
+      const apiBase = baseUrl ?? (provider === "openrouter" ? "https://openrouter.ai/api" : "https://api.openai.com");
       const response = await fetch(
         `${apiBase}/v1/chat/completions`,
         {
@@ -256,6 +258,21 @@ class FetchLLMProvider implements LLMProvider {
             max_tokens: maxTokens,
             temperature,
             ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+            ...(provider === "openrouter"
+              ? {
+                  // Pin the upstream host; fail rather than silently reroute.
+                  provider: {
+                    order: [process.env.OPENROUTER_PROVIDER || OPENROUTER_DEFAULT_PROVIDER],
+                    allow_fallbacks: false,
+                  },
+                  // Reasoning tokens count against max_tokens; keep them small
+                  // so the JSON answer is not truncated.
+                  reasoning: {
+                    effort: process.env.OPENROUTER_REASONING_EFFORT || "low",
+                    exclude: true,
+                  },
+                }
+              : {}),
             messages: [
               { role: "system", content: system },
               { role: "user", content: user },
@@ -398,8 +415,7 @@ export function resolveJudgeModel(bossSlug?: string | null): string {
     ? process.env[`LLM_MODEL_JUDGE_${slug.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`]
     : undefined;
   // One judge for every monster: the same answer must score the same in any
-  // room. Measured on Kagiro: glm-5-3-flash answers in ~3 s with almost no
-  // reasoning tokens; the deepseek flash models spend 2-4k reasoning tokens.
+  // room.
   return override ?? process.env.LLM_MODEL_JUDGE ?? FAST_MODEL;
 }
 
@@ -409,7 +425,7 @@ export function resolveAnalysisModel(): string {
 
 export function getLLMProviderForJudge(bossSlug?: string | null): LLMProvider {
   const base = getLLMProvider();
-  if (base.providerName !== "kagiro") return base;
+  if (base.providerName !== "openrouter") return base;
 
   const model = resolveJudgeModel(bossSlug);
   if (model === base.modelName) return base;
@@ -427,12 +443,12 @@ export function getLLMProviderForJudge(bossSlug?: string | null): LLMProvider {
 }
 
 /**
- * Recon and Cartographer are analysis, not boss dialogue. They use a cheap
- * model by default so LLM_MODEL=deepseek-v4-pro is not spent on them.
+ * Recon and Cartographer are analysis, not boss dialogue. They use the fast
+ * model by default so a pricier OPENROUTER_MODEL is not spent on them.
  */
 export function getLLMProviderForAnalysis(): LLMProvider {
   const base = getLLMProvider();
-  if (base.providerName !== "kagiro") return base;
+  if (base.providerName !== "openrouter") return base;
 
   const model = resolveAnalysisModel();
   if (model === base.modelName) return base;
@@ -450,12 +466,12 @@ export function getLLMProviderForAnalysis(): LLMProvider {
 }
 
 /**
- * Research-map extraction is mechanical and latency-sensitive. On Kagiro it
- * uses a fast model by default; override with LLM_MODEL_EXTRACT.
+ * Research-map extraction is mechanical and latency-sensitive. On OpenRouter
+ * it uses the fast model by default; override with LLM_MODEL_EXTRACT.
  */
 export function getLLMProviderForExtraction(): LLMProvider {
   const base = getLLMProvider();
-  if (base.providerName !== "kagiro") return base;
+  if (base.providerName !== "openrouter") return base;
 
   const model = resolveAnalysisModel();
   if (model === base.modelName) return base;
@@ -474,7 +490,7 @@ export function getLLMProviderForExtraction(): LLMProvider {
 
 export function getLLMProviderForBoss(bossSlug?: string | null): LLMProvider {
   const base = getLLMProvider();
-  if (base.providerName !== "kagiro") return base;
+  if (base.providerName !== "openrouter") return base;
 
   const model = resolveBossModel(bossSlug) ?? resolveAnalysisModel();
   if (model === base.modelName) return base;

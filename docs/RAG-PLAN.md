@@ -77,7 +77,7 @@ RAG = **cari dulu, baru tanya**. Yang membuatnya akurat bukan modelnya, melainka
 
 - **R0 bisa dikerjakan tanpa API key baru.** FTS + perbaikan grant sudah menambal bug terbesar.
 - **R1 butuh provider embedding yang benar-benar bisa dipanggil:** lokal `multilingual-e5-base` (tanpa key) atau Gemini/OpenAI (dengan key). Tanpa itu, tetap FTS.
-- **Kagiro tidak punya model embedding.** Sudah diuji: 22 model chat, `POST /v1/embeddings` 404 untuk semua kandidat. Kagiro tetap dipakai untuk chat/LLM.
+- **Chat/LLM lewat OpenRouter**, bukan untuk embedding.
 - **Validasi kutipan Recon sekarang longgar.** `detectLlmFindings` mengecek kutipan terhadap seluruh `sourceText`, bukan terhadap chunk yang di-retrieve. Akibatnya model bisa mengutip bagian yang tidak pernah dilihatnya dan tetap lolos. Ini harus diperketat.
 
 ---
@@ -728,8 +728,8 @@ Tanpa ini, laporan milestone tidak sah:
 
 ## 15. Keputusan yang dipakai
 
-1. **Embedding: default FTS; upgrade lokal `Xenova/multilingual-e5-base` 768 dimensi.** Alasan: Kagiro tidak punya endpoint embedding, Gemini butuh key yang belum tersedia, dan ukuran 768 sudah cocok dengan schema. Risiko: model lokal menambah ~280 MB + cold start; kalau deploy serverless tidak ramah, tetap FTS. Jangan mengarang vektor.
-2. **Chat LLM: tetap lewat `lib/llm.ts` dan routing Kagiro yang ada.** RAG tidak mengubah provider chat.
+1. **Embedding: default FTS; upgrade lokal `Xenova/multilingual-e5-base` 768 dimensi.** Alasan: provider chat tidak dipakai untuk embedding, Gemini butuh key yang belum tersedia, dan ukuran 768 sudah cocok dengan schema. Risiko: model lokal menambah ~280 MB + cold start; kalau deploy serverless tidak ramah, tetap FTS. Jangan mengarang vektor.
+2. **Chat LLM: tetap lewat `lib/llm.ts` dan routing OpenRouter yang ada.** RAG tidak mengubah provider chat.
 3. **Query per klaim, bukan per naskah.** Jumlah klaim mahasiswa biasanya 10–25; masih puluhan call, bukan ratusan.
 4. **Naskah uji: fixture sintetis dulu, naskah demo Maou untuk holdout.** Naskah mahasiswa lain hanya dengan izin.
 5. **Fallback FTS wajib dites di Supabase sungguhan.** `simple` dipertahankan sampai ada bukti `indonesian` lebih baik.

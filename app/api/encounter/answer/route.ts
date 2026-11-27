@@ -4,7 +4,7 @@
  * Server-authoritative encounter turn:
  *   1. load run + encounter (create on first answer)
  *   2. retrieve manuscript context around the challenged finding
- *   3. LLMProvider.judgeAnswer (Kagiro; no dummy fallback)
+ *   3. LLMProvider.judgeAnswer (OpenRouter; no dummy fallback)
  *   4. validateQuotes + applyRules
  *   5. computeDamage + computeHeartLoss
  *   6. persist turns, evaluation, encounter state, run hearts/points

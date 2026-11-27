@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ApiError, apiErrorResponse, requireUser } from "@/lib/api/auth";
 import { loadOwnedResearchMap } from "@/lib/api/researchMap";
 import { getAdminSupabase } from "@/lib/supabase/admin";
+import { OPENROUTER_DEFAULT_MODEL } from "@/lib/env";
 import { getCharacter, isCharacterUnlocked, isValidLoadout } from "@/lib/loadout";
 import { currentProgress, isStaleRunProgress } from "@/lib/dungeon/runProgress";
 import type { Database } from "@/lib/supabase/database";
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       status: "active",
       hearts_left: hpMax,
       rubric_version: "rubrics_v1",
-      model_version: process.env.LLM_MODEL ?? "kagiro",
+      model_version: process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
       character_slug: body.characterSlug,
       weapon_slug: body.weaponSlug,
       dungeon_title: body.dungeonTitle ?? null,

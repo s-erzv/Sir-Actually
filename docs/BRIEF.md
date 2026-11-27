@@ -66,7 +66,7 @@ Konflik yang **belum** diputuskan ada di bagian 11. Jangan putuskan sendiri.
 - **Phaser 3** hanya di client: `dynamic(() => import('@/game/PhaserGame'), { ssr: false })`. Config `pixelArt: true`, zoom kamera bilangan bulat, tanpa antialias.
 - React untuk semua UI di atas kanvas (HUD, dialog, textarea, Debrief AI, laporan).
 - Phaser dan React berkomunikasi lewat **event bus** (`mitt`), bukan state global bersama.
-- **Chat/LLM: Kagiro** (dipakai lewat `lib/llm.ts`; model per boss dari routing yang ada). **Embedding: default FTS, upgrade lokal `multilingual-e5-base`**; Gemini/OpenAI opsional kalau ada key. Bungkus di `lib/embed.ts`. Tidak ada fallback dummy: kalau env provider kosong, route gagal dengan pesan jelas.
+- **Chat/LLM: OpenRouter (`deepseek/deepseek-v4.1-flash-1017`, provider dipin ke Pearl Research)** (dipakai lewat `lib/llm.ts`; model per boss dari routing yang ada). **Embedding: default FTS, upgrade lokal `multilingual-e5-base`**; Gemini/OpenAI opsional kalau ada key. Bungkus di `lib/embed.ts`. Tidak ada fallback dummy: kalau env provider kosong, route gagal dengan pesan jelas.
 - Tes unit: `vitest` untuk semua logika murni.
 
 Struktur yang disarankan (boleh disesuaikan, tapi pertahankan pemisahan tanggung jawab):
@@ -402,7 +402,7 @@ Aturan grounding: setiap kalimat faktual harus punya `finding_id`, `criterion_id
 - kutipan lama hilang: **"berubah, belum tentu beres"** (tidak pernah "sudah beres")
 - temuan tanpa padanan di run lama: **"baru"**
 
-**Privasi**. Sebelum unggah, tampilkan peringatan bahwa teks naskah dikirim ke penyedia LLM (Kagiro) untuk ekstraksi/tanya-jawab. Kalau embedding lokal dipakai, teks tidak keluar untuk embedding; kalau Gemini/OpenAI dipakai, sebutkan juga. Sediakan tombol hapus naskah.
+**Privasi**. Sebelum unggah, tampilkan peringatan bahwa teks naskah dikirim ke penyedia LLM (OpenRouter, diteruskan ke Pearl Research) untuk ekstraksi/tanya-jawab. Kalau embedding lokal dipakai, teks tidak keluar untuk embedding; kalau Gemini/OpenAI dipakai, sebutkan juga. Sediakan tombol hapus naskah.
 
 ## 10. Peta dungeon (inti permintaan)
 
@@ -437,7 +437,7 @@ Tempel menggantikan "## 11. Keputusan terbuka" sampai sebelum "## 12". Keputusan
 3. **Poin dan rank.** Poin dihitung server, idempoten, dan dinormalisasi terhadap poin maksimum run (karena jumlah lantai berubah). Rank memakai rasio, bukan ambang absolut. Detail §13.5.
 4. **Debrief kalah/mati.** Catatan Penjaga per monster + Epitaf saat Heart habis; wajib menyebut kutipan naskah dan kriteria, tanpa menulis ulang naskah. Detail §9 dan §13.6.
 5. **Gaya pertanyaan.** Bahasa Indonesia sederhana, ≤28 kata, satu tanda tanya, tipe serangan dirotasi, ada fallback templat. Detail §8.
-6. **RAG.** Rencana retrieval yang mengikat ada di `docs/RAG-PLAN.md`. Chat/LLM lewat Kagiro; embedding default FTS, upgrade lokal 768 dimensi kalau evaluasi menuntut. Jangan berasumsi vektor jalan tanpa angka. Setiap pertanyaan, judge, dan debrief memakai potongan naskah yang benar-benar di-retrieve dan lolos validator kutipan.
+6. **RAG.** Rencana retrieval yang mengikat ada di `docs/RAG-PLAN.md`. Chat/LLM lewat OpenRouter; embedding default FTS, upgrade lokal 768 dimensi kalau evaluasi menuntut. Jangan berasumsi vektor jalan tanpa angka. Setiap pertanyaan, judge, dan debrief memakai potongan naskah yang benar-benar di-retrieve dan lolos validator kutipan.
 7. **Markdown kanonik.** `.docx`, PDF berteks, `.md`, dan `.txt` dikonversi di browser ke Markdown polos. Markdown itu satu-satunya `source_text`; tidak ada teks kedua yang dipakai validator. Detail §9.
 8. **Dua lapis AI.** Cartographer mengusulkan peta dungeon; `buildFloorPlan` menghitung/mengunci; Warden menulis entitas dan pertanyaan per monster. Damage/poin/Heart tetap kode. Detail §13.9.
 
@@ -452,9 +452,9 @@ Tempel menggantikan "## 11. Keputusan terbuka" sampai sebelum "## 12". Keputusan
 
 2. **Bahasa.** UI, pertanyaan boss, dan Debrief AI: **Indonesia**. Naskah boleh Indonesia atau Inggris; kutipan selalu dalam bahasa asli naskah. Pengujian dan demo difokuskan ke naskah berbahasa Indonesia. Rules engine sudah memuat kata kunci Indonesia dan Inggris; tambah tes untuk keduanya.
 
-3. **Embedding: Kagiro tidak punya endpoint embedding. Default MVP = FTS; vektor lokal opsional.**
-   - **Kagiro dipakai untuk chat/LLM**, bukan embedding. Sudah diuji: `GET /v1/models` hanya mengembalikan model chat/completion, dan `POST /v1/embeddings` mengembalikan 404 untuk semua kandidat.
-   - **Jalur A — default R0–R2: FTS Postgres.** Tanpa key, tanpa model lokal. Query memakai teks klaim + nama `weakness_type`; boleh ditambah ekspansi sinonim lewat Kagiro kalau evaluasi menunjukkan recall rendah. Batas: buta parafrase dan kata berimbuhan karena config `simple`.
+3. **Embedding: default MVP = FTS; vektor lokal opsional.**
+   - **OpenRouter dipakai untuk chat/LLM**, bukan embedding.
+   - **Jalur A — default R0–R2: FTS Postgres.** Tanpa key, tanpa model lokal. Query memakai teks klaim + nama `weakness_type`; boleh ditambah ekspansi sinonim lewat OpenRouter kalau evaluasi menunjukkan recall rendah. Batas: buta parafrase dan kata berimbuhan karena config `simple`.
    - **Jalur B — vektor lokal (opsional, R1):** `Xenova/multilingual-e5-base`, 768 dimensi, jalan di Node server. Tanpa API key, unduh ~280 MB sekali, cache di disk. Wajib pakai prefix `query: ` dan `passage: `; potong input >512 token. `manuscript_chunks.embedding` sudah `vector(768)`, jadi **tidak perlu migration dimensi**. Cocok untuk demo lokal; cek dulu ukuran image/cold start kalau deploy serverless.
    - **Jalur C — Gemini/OpenAI:** hanya kalau ada key valid. **Free tier Gemini Embedding 2 boleh untuk demo**, dengan catatan input free tier dipakai Google untuk meningkatkan produk; hanya naskah sendiri/berizin. Jangan dijadikan prasyarat; jangan blok R0.
    - Uji sanity tetap sama: 10 pertanyaan, potongan benar masuk top-3 pada **≥8 dari 10**. Gagal: tetap FTS, catat angkanya, jangan pura-pura lulus.
@@ -478,7 +478,7 @@ Tempel menggantikan "## 11. Keputusan terbuka" sampai sebelum "## 12". Keputusan
 - Jumlah referensi: gerbang keras hanya "minimal 1 entri terparse" atau angka pedoman yang diisi pemain; default per tahap hanya peringatan (bagian 9).
 
 ### Masih terbuka (tanya Maou)
-- Model Kagiro final per boss (menunggu hasil uji butir 1).
+- Model OpenRouter final per boss (menunggu hasil uji butir 1).
 - Pilihan embedding: FTS-only (default) vs Gemini free tier vs lokal `multilingual-e5-base` (menunggu evaluasi recall dan izin naskah).
 
 ### Catatan arsitektur yang harus diingat
@@ -495,7 +495,7 @@ Tiap milestone: tes unit lolos (`vitest`), `tsc --noEmit` bersih, `next build` s
 - Pemain bisa berjalan (keyboard), menabrak dinding, masuk ruang, memicu overlay encounter React. Pintu terkunci/terbuka berfungsi. Pertanyaan memakai route nyata; tidak ada pertanyaan dummy.
 
 **M2: Loop pertarungan**
-- `lib/balance.ts`, validator kutipan, rules engine, damage, dengan Judge **nyata** lewat Kagiro; fixture hanya untuk tes unit.
+- `lib/balance.ts`, validator kutipan, rules engine, damage, dengan Judge **nyata** lewat OpenRouter; fixture hanya untuk tes unit.
 - HP boss/antek, Heart, `missing`, bar skor per kriteria, Objection!, Debrief AI (templat), turun lantai, kalah dan ulang lantai.
 - Tes wajib "jawaban asal tidak one-shot" (bagian 8) dan tes tiap aturan deterministik.
 
@@ -503,7 +503,7 @@ Tiap milestone: tes unit lolos (`vitest`), `tsc --noEmit` bersih, `next build` s
 - Katalog karakter + senjata (§13.2); layar pilih karakter/senjata; validasi server; `runs.character_slug`, `runs.weapon_slug`.
 - Damage memakai `weaponBonus` yang dihitung server; tes: bonus tidak pernah >1,10, satu jawaban sempurna tidak membunuh boss, loadout tidak mengubah level kriteria.
 - Poin per monster/lantai, streak, rank berbasis rasio (§13.5); tes idempotensi dan perhitungan `RUN_POINTS_MAX`.
-- Catatan Penjaga nyata lewat Kagiro dengan validator kutipan; tidak ada fallback dummy; tes kutipan palsu ditolak. Epitaf run-level belum diimplementasikan.
+- Catatan Penjaga nyata lewat OpenRouter dengan validator kutipan; tidak ada fallback dummy; tes kutipan palsu ditolak. Epitaf run-level belum diimplementasikan.
 - Tes variasi pertanyaan: tidak ada `question_hash` ganda per finding; tidak ada pembuka sama dalam satu lantai; fallback templat jalan.
 
 **M3: Backend**
